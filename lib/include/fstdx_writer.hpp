@@ -12,18 +12,21 @@ namespace fstd {
 
 struct MxHeader {
   MxHeader() = default;
-  MxHeader(uint64_t key_fst_size, uint64_t dict_size, uint64_t index_size,
-           uint64_t comp_size)
+  MxHeader(uint64_t key_fst_size, uint64_t dict_size, uint64_t block_index_size,
+           uint64_t entry_index_size, uint64_t comp_size)
       : key_fst_size(key_fst_size), dict_size(dict_size),
-        index_size(index_size), comp_size(comp_size) {}
+        block_index_size(block_index_size), entry_index_size(entry_index_size),
+        comp_size(comp_size) {}
 
   uint64_t get_fstdx_size() {
-    return sizeof(MxHeader) + key_fst_size + dict_size + index_size + comp_size;
+    return sizeof(MxHeader) + key_fst_size + dict_size + block_index_size +
+           entry_index_size + comp_size;
   }
 
   uint64_t key_fst_size;
   uint64_t dict_size;
-  uint64_t index_size;
+  uint64_t block_index_size;
+  uint64_t entry_index_size;
   uint64_t comp_size;
 };
 class FstdxWriter {
@@ -90,11 +93,13 @@ public:
     if (!compile_fst(input, oss_key_fst_out, true, opt_verbose)) { return 2; }
 
     std::ostringstream dictOut(ios_base::binary);
-    std::ostringstream idxOut(ios_base::binary);
+    std::ostringstream blockIdxOut(ios_base::binary);
+    std::ostringstream entryIdxOut(ios_base::binary);
     std::ostringstream compOut(ios_base::binary);
     Dxcompressor compressor;
     LOG_INFO("Compressing values...");
-    if (!compressor.compressTextToStream(values, dictOut, idxOut, compOut)) {
+    if (!compressor.compressTextToStream(values, dictOut, blockIdxOut,
+                                         entryIdxOut, compOut)) {
       return 3;
     }
     std::ofstream key_fst_fout("key_fst.fst", ios_base::binary);
@@ -103,7 +108,8 @@ public:
     key_fst_fout.close();
 
     MxHeader header(oss_key_fst_out.str().size(), dictOut.str().size(),
-                    idxOut.str().size(), compOut.str().size());
+                    blockIdxOut.str().size(), entryIdxOut.str().size(),
+                    compOut.str().size());
     uint32_t head_size = sizeof(MxHeader);
     // fout << head_size;
     fout.write(reinterpret_cast<const char *>(&header), head_size);
@@ -111,17 +117,22 @@ public:
     dict_fout << dictOut.str();
     dict_fout.flush();
     dict_fout.close();
-    std::ofstream dict_index_fout("dict.idx", ios_base::binary);
-    dict_index_fout << idxOut.str();
-    dict_index_fout.flush();
-    dict_index_fout.close();
+    std::ofstream block_index_fout("block.idx", ios_base::binary);
+    block_index_fout << entryIdxOut.str();
+    block_index_fout.flush();
+    block_index_fout.close();
+    std::ofstream entry_index_fout("entry.idx", ios_base::binary);
+    entry_index_fout << entryIdxOut.str();
+    entry_index_fout.flush();
+    entry_index_fout.close();
     std::ofstream comp_fout("dict.zst", ios_base::binary);
     comp_fout << compOut.str();
     comp_fout.flush();
     comp_fout.close();
     fout << oss_key_fst_out.str();
     fout << dictOut.str();
-    fout << idxOut.str();
+    fout << blockIdxOut.str();
+    fout << entryIdxOut.str();
     fout << compOut.str();
     fout.flush();
     fout.close();

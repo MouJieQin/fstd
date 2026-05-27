@@ -34,7 +34,8 @@ public:
     std::vector<std::string> tmp_result;
     for (uint32_t i = 0; i <= duplicate; ++i) {
       std::string text = dx_compressor.readTextByIndex(
-          index + i, dictBuffer, indexEntries, fstdx_path, comp_text_offset);
+          index + i, dictBuffer, block_indexes, entry_indexes, fstdx_path,
+          comp_text_offset);
       tmp_result.emplace_back(text);
     }
     result.swap(tmp_result);
@@ -60,8 +61,6 @@ private:
     if (fstdx_size < mx_header.get_fstdx_size()) {
       LOG_ERROR("fstdx file size: {}", fstdx_path);
 
-
-
       LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
       return false;
     }
@@ -75,10 +74,17 @@ private:
     ins.seekg(mx_head_size + mx_header.key_fst_size);
     ins.read(dictBuffer.data(), dictBuffer.size());
 
-    indexEntries.resize(mx_header.index_size / sizeof(IndexEntry));
+    block_indexes.resize(mx_header.block_index_size / sizeof(BlockIndex));
     ins.seekg(mx_head_size + mx_header.key_fst_size + mx_header.dict_size);
-    ins.read(reinterpret_cast<char *>(indexEntries.data()),
-             mx_header.index_size);
+    ins.read(reinterpret_cast<char *>(block_indexes.data()),
+             mx_header.block_index_size);
+
+    entry_indexes.resize(mx_header.entry_index_size / sizeof(EntryIndex));
+    ins.seekg(mx_head_size + mx_header.key_fst_size + mx_header.dict_size +
+              mx_header.block_index_size);
+    ins.read(reinterpret_cast<char *>(entry_indexes.data()),
+             mx_header.entry_index_size);
+
     ins.close();
     comp_text_offset = mx_header.get_fstdx_size() - mx_header.comp_size;
     return true;
@@ -89,7 +95,8 @@ private:
   FstMapSearcher<uint64_t> fst_map_searcher;
   Dxcompressor dx_compressor;
   std::vector<char> dictBuffer;
-  std::vector<IndexEntry> indexEntries;
+  std::vector<BlockIndex> block_indexes;
+  std::vector<EntryIndex> entry_indexes;
   uint64_t comp_text_offset;
 };
 } // namespace fstd
