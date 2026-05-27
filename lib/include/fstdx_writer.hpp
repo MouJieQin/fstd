@@ -2,12 +2,30 @@
 #include <fstream>
 #include <sstream>
 
+#include "compress_dx.hpp"
 #include "fstlib_wrapper.h"
 #include "logger.hpp"
 
 using namespace fst;
 using namespace std;
 namespace fstd {
+
+struct MxHeader {
+  MxHeader() = default;
+  MxHeader(uint64_t key_fst_size, uint64_t dict_size, uint64_t index_size,
+           uint64_t comp_size)
+      : key_fst_size(key_fst_size), dict_size(dict_size),
+        index_size(index_size), comp_size(comp_size) {}
+
+  uint64_t get_fstdx_size() {
+    return sizeof(MxHeader) + key_fst_size + dict_size + index_size + comp_size;
+  }
+
+  uint64_t key_fst_size;
+  uint64_t dict_size;
+  uint64_t index_size;
+  uint64_t comp_size;
+};
 class FstdxWriter {
 public:
   FstdxWriter() = default;
@@ -35,7 +53,10 @@ public:
       fin.close();
       return 1;
     }
+    LOG_INFO("Loaded {} keys and {} values.", keys.size(), values.size());
     if (!opt_sorted) { sort_keys_values(keys, values); }
+    LOG_INFO("Sorted {} keys and {} values.", keys.size(), values.size());
+
     ofstream sorted_keys_fout("sorted_keys.txt", ios_base::out);
     if (!sorted_keys_fout) { return 1; }
     for (const auto &key : keys) {
@@ -54,11 +75,57 @@ public:
     }
     input_fout.close();
 
-    ostringstream oss_out(ios_base::binary);
-    if (!compile_fst(input, oss_out, false, opt_verbose)) { return 2; }
-    fout << oss_out.str();
+    ofstream value_fout("values.txt", ios_base::out);
+    if (!value_fout) { return 1; }
+    for (const auto &value : values) {
+      std::string line = "";
+      for (auto c : value) {
+        if (c != '\n') { line += c; }
+      }
+      value_fout << line << "\n";
+    }
+    value_fout.close();
+
+    ostringstream oss_key_fst_out(ios_base::binary);
+    if (!compile_fst(input, oss_key_fst_out, true, opt_verbose)) { return 2; }
+
+    std::ostringstream dictOut(ios_base::binary);
+    std::ostringstream idxOut(ios_base::binary);
+    std::ostringstream compOut(ios_base::binary);
+    Dxcompressor compressor;
+    LOG_INFO("Compressing values...");
+    if (!compressor.compressTextToStream(values, dictOut, idxOut, compOut)) {
+      return 3;
+    }
+    std::ofstream key_fst_fout("key_fst.fst", ios_base::binary);
+    key_fst_fout << oss_key_fst_out.str();
+    key_fst_fout.flush();
+    key_fst_fout.close();
+
+    MxHeader header(oss_key_fst_out.str().size(), dictOut.str().size(),
+                    idxOut.str().size(), compOut.str().size());
+    uint32_t head_size = sizeof(MxHeader);
+    // fout << head_size;
+    fout.write(reinterpret_cast<const char *>(&header), head_size);
+    std::ofstream dict_fout("zstd_dict.bin", ios_base::binary);
+    dict_fout << dictOut.str();
+    dict_fout.flush();
+    dict_fout.close();
+    std::ofstream dict_index_fout("dict.idx", ios_base::binary);
+    dict_index_fout << idxOut.str();
+    dict_index_fout.flush();
+    dict_index_fout.close();
+    std::ofstream comp_fout("dict.zst", ios_base::binary);
+    comp_fout << compOut.str();
+    comp_fout.flush();
+    comp_fout.close();
+    fout << oss_key_fst_out.str();
+    fout << dictOut.str();
+    fout << idxOut.str();
+    fout << compOut.str();
     fout.flush();
     fout.close();
+
     return 0;
   }
 
@@ -74,8 +141,7 @@ private:
   bool parse_raw_txt(std::vector<std::string> &raw_lines,
                      std::vector<size_t> &delimiter_indices,
                      std::vector<std::string> &keys,
-                     std::vector<std::string> &values,
-                     const std::string &delimiter) {
+                     std::vector<std::string> &values) {
     if (delimiter_indices.empty()) {
       LOG_ERROR("Not found valid key and value lines. [not found delimiter]");
       return false;
@@ -104,10 +170,10 @@ private:
     vector<string> keys_temp;
     keys_temp.reserve(delimiter_indices.size());
     // handle the first key
-    keys_temp.emplace_back(std::move(trim_whitespace(raw_lines[0])));
-    for (size_t i = 1; i < delimiter_indices.size() - 1; i++) {
+    keys_temp.emplace_back(trim_whitespace(raw_lines[0]));
+    for (size_t i = 0; i < delimiter_indices.size() - 1; i++) {
       keys_temp.emplace_back(
-          std::move(trim_whitespace(raw_lines[delimiter_indices[i] + 1])));
+          trim_whitespace(raw_lines[delimiter_indices[i] + 1]));
     }
 
     vector<string> values_temp;
@@ -115,15 +181,18 @@ private:
     string cur_value("");
     // handle the first value
     for (size_t i = 1; i < delimiter_indices.front(); i++) {
-      cur_value += raw_lines[i];
+      cur_value += raw_lines[i] + "\n";
     }
+    // remove the last '\n'
+    cur_value.pop_back();
     values_temp.emplace_back(std::move(cur_value));
     for (size_t i = 0; i < delimiter_indices.size() - 1; i++) {
       cur_value = "";
-      for (size_t j = delimiter_indices[i] + 1; j < delimiter_indices[i + 1];
+      for (size_t j = delimiter_indices[i] + 2; j < delimiter_indices[i + 1];
            j++) {
-        cur_value += raw_lines[j];
+        cur_value += std::move(raw_lines[j]) + "\n";
       }
+      cur_value.pop_back();
       values_temp.emplace_back(std::move(cur_value));
     }
     keys.swap(keys_temp);
@@ -149,7 +218,7 @@ private:
       index_count += 1;
     }
 
-    return parse_raw_txt(raw_lines, delimiter_indices, keys, values, delimiter);
+    return parse_raw_txt(raw_lines, delimiter_indices, keys, values);
   }
 
   void sort_keys_values(std::vector<std::string> &keys,

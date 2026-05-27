@@ -91,6 +91,7 @@ find_package(nlohmann_json REQUIRED)
 target_link_libraries(fstd PRIVATE
     spdlog
     fmt
+    zstd
     # nlohmann_json::nlohmann_json
 )
 

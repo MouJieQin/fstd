@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "CLI/CLI.hpp"
+#include "fstdx_searcher.hpp"
 #include "fstdx_writer.hpp"
 #include "logger.hpp"
 
@@ -14,8 +15,8 @@ int main(int argc, char **argv) {
   app.footer("示例程序 - 基于CLI11");
 
   // 1. 普通字符串参数
-  // std::string file_path;
-  // app.add_option("-f,--file", file_path, "指定输入文件路径")->required();
+  std::string file_path;
+  app.add_option("-f,--file", file_path, "指定输入文件路径");
 
   // 2. 整型参数，带默认值
   int count = 10;
@@ -24,6 +25,12 @@ int main(int argc, char **argv) {
   // 3. 布尔开关
   bool verbose = false;
   app.add_flag("-v,--verbose", verbose, "开启详细日志输出");
+
+  bool search = false;
+  app.add_flag("-s,--search", search, "进行精确匹配搜索");
+
+  std::string word;
+  app.add_option("-w,--word", word, "指定输入文件路径");
 
   // 4. 多值参数
   std::vector<int> nums;
@@ -59,7 +66,7 @@ int main(int argc, char **argv) {
     CLI11_PARSE(app, argc, argv);
   } catch (const CLI::ParseError &e) { return app.exit(e); }
 
-//   std::cout << "子命令：" << write_cmd->get_subcommand()->name() << "\n";
+  //   std::cout << "子命令：" << write_cmd->get_subcommand()->name() << "\n";
   std::cout << "输入文件：" << input_file << "\n";
   std::cout << "行索引键,值,步长列表：\n";
   std::cout << "输出文件：" << output_file << "\n";
@@ -80,6 +87,25 @@ int main(int argc, char **argv) {
       return ret;
     }
     LOG_INFO("编译成功");
+  } else if (search) {
+    LOG_INFO("开始搜索");
+    bool is_valid = false;
+    fstd::FstdxSearcher fstdx_searcher(file_path, is_valid);
+    if (!is_valid) {
+      LOG_ERROR("文件 {} 不是有效的 fstdx 文件", file_path);
+      return 1;
+    }
+    std::vector<std::string> result;
+    bool res = fstdx_searcher.exact_match_search(word, result);
+    if (!res) {
+      LOG_INFO("未找到匹配项");
+      return 1;
+    }
+    for (const std::string &s : result) {
+      std::cout << "------------------------------" << std::endl;
+      std::cout << s << std::endl;
+      std::cout << "------------------------------" << std::endl;
+    }
   }
 
   return 0;
