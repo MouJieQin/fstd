@@ -1,9 +1,14 @@
 #pragma once
 
+#include <fstream>
+#include <nlohmann/json.hpp>
+
 #include "compress_dx.hpp"
 #include "fstdx_writer.hpp"
 #include "logger.hpp"
-#include <fstream>
+
+using namespace std;
+using json = nlohmann::json;
 
 namespace fstd {
 
@@ -50,43 +55,96 @@ private:
       return false;
     }
     size_t fstdx_size = ins.tellg();
-    uint64_t mx_head_size = sizeof(MxHeader);
-    if (fstdx_size < mx_head_size) {
+    size_t record_size = sizeof(MxHeaderSizeRecord);
+    if (fstdx_size < record_size) {
       LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
       return false;
     }
-    ins.seekg(0);
-    MxHeader mx_header;
-    ins.read(reinterpret_cast<char *>(&mx_header), mx_head_size);
-    if (fstdx_size < mx_header.get_fstdx_size()) {
-      LOG_ERROR("fstdx file size: {}", fstdx_path);
-
+    LOG_INFO("fstdx_size:{}", fstdx_size);
+    ins.seekg(-record_size, std::ios::end);
+    MxHeaderSizeRecord header_size_record;
+    LOG_INFO("record_size:{}", record_size);
+    ins.read(reinterpret_cast<char *>(&header_size_record), record_size);
+    if (fstdx_size < header_size_record.compressed_size) {
       LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
       return false;
     }
 
-    std::vector<char> key_fst_byte_code(mx_header.key_fst_size);
-    ins.seekg(mx_head_size);
-    ins.read(key_fst_byte_code.data(), key_fst_byte_code.size());
+    LOG_INFO("header_size_record: original_size:{}, compressed_size:{}",
+             header_size_record.original_size,
+             header_size_record.compressed_size);
+
+    vector<char> header_compressed_byte(header_size_record.compressed_size);
+    ins.seekg(-(record_size + header_size_record.compressed_size),
+              std::ios::end);
+    ins.read(const_cast<char *>(header_compressed_byte.data()),
+             header_size_record.compressed_size);
+    std::vector<char> header_json_raw_str;
+    dx_compressor.decompressToBuffer(
+        header_compressed_byte.data(), header_compressed_byte.size(),
+        header_size_record.original_size, header_json_raw_str);
+    MxJsonHeader mx_json_header;
+    try {
+      mx_json_header = json::parse(string(header_json_raw_str.data()));
+      LOG_INFO("{}", mx_json_header.dump());
+    } catch (const json::exception &e) {
+      LOG_ERROR("解析 header 失败: {}", e.what());
+      return false;
+    } catch (...) {
+      LOG_ERROR("解析 header 失败: 未知异常");
+      return false;
+    }
+
+    std::vector<char> key_fst_byte_code;
+    if (!decompress(ins, "key_fst", mx_json_header, key_fst_byte_code)) {
+      return false;
+    }
     fst_map_searcher = FstMapSearcher<uint64_t>(key_fst_byte_code);
 
-    dictBuffer.resize(mx_header.dict_size);
-    ins.seekg(mx_head_size + mx_header.key_fst_size);
-    ins.read(dictBuffer.data(), dictBuffer.size());
+    if (!decompress(ins, "comp_dict", mx_json_header, dictBuffer)) {
+      return false;
+    }
 
-    block_indexes.resize(mx_header.block_index_size / sizeof(BlockIndex));
-    ins.seekg(mx_head_size + mx_header.key_fst_size + mx_header.dict_size);
-    ins.read(reinterpret_cast<char *>(block_indexes.data()),
-             mx_header.block_index_size);
+    if (!decompress(ins, "block_indexes", mx_json_header, block_indexes)) {
+      return false;
+    }
 
-    entry_indexes.resize(mx_header.entry_index_size / sizeof(EntryIndex));
-    ins.seekg(mx_head_size + mx_header.key_fst_size + mx_header.dict_size +
-              mx_header.block_index_size);
-    ins.read(reinterpret_cast<char *>(entry_indexes.data()),
-             mx_header.entry_index_size);
+    if (!decompress(ins, "entry_indexes", mx_json_header, entry_indexes)) {
+      return false;
+    }
 
     ins.close();
-    comp_text_offset = mx_header.get_fstdx_size() - mx_header.comp_size;
+
+    comp_text_offset = mx_json_header["comp_blocks"]["offset"];
+
+    return true;
+  }
+
+  template <typename T>
+  bool decompress(istream &ins, const std::string &block_name,
+                  const MxJsonHeader &mx_json_header, std::vector<T> &con) {
+    const json &json_block = mx_json_header[block_name];
+    int compress_level = json_block["compress_level"];
+    uint64_t offset = json_block["offset"];
+    uint64_t original_size = json_block["original_size"];
+    std::vector<T> tmp_con;
+    tmp_con.resize(original_size / sizeof(T));
+    if (compress_level == 0) {
+      ins.seekg(offset);
+      ins.read(reinterpret_cast<char *>(tmp_con.data()), tmp_con.size());
+    } else {
+      uint64_t compressed_size = json_block["compressed_size"];
+      vector<char> compressed_block(compressed_size);
+      ins.seekg(offset);
+      ins.read(compressed_block.data(), compressed_block.size());
+      std::vector<char> dst_buff(original_size);
+      bool res = dx_compressor.decompressToBuffer(compressed_block.data(),
+                                                  compressed_block.size(),
+                                                  original_size, dst_buff);
+      if (!res) { return false; }
+      memcpy(tmp_con.data(), dst_buff.data(), dst_buff.size());
+    }
+    con.swap(tmp_con);
     return true;
   }
 

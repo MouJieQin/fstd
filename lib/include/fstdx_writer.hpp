@@ -1,5 +1,6 @@
 #pragma once
 #include <fstream>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 #include "compress_dx.hpp"
@@ -8,27 +9,20 @@
 
 using namespace fst;
 using namespace std;
+using json = nlohmann::json;
+
 namespace fstd {
 
-struct MxHeader {
-  MxHeader() = default;
-  MxHeader(uint64_t key_fst_size, uint64_t dict_size, uint64_t block_index_size,
-           uint64_t entry_index_size, uint64_t comp_size)
-      : key_fst_size(key_fst_size), dict_size(dict_size),
-        block_index_size(block_index_size), entry_index_size(entry_index_size),
-        comp_size(comp_size) {}
-
-  uint64_t get_fstdx_size() {
-    return sizeof(MxHeader) + key_fst_size + dict_size + block_index_size +
-           entry_index_size + comp_size;
-  }
-
-  uint64_t key_fst_size;
-  uint64_t dict_size;
-  uint64_t block_index_size;
-  uint64_t entry_index_size;
-  uint64_t comp_size;
+struct MxHeaderSizeRecord {
+  MxHeaderSizeRecord() = default;
+  MxHeaderSizeRecord(uint32_t original_size, uint32_t compressed_size)
+      : original_size(original_size), compressed_size(compressed_size) {}
+  uint32_t original_size;
+  uint32_t compressed_size;
 };
+
+using MxJsonHeader = json;
+
 class FstdxWriter {
 public:
   FstdxWriter() = default;
@@ -70,6 +64,12 @@ public:
     vector<pair<string, uint64_t>> input;
     make_output(keys, input);
 
+    {
+      // 释放keys内存
+      vector<string> tmp;
+      keys.swap(tmp);
+    }
+
     ofstream input_fout("input.txt", ios_base::out);
     if (!input_fout) { return 1; }
     for (const auto &p : input) {
@@ -91,52 +91,135 @@ public:
 
     ostringstream oss_key_fst_out(ios_base::binary);
     if (!compile_fst(input, oss_key_fst_out, true, opt_verbose)) { return 2; }
+    {
+      // 释放input内存
+      vector<pair<string, uint64_t>> tmp;
+      input.swap(tmp);
+    }
+
+    Dxcompressor compressor;
+    MxJsonHeader header;
+    std::vector<char> comp_key_fst_dst;
+    bool comp_res = false;
+    {
+      comp_res = compressor.compressToBuffer(oss_key_fst_out.str(),
+                                             oss_key_fst_out.str().size(),
+                                             comp_key_fst_dst, compress_level);
+      if (!comp_res) { return 4; }
+      header["key_fst"]["compress_level"] = compress_level;
+      header["key_fst"]["original_size"] = oss_key_fst_out.str().size();
+      header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
+      std::ofstream key_fst_fout("key_fst.fst", ios_base::binary);
+      key_fst_fout << oss_key_fst_out.str();
+      ostringstream tmp(ios_base::binary);
+      oss_key_fst_out.swap(tmp);
+    }
 
     std::ostringstream dictOut(ios_base::binary);
     std::ostringstream blockIdxOut(ios_base::binary);
     std::ostringstream entryIdxOut(ios_base::binary);
     std::ostringstream compOut(ios_base::binary);
-    Dxcompressor compressor;
     LOG_INFO("Compressing values...");
     if (!compressor.compressTextToStream(values, dictOut, blockIdxOut,
                                          entryIdxOut, compOut)) {
       return 3;
     }
-    std::ofstream key_fst_fout("key_fst.fst", ios_base::binary);
-    key_fst_fout << oss_key_fst_out.str();
-    key_fst_fout.flush();
-    key_fst_fout.close();
 
-    MxHeader header(oss_key_fst_out.str().size(), dictOut.str().size(),
-                    blockIdxOut.str().size(), entryIdxOut.str().size(),
-                    compOut.str().size());
-    uint32_t head_size = sizeof(MxHeader);
+    // MxHeader header(oss_key_fst_out.str().size(), dictOut.str().size(),
+    //                 blockIdxOut.str().size(), entryIdxOut.str().size(),
+    //                 compOut.str().size());
+
+    // uint32_t head_size = sizeof(MxHeader);
     // fout << head_size;
-    fout.write(reinterpret_cast<const char *>(&header), head_size);
+    // fout.write(reinterpret_cast<const char *>(&header), head_size);
+
     std::ofstream dict_fout("zstd_dict.bin", ios_base::binary);
     dict_fout << dictOut.str();
-    dict_fout.flush();
-    dict_fout.close();
-    std::ofstream block_index_fout("block.idx", ios_base::binary);
-    block_index_fout << entryIdxOut.str();
-    block_index_fout.flush();
-    block_index_fout.close();
-    std::ofstream entry_index_fout("entry.idx", ios_base::binary);
-    entry_index_fout << entryIdxOut.str();
-    entry_index_fout.flush();
-    entry_index_fout.close();
+    header["comp_dict"]["compress_level"] = 0;
+    header["comp_dict"]["original_size"] = dictOut.str().size();
+    // header["comp_dict"]["compressed_size"] = 0;
+
+    std::vector<char> comp_block_index_dst;
+    {
+      comp_res = compressor.compressToBuffer(
+          blockIdxOut.str(), blockIdxOut.str().size(), comp_block_index_dst,
+          compress_level);
+      if (!comp_res) { return 4; }
+      header["block_indexes"]["compress_level"] = compress_level;
+      header["block_indexes"]["compressed_size"] = comp_block_index_dst.size();
+      header["block_indexes"]["original_size"] = blockIdxOut.str().size();
+      std::ofstream block_index_fout("block.idx", ios_base::binary);
+      block_index_fout << blockIdxOut.str();
+      ostringstream tmp(ios_base::binary);
+      blockIdxOut.swap(tmp);
+    }
+
+    std::vector<char> comp_entry_index_dst;
+    {
+      comp_res = compressor.compressToBuffer(
+          entryIdxOut.str(), entryIdxOut.str().size(), comp_entry_index_dst,
+          compress_level);
+      if (!comp_res) { return 4; }
+      header["entry_indexes"]["compress_level"] = compress_level;
+      header["entry_indexes"]["original_size"] = entryIdxOut.str().size();
+      header["entry_indexes"]["compressed_size"] = comp_entry_index_dst.size();
+      std::ofstream entry_index_fout("entry.idx", ios_base::binary);
+      entry_index_fout << entryIdxOut.str();
+      ostringstream tmp(ios_base::binary);
+      entryIdxOut.swap(tmp);
+    }
+
+    header["comp_blocks"]["compress_level"] = compress_level;
     std::ofstream comp_fout("dict.zst", ios_base::binary);
     comp_fout << compOut.str();
     comp_fout.flush();
     comp_fout.close();
-    fout << oss_key_fst_out.str();
-    fout << dictOut.str();
-    fout << blockIdxOut.str();
-    fout << entryIdxOut.str();
-    fout << compOut.str();
-    fout.flush();
-    fout.close();
 
+    // fout << oss_key_fst_out.str();
+    fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
+    header["key_fst"]["offset"] = 0;
+
+    fout << dictOut.str();
+    header["comp_dict"]["offset"] =
+        static_cast<size_t>(header["key_fst"]["offset"]) +
+        comp_key_fst_dst.size();
+
+    // fout << blockIdxOut.str();
+    fout.write(comp_block_index_dst.data(), comp_block_index_dst.size());
+    header["block_indexes"]["offset"] =
+        static_cast<size_t>(header["comp_dict"]["offset"]) +
+        dictOut.str().size();
+
+    fout.write(comp_entry_index_dst.data(), comp_entry_index_dst.size());
+    header["entry_indexes"]["offset"] =
+        static_cast<size_t>(header["block_indexes"]["offset"]) +
+        comp_block_index_dst.size();
+
+    fout << compOut.str();
+    header["comp_blocks"]["offset"] =
+        static_cast<size_t>(header["entry_indexes"]["offset"]) +
+        comp_entry_index_dst.size();
+
+    std::vector<char> comp_header_dst;
+    std::string header_str = header.dump();
+    {
+      comp_res =
+          compressor.compressToBuffer(header_str.c_str(), header_str.size(),
+                                      comp_header_dst, compress_level);
+      if (!comp_res) { return 4; }
+    }
+    fout.write(comp_header_dst.data(), comp_header_dst.size());
+
+    std::ofstream header_fout("header.zst", ios_base::binary);
+    header_fout << comp_header_dst.data();
+
+    MxHeaderSizeRecord header_size_record(header_str.size(),
+                                          comp_header_dst.size());
+    LOG_INFO("{}", header_str);
+    LOG_INFO("{},{}", header_size_record.original_size,
+             header_size_record.compressed_size);
+    fout.write(reinterpret_cast<const char *>(&header_size_record),
+               sizeof(MxHeaderSizeRecord));
     return 0;
   }
 

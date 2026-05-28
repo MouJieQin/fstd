@@ -92,7 +92,7 @@ target_link_libraries(fstd PRIVATE
     spdlog
     fmt
     zstd
-    # nlohmann_json::nlohmann_json
+    nlohmann_json::nlohmann_json
 )
 
 # 覆盖率链接配置
