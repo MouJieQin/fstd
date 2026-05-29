@@ -1,4 +1,3 @@
-#pragma once
 #include "fstlib_wrapper.h"
 #include "logger.hpp"
 #include <tuple>

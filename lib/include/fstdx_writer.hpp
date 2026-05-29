@@ -21,17 +21,80 @@ struct MxHeaderSizeRecord {
   uint32_t compressed_size;
 };
 
+std::string get_current_date() {
+  std::time_t now = std::time(nullptr);
+
+  std::tm local_tm = *std::localtime(&now);
+
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", local_tm.tm_year + 1900,
+                local_tm.tm_mon + 1, local_tm.tm_mday);
+
+  return std::string(buf);
+}
+
 using MxJsonHeader = json;
 
 class FstdxWriter {
 public:
   FstdxWriter() = default;
 
+  static const json meta_default;
+
+  bool handle_meta(const json &meta, MxJsonHeader &header) {
+    if (!meta.is_object()) {
+      LOG_ERROR("Meta is not an object.");
+      return false;
+    }
+
+    json &h_meta = header["meta"];
+    // 遍历 meta_default
+    for (const auto &item : FstdxWriter::meta_default) {
+      // item 是数组里的每个小对象，比如 {"Version":""}
+
+      // 遍历这个小对象里的 唯一一个 键值对
+      for (const auto &[key, value] : item.items()) {
+        if (!meta.contains(key)) {
+          h_meta[key] = value;
+        } else if (value.is_string()) {
+          if (meta[key].is_string()) {
+            h_meta[key] = meta[key];
+          } else {
+            LOG_ERROR("Meta {} is not a string.", key);
+            return false;
+          }
+        } else if (value.is_boolean()) {
+          if (meta[key].is_boolean()) {
+            h_meta[key] = meta[key];
+          } else {
+            LOG_ERROR("Meta {} is not a boolean.", key);
+            return false;
+          }
+        } else if (value.is_number()) {
+          if (meta[key].is_number()) {
+            h_meta[key] = meta[key];
+          } else {
+            LOG_ERROR("Meta {} is not a number.", key);
+            return false;
+          }
+        } else {
+          LOG_ERROR(
+              "Internal Error: Meta {} is not a string, boolean, or number.",
+              key);
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   int compile_fstdmx(const std::string &input_file,
                      const std::string &output_file,
-                     const std::string &delimiter, uint16_t block_size_kb,
-                     uint8_t compress_level, uint16_t zstd_dict_size_kb,
-                     bool opt_sorted, bool opt_verbose) {
+                     const std::string &delimiter, const json &meta,
+                     uint16_t block_size_kb, uint8_t compress_level,
+                     uint16_t zstd_dict_size_kb, bool opt_sorted,
+                     bool opt_verbose) {
     ifstream fin(input_file);
     if (!fin) {
       LOG_ERROR("Failed to open file {} for reading.", input_file);
@@ -46,10 +109,16 @@ public:
 
     vector<string> keys;
     vector<string> values;
+    MxJsonHeader header;
+    if (!handle_meta(meta, header)) { return 5; }
+    LOG_INFO("handle_meta success.");
     if (!load_file(fin, keys, values, delimiter)) {
       fin.close();
       return 1;
     }
+    header["meta"]["Record"] = keys.size();
+    header["meta"]["Stripkey"] = true;
+    header["meta"]["CompressionLevel"] = compress_level;
     LOG_INFO("Loaded {} keys and {} values.", keys.size(), values.size());
     if (!opt_sorted) { sort_keys_values(keys, values); }
     LOG_INFO("Sorted {} keys and {} values.", keys.size(), values.size());
@@ -98,7 +167,6 @@ public:
     }
 
     Dxcompressor compressor;
-    MxJsonHeader header;
     std::vector<char> comp_key_fst_dst;
     bool comp_res = false;
     {
@@ -120,24 +188,16 @@ public:
     std::ostringstream entryIdxOut(ios_base::binary);
     std::ostringstream compOut(ios_base::binary);
     LOG_INFO("Compressing values...");
-    if (!compressor.compressTextToStream(values, dictOut, blockIdxOut,
-                                         entryIdxOut, compOut)) {
+    if (!compressor.compressTextToStream(
+            values, dictOut, blockIdxOut, entryIdxOut, compOut,
+            block_size_kb * 1024, zstd_dict_size_kb * 1024, compress_level)) {
       return 3;
     }
-
-    // MxHeader header(oss_key_fst_out.str().size(), dictOut.str().size(),
-    //                 blockIdxOut.str().size(), entryIdxOut.str().size(),
-    //                 compOut.str().size());
-
-    // uint32_t head_size = sizeof(MxHeader);
-    // fout << head_size;
-    // fout.write(reinterpret_cast<const char *>(&header), head_size);
 
     std::ofstream dict_fout("zstd_dict.bin", ios_base::binary);
     dict_fout << dictOut.str();
     header["comp_dict"]["compress_level"] = 0;
     header["comp_dict"]["original_size"] = dictOut.str().size();
-    // header["comp_dict"]["compressed_size"] = 0;
 
     std::vector<char> comp_block_index_dst;
     {
@@ -200,6 +260,7 @@ public:
         static_cast<size_t>(header["entry_indexes"]["offset"]) +
         comp_entry_index_dst.size();
 
+    header["meta"]["Creationdate"] = get_current_date();
     std::vector<char> comp_header_dst;
     std::string header_str = header.dump();
     {
@@ -376,4 +437,18 @@ private:
     return fstd::compile_fst(input, oss_out, opt_sorted, opt_verbose);
   }
 };
+
+const json FstdxWriter::meta_default =
+    json::array({{{"Version", ""}},
+                 {{"Record", 0}},
+                 {{"Format", "Html"}},
+                 {{"Keycasesensitive", false}},
+                 {{"Stripkey", true}},
+                 {{"Description", ""}},
+                 {{"Title", ""}},
+                 {{"Encoding", "UTF-8"}},
+                 {{"Creationdate", ""}},
+                 {{"CompressionLevel", 5}},
+                 {{"Left2Right", true}},
+                 {{"Stylesheet", ""}}});
 } // namespace fstd

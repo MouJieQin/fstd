@@ -15,16 +15,19 @@ namespace fstd {
 class FstdxSearcher {
 public:
   FstdxSearcher(const std::string &fstdx_path, bool &is_valid)
-      : fstdx_path(fstdx_path) {
+      : fstdx_path(fstdx_path), ddict(nullptr) {
     if (!parse_fstdx(fstdx_path)) {
       is_valid = false;
       return;
     }
     is_valid = true;
   }
+  ~FstdxSearcher() { ZSTD_freeDDict(ddict); }
+
+  const json &get_meta() const { return mx_json_header["meta"]; }
 
   bool exact_match_search(std::string_view word,
-                          std::vector<std::string> &result) {
+                          std::vector<std::string> &result) const {
     uint64_t index_res = 0;
     if (!fst_map_searcher.exact_match_search(word, index_res)) { return false; }
     uint32_t index = 0;
@@ -39,7 +42,7 @@ public:
     std::vector<std::string> tmp_result;
     for (uint32_t i = 0; i <= duplicate; ++i) {
       std::string text = dx_compressor.readTextByIndex(
-          index + i, dictBuffer, block_indexes, entry_indexes, fstdx_path,
+          index + i, ddict, block_indexes, entry_indexes, fstdx_path,
           comp_text_offset);
       tmp_result.emplace_back(text);
     }
@@ -83,7 +86,7 @@ private:
     dx_compressor.decompressToBuffer(
         header_compressed_byte.data(), header_compressed_byte.size(),
         header_size_record.original_size, header_json_raw_str);
-    MxJsonHeader mx_json_header;
+    // MxJsonHeader mx_json_header;
     try {
       mx_json_header = json::parse(string(header_json_raw_str.data()));
       LOG_INFO("{}", mx_json_header.dump());
@@ -101,9 +104,11 @@ private:
     }
     fst_map_searcher = FstMapSearcher<uint64_t>(key_fst_byte_code);
 
+    std::vector<char> dictBuffer;
     if (!decompress(ins, "comp_dict", mx_json_header, dictBuffer)) {
       return false;
     }
+    ddict = ZSTD_createDDict(dictBuffer.data(), dictBuffer.size());
 
     if (!decompress(ins, "block_indexes", mx_json_header, block_indexes)) {
       return false;
@@ -150,9 +155,10 @@ private:
 
 private:
   const std::string &fstdx_path;
+  MxJsonHeader mx_json_header;
   FstMapSearcher<uint64_t> fst_map_searcher;
   Dxcompressor dx_compressor;
-  std::vector<char> dictBuffer;
+  ZSTD_DDict *ddict;
   std::vector<BlockIndex> block_indexes;
   std::vector<EntryIndex> entry_indexes;
   uint64_t comp_text_offset;

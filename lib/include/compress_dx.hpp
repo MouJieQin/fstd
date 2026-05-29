@@ -14,23 +14,8 @@
 // ==============================
 // 配置项
 // ==============================
-constexpr size_t BLOCK_SIZE = 8 * 1024;
-constexpr int ZSTD_LEVEL = 5;
 constexpr bool ENABLE_CHECKSUM = true;
-constexpr size_t DICT_SIZE = 32 * 1024;
-const char *DICT_FILE = "zstd_dict.bin";
-
 namespace fstd {
-
-// 索引条目（内存+磁盘结构）
-// ==============================
-// struct IndexEntry {
-//   uint64_t blockOffset;       // 压缩块在文件中的字节偏移
-//   uint32_t blockSize;         // 压缩块大小
-//   uint32_t originalBlockSize; // 原始块大小
-//   uint32_t entryOffset;       // 本条在解压后的块内偏移
-//   uint32_t entrySize;         // 原始字符串长度
-// };
 
 struct BlockIndex {
   BlockIndex() = default;
@@ -60,18 +45,21 @@ public:
 
   bool compressTextToStream(const std::vector<std::string> &texts,
                             std::ostream &dictOut, std::ostream &blockIdxOut,
-                            std::ostream &entryIdxOut, std::ostream &compOut) {
+                            std::ostream &entryIdxOut, std::ostream &compOut,
+                            size_t dictSize, size_t blockSize,
+                            int compressionLevel) {
     // 1. 训练并保存字典
-    std::vector<char> dictBuffer(DICT_SIZE);
-    if (!trainZstdDictionary(texts, dictBuffer.data(), DICT_SIZE)) {
+    std::vector<char> dictBuffer(dictSize);
+    if (!trainZstdDictionary(texts, dictBuffer.data(), dictSize)) {
       LOG_ERROR("字典训练失败！");
       return false;
     }
-    saveDictionary(dictOut, dictBuffer.data(), DICT_SIZE);
+    saveDictionary(dictOut, dictBuffer.data(), dictSize);
 
     // 2. 压缩
-    if (!compressTextsToStreamImpl(texts, dictBuffer.data(), DICT_SIZE,
-                                   blockIdxOut, entryIdxOut, compOut)) {
+    if (!compressTextsToStreamImpl(texts, dictBuffer.data(), dictSize,
+                                   blockIdxOut, entryIdxOut, compOut, blockSize,
+                                   compressionLevel)) {
       LOG_ERROR("压缩失败！");
       return false;
     }
@@ -112,34 +100,16 @@ public:
     return true;
   }
 
-  // ==============================
-  // 加载索引
-  // ==============================
-  // std::vector<IndexEntry> loadIndex(const char *indexFile = "dict.idx") {
-  //   std::ifstream f(indexFile, std::ios::binary);
-  //   if (!f) return {};
-  //   f.seekg(0, std::ios::end);
-  //   size_t size = f.tellg();
-  //   f.seekg(0);
-  //   std::vector<IndexEntry> index(size / sizeof(IndexEntry));
-  //   f.read(reinterpret_cast<char *>(index.data()), size);
-  //   return index;
-  // }
-
-  std::string readTextByIndex(uint32_t index,
-                              const std::vector<char> &dictBuffer,
+  std::string readTextByIndex(uint32_t index, ZSTD_DDict *ddict,
                               const std::vector<BlockIndex> &blockIndexes,
                               const std::vector<EntryIndex> &entryIndexes,
-                              const std::string &compFile, size_t offset) {
+                              const std::string &compFile, size_t offset) const {
 
     if (blockIndexes.empty() || entryIndexes.empty()) { return ""; }
-
-    ZSTD_DDict *ddict = ZSTD_createDDict(dictBuffer.data(), dictBuffer.size());
 
     std::string res = getTextByIndex(index, blockIndexes, entryIndexes, ddict,
                                      compFile, offset);
 
-    ZSTD_freeDDict(ddict);
     return res;
   }
 
@@ -194,17 +164,16 @@ private:
     return dict;
   }
 
-  // ==============================
-  // 压缩函数 (🔥修复：索引覆盖Bug & 错误状态返回)
-  // ==============================
   bool compressTextsToStreamImpl(const std::vector<std::string> &texts,
                                  const char *dictBuffer, size_t dictSize,
                                  std::ostream &blockIdxOut,
                                  std::ostream &entryIdxOut,
-                                 std::ostream &compOut) {
+                                 std::ostream &compOut, size_t blockSize,
+                                 int compressionLevel) {
     if (!blockIdxOut || !entryIdxOut || !compOut) return false;
 
-    ZSTD_CDict *cdict = ZSTD_createCDict(dictBuffer, dictSize, ZSTD_LEVEL);
+    ZSTD_CDict *cdict =
+        ZSTD_createCDict(dictBuffer, dictSize, compressionLevel);
     ZSTD_CCtx *cctx = ZSTD_createCCtx();
     if (!cdict || !cctx) {
       ZSTD_freeCCtx(cctx);
@@ -216,8 +185,7 @@ private:
     ZSTD_CCtx_setParameter(cctx, ZSTD_c_checksumFlag, ENABLE_CHECKSUM ? 1 : 0);
 
     std::string blockBuffer;
-    blockBuffer.reserve(BLOCK_SIZE * 2);
-    // std::vector<IndexEntry> index;
+    blockBuffer.reserve(blockSize * 2);
     std::vector<BlockIndex> block_indexes;
     std::vector<EntryIndex> entry_indexes;
     entry_indexes.reserve(texts.size());
@@ -234,7 +202,7 @@ private:
       entry_indexes.emplace_back(entry_offset, entry_size);
       blockBuffer.append(text);
 
-      if (blockBuffer.size() >= BLOCK_SIZE) {
+      if (blockBuffer.size() >= blockSize) {
         size_t compBufSize = ZSTD_compressBound(blockBuffer.size());
         std::vector<char> compBuf(compBufSize);
 
@@ -249,12 +217,6 @@ private:
 
         compOut.write(compBuf.data(), compSize);
 
-        // 仅更新当前块内的条目
-        // for (size_t i = blockStartIndex; i < index.size(); ++i) {
-        //   index[i].blockOffset = currentCompOffset;
-        //   index[i].blockSize = (uint32_t)compSize;
-        //   index[i].originalBlockSize = (uint32_t)blockBuffer.size();
-        // }
         blockStartIndex = i + 1;
         block_indexes.emplace_back(blockStartIndex, currentCompOffset,
                                    (uint32_t)compSize,
@@ -298,7 +260,7 @@ private:
   }
 
   size_t bin_search_block_index(uint32_t entry_index,
-                                const std::vector<BlockIndex> &block_indexes) {
+                                const std::vector<BlockIndex> &block_indexes) const {
     size_t first = 0;
     size_t last = block_indexes.size();
     size_t len = last - first;
@@ -325,7 +287,7 @@ private:
                              const std::vector<BlockIndex> &block_indexes,
                              const std::vector<EntryIndex> &entry_indexes,
                              const ZSTD_DDict *ddict,
-                             const std::string &compFile, size_t offset) {
+                             const std::string &compFile, size_t offset) const {
     std::ifstream compIn(compFile, std::ios::binary);
     if (!compIn) return "";
     if (idx >= entry_indexes.size()) return "";
@@ -338,14 +300,6 @@ private:
     std::vector<char> compBuf(block_index.block_size);
     compIn.read(compBuf.data(), compBuf.size());
 
-    // 安全检查，避免错误分配巨大内存导致崩溃
-    //     unsigned long long decompBufSize =
-    //     ZSTD_getFrameContentSize(compBuf.data(), compBuf.size());
-    // if (decompBufSize == ZSTD_CONTENTSIZE_ERROR || decompBufSize ==
-    // ZSTD_CONTENTSIZE_UNKNOWN) {
-    //     std::cerr << "无法获取未压缩帧的大小!\n";
-    //     return "";
-    // }
     unsigned long long decompBufSize = block_index.original_block_size;
 
     std::vector<char> decompBuf(decompBufSize);
