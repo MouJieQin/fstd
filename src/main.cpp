@@ -83,10 +83,10 @@ int main(int argc, char **argv) {
   write_cmd
       ->add_option("-l,--compress-level", compress_level, "压缩等级，默认5")
       ->default_val("5");
-  uint16_t zstd_dict_size = 32;
+  uint16_t zstd_dict_size = 100;
   write_cmd
       ->add_option("--zstd-dict-size", zstd_dict_size,
-                   "Zstd字典大小，默认32，单位KB")
+                   "Zstd字典大小，默认100，单位KB")
       ->default_val("32");
   bool opt_sorted = false;
   write_cmd->add_flag("-s,--sorted", opt_sorted, "是否已按键排序，默认false");

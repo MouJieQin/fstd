@@ -4,6 +4,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 #include <zdict.h>
@@ -103,7 +104,8 @@ public:
   std::string readTextByIndex(uint32_t index, ZSTD_DDict *ddict,
                               const std::vector<BlockIndex> &blockIndexes,
                               const std::vector<EntryIndex> &entryIndexes,
-                              const std::string &compFile, size_t offset) const {
+                              const std::string &compFile,
+                              size_t offset) const {
 
     if (blockIndexes.empty() || entryIndexes.empty()) { return ""; }
 
@@ -114,27 +116,45 @@ public:
   }
 
 private:
+  // 生成 [0, max) 之间的随机整数
+  int random_int(int max) {
+    // 静态：只初始化一次随机引擎，效率极高
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    // 左闭右开 [0, max)
+    std::uniform_int_distribution<> dist(0, max - 1);
+    return dist(gen);
+  }
+
   // ==============================
   // 训练字典 (🔥修复：必须将所有样本拼接到一块连续内存中)
   // ==============================
   bool trainZstdDictionary(const std::vector<std::string> &texts,
                            char *dictBuffer, size_t dictSize) {
-    std::vector<char> samplesBlob;
-    std::vector<size_t> sampleSizes;
-
-    LOG_INFO("字典训练 ...");
-
-    // ZDICT需要所有的样本放在同一个连续的Buffer里
-    for (const auto &text : texts) {
-      samplesBlob.insert(samplesBlob.end(), text.begin(), text.end());
-      sampleSizes.push_back(text.size());
-    }
-
-    if (samplesBlob.empty()) {
+    if (texts.empty()) {
       LOG_ERROR("没有提供训练数据！");
       return false;
     }
+    const size_t total_sample_byte_size = dictSize * 100;
+    std::vector<char> samplesBlob;
+    std::vector<size_t> sampleSizes;
 
+    LOG_INFO("total_sample_byte_size:{}", total_sample_byte_size);
+    while (samplesBlob.size() < total_sample_byte_size) {
+      int random_index = random_int(texts.size());
+      samplesBlob.insert(samplesBlob.end(), texts[random_index].begin(),
+                         texts[random_index].end());
+      sampleSizes.push_back(texts[random_index].size());
+    }
+
+    // ZDICT需要所有的样本放在同一个连续的Buffer里
+    // for (const auto &text : texts) {
+    //   samplesBlob.insert(samplesBlob.end(), text.begin(), text.end());
+    //   sampleSizes.push_back(text.size());
+    // }
+
+    LOG_INFO("字典训练 ...");
     size_t ret = ZDICT_trainFromBuffer(dictBuffer, dictSize, samplesBlob.data(),
                                        sampleSizes.data(), sampleSizes.size());
     if (ZDICT_isError(ret)) {
@@ -259,8 +279,9 @@ private:
     return success;
   }
 
-  size_t bin_search_block_index(uint32_t entry_index,
-                                const std::vector<BlockIndex> &block_indexes) const {
+  size_t
+  bin_search_block_index(uint32_t entry_index,
+                         const std::vector<BlockIndex> &block_indexes) const {
     size_t first = 0;
     size_t last = block_indexes.size();
     size_t len = last - first;
