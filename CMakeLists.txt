@@ -92,6 +92,7 @@ target_link_libraries(fstd PRIVATE
     spdlog
     fmt
     zstd
+    pcre2-8
     nlohmann_json::nlohmann_json
 )
 

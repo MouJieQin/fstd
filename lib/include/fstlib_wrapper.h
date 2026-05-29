@@ -29,30 +29,78 @@ public:
     return ret;
   }
 
-  //   bool common_prefix_search(
-  //       string_view word,
-  //       std::vector<std::pair<std::string, output_t>> &p_outputs) const {
-  //     std::vector<std::pair<std::string, output_t>> tmp_outputs;
-  //     ret =
-  //         matcher.common_prefix_search(word, [&](size_t len, const auto
-  //         &output) {
-  //           tmp_outputs.emplace_back(word.substr(0, len), output);
-  //         });
-  //     p_outputs.swap(tmp_outputs);
-  //     return ret;
-  //   }
+  std::vector<std::pair<std::string, output_t>>
+  common_prefix_search(std::string_view word) const {
+    std::vector<std::pair<std::string, output_t>> result;
+    matcher_ptr->common_prefix_search(
+        word, [&](size_t len, const auto &output) {
+          result.emplace_back(word.substr(0, len), output);
+        });
+    return result;
+  }
 
-  //   bool longest_common_prefix_search(
-  //       string_view word, std::pair<std::string, output_t> &output_p) const {
-  //     output_t output;
-  //     auto len = matcher.longest_common_prefix_search(word, output);
-  //     if (len > 0) { output_p = {word.substr(0, len), output}; }
-  //     return len > 0;
-  //   }
+  size_t
+  longest_common_prefix_search(std::string_view word,
+                               std::pair<std::string, output_t> &result) const {
+    size_t len = matcher_ptr->longest_common_prefix_search(word, result.second);
+    if (len > 0) { result.first = word.substr(0, len); }
+    return len;
+  }
+
+  std::vector<std::pair<std::string, output_t>>
+  predictive_search(std::string_view word) const {
+    std::vector<std::pair<std::string, output_t>> result;
+    matcher_ptr->predictive_search(word,
+                                   [&](const auto &word, const auto &output) {
+                                     result.emplace_back(word, output);
+                                   });
+    return result;
+  }
+
+  std::vector<std::pair<std::string, output_t>>
+  edit_distance_search(std::string_view word, size_t max_edits,
+                       size_t insert_cost = 1, size_t delete_cost = 1,
+                       size_t replace_cost = 2) const {
+    return matcher_ptr->edit_distance_search(word, max_edits, insert_cost,
+                                             delete_cost, replace_cost);
+  }
+
+  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
+  regex_search(std::string_view pattern) const {
+    return matcher_ptr->regex_search(pattern);
+  }
+
+  std::vector<std::tuple<double, std::string, output_t>>
+  suggest(std::string_view word) const {
+    return fst::matcher<output_t>::suggest_core(word, *this);
+  }
+
+  std::vector<std::tuple<double, std::string, output_t>>
+  spellcheck_word(std::string_view word, size_t n = 10) const {
+    std::vector<std::tuple<double, std::string, output_t>> result;
+    for (const auto &item : matcher_ptr->suggest(word)) {
+      if (n == 0) { break; }
+      auto similarity = std::get<0>(item);
+      const std::string &candidate = std::get<1>(item);
+      const output_t &output = std::get<2>(item);
+      result.emplace_back(similarity, candidate, output);
+      n--;
+    }
+    return result;
+  }
+
+  std::vector<std::pair<std::string, output_t>> enumerate() const {
+    std::vector<std::pair<std::string, output_t>> result;
+    matcher_ptr->enumerate(
+        [&](const std::string &word, const output_t &output) {
+          // 匹配成功时回调，收集结果
+          result.emplace_back(word, output);
+        });
+    return result;
+  }
 
 private:
   std::shared_ptr<const fst::map<output_t>> matcher_ptr;
-  //   const fst::map<output_t> &matcher;
 };
 
 } // namespace fstd

@@ -50,6 +50,41 @@ public:
     return true;
   }
 
+  std::vector<std::pair<std::string, uint64_t>>
+  common_prefix_search(std::string_view word) const {
+    return fst_map_searcher.common_prefix_search(word);
+  }
+
+  size_t
+  longest_common_prefix_search(std::string_view word,
+                               std::pair<std::string, uint64_t> &result) const {
+    return fst_map_searcher.longest_common_prefix_search(word, result);
+  }
+
+  std::vector<std::pair<std::string, uint64_t>>
+  predictive_search(std::string_view word) const {
+    return fst_map_searcher.predictive_search(word);
+  }
+
+  std::vector<std::pair<std::string, uint64_t>>
+  edit_distance_search(std::string_view word, size_t edit_distance) const {
+    return fst_map_searcher.edit_distance_search(word, edit_distance);
+  }
+
+  std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+  regex_search(std::string_view pattern) const {
+    return fst_map_searcher.regex_search(pattern);
+  }
+
+  std::vector<std::tuple<double, std::string, uint64_t>>
+  spellcheck_word(std::string_view word, const size_t n = 10) const {
+    return fst_map_searcher.spellcheck_word(word, n);
+  }
+
+  std::vector<std::pair<std::string, uint64_t>> enumerate() const {
+    return fst_map_searcher.enumerate();
+  }
+
 private:
   bool parse_fstdx(const std::string &fstdx_path) {
     std::ifstream ins(fstdx_path, std::ios::binary | std::ios::ate);
