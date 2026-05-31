@@ -3,9 +3,9 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
-#include "compress_dx.hpp"
-#include "fstdx_writer.hpp"
-#include "logger.hpp"
+#include <fstd/compress_dx.hpp>
+#include <fstd/fstdx_writer.hpp>
+#include <fstd/logger.hpp>
 
 using namespace std;
 using json = nlohmann::json;

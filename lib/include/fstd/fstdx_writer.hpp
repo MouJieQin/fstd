@@ -3,9 +3,9 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
-#include "compress_dx.hpp"
-#include "fstlib_wrapper.h"
-#include "logger.hpp"
+#include <fstd/compress_dx.hpp>
+#include <fstd/fstlib_wrapper.h>
+#include <fstd/logger.hpp>
 
 using namespace fst;
 using namespace std;

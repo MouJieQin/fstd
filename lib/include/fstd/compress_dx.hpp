@@ -10,7 +10,7 @@
 #include <zdict.h>
 #include <zstd.h>
 
-#include "logger.hpp"
+#include <fstd/logger.hpp>
 
 // ==============================
 // 配置项

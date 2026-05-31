@@ -1,0 +1,26 @@
+cmake_policy(SET CMP0153 NEW)
+
+if(NOT EXISTS "@CMAKE_BINARY_DIR@/install_manifest.txt")
+  message(FATAL_ERROR "Cannot find install manifest: @CMAKE_BINARY_DIR@/install_manifest.txt")
+endif()
+
+file(READ "@CMAKE_BINARY_DIR@/install_manifest.txt" files)
+string(REGEX REPLACE "\n" ";" files "${files}")
+
+foreach(file ${files})
+  message(STATUS "Uninstalling: $ENV{DESTDIR}${file}")
+  if(EXISTS "$ENV{DESTDIR}${file}" OR IS_SYMLINK "$ENV{DESTDIR}${file}")
+    # 替换为现代命令 execute_process
+    execute_process(
+      COMMAND @CMAKE_COMMAND@ -E remove "$ENV{DESTDIR}${file}"
+      RESULT_VARIABLE rm_retval
+    )
+    if(NOT "${rm_retval}" STREQUAL 0)
+      message(FATAL_ERROR "Failed to remove: $ENV{DESTDIR}${file}")
+    endif()
+  else()
+    message(STATUS "File does not exist: $ENV{DESTDIR}${file}")
+  endif()
+endforeach()
+
+message(STATUS "Uninstall completed successfully!")

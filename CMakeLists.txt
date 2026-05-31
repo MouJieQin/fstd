@@ -33,20 +33,50 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ===================== 核心修改：目录结构匹配 =====================
-# 包含头文件路径：lib/include 放你的库头文件
-include_directories(${fstd_ROOT_DIR}/lib/include)
+# 标准安装路径（兼容所有系统）
+include(GNUInstallDirs)
 
-# 可执行文件：src/main.cpp
-add_executable(fstd
-    ${fstd_ROOT_DIR}/src/main.cpp
+# ===================== 库文件配置（核心：静态库 + 动态库） =====================
+# 自动收集库源码
+aux_source_directory(${fstd_ROOT_DIR}/lib/src DIR_LIB_SRCS)
+
+# 库头文件路径
+set(FSTD_INCLUDE_DIR ${fstd_ROOT_DIR}/lib/include)
+include_directories(${FSTD_INCLUDE_DIR})
+
+# 1. 编译动态库
+add_library(fstd_shared SHARED ${DIR_LIB_SRCS})
+set_target_properties(fstd_shared PROPERTIES
+    OUTPUT_NAME fstd${BUILD_TYPE}
+    VERSION 1.0.0
+    SOVERSION 1
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
 
-# 自动收集 lib/src/ 下所有库源码
-aux_source_directory(${fstd_ROOT_DIR}/lib/src DIR_LIB_SRCS)
-target_sources(fstd PRIVATE ${DIR_LIB_SRCS})
-# =================================================================
+# 2. 编译静态库
+add_library(fstd_static STATIC ${DIR_LIB_SRCS})
+set_target_properties(fstd_static PROPERTIES
+    OUTPUT_NAME fstd${BUILD_TYPE}
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+)
 
+# 给库设置头文件属性（安装时自动关联）
+target_include_directories(fstd_shared PUBLIC
+    $<BUILD_INTERFACE:${FSTD_INCLUDE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_include_directories(fstd_static PUBLIC
+    $<BUILD_INTERFACE:${FSTD_INCLUDE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+# ============================================================================
+
+# ===================== 可执行文件配置 =====================
+add_executable(fstd ${fstd_ROOT_DIR}/src/main.cpp)
+target_link_libraries(fstd PRIVATE fstd_static)  # 可执行文件链接静态库
+# ==========================================================
+
+# 编译宏定义
 target_compile_definitions(fstd PRIVATE
     SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
 )
@@ -57,52 +87,38 @@ set(COMMON_COMPILE_OPTIONS
     -Wall
 )
 
-# 按构建类型设置编译选项
-if (CMAKE_BUILD_TYPE_LOWER STREQUAL "release")
-    target_compile_options(fstd PRIVATE
-        ${COMMON_COMPILE_OPTIONS}
-        -O2
-    )
-elseif (CMAKE_BUILD_TYPE_LOWER STREQUAL "debug")
-    target_compile_options(fstd PRIVATE
-        ${COMMON_COMPILE_OPTIONS}
-        -O0
-        -g
-        -DDEBUG
-    )
-elseif (CMAKE_BUILD_TYPE_LOWER STREQUAL "coverage")
-    target_compile_options(fstd PRIVATE
-        ${COMMON_COMPILE_OPTIONS}
-        -O0
-        -g
-        --coverage
-    )
-elseif (CMAKE_BUILD_TYPE_LOWER STREQUAL "gperf")
-    target_compile_options(fstd PRIVATE
-        ${COMMON_COMPILE_OPTIONS}
-        -O2
-        -g
-        -DGPERF
-    )
-endif()
+# 按构建类型设置编译选项（库 + 可执行文件统一配置）
+set(TARGETS fstd fstd_shared fstd_static)
+foreach(TARGET ${TARGETS})
+    target_compile_options(${TARGET} PRIVATE ${COMMON_COMPILE_OPTIONS})
+    if (CMAKE_BUILD_TYPE_LOWER STREQUAL "release")
+        target_compile_options(${TARGET} PRIVATE -O2)
+    elseif (CMAKE_BUILD_TYPE_LOWER STREQUAL "debug")
+        target_compile_options(${TARGET} PRIVATE -O0 -g -DDEBUG)
+    elseif (CMAKE_BUILD_TYPE_LOWER STREQUAL "coverage")
+        target_compile_options(${TARGET} PRIVATE -O0 -g --coverage)
+    elseif (CMAKE_BUILD_TYPE_LOWER STREQUAL "gperf")
+        target_compile_options(${TARGET} PRIVATE -O2 -g -DGPERF)
+    endif()
+endforeach()
 
-# 第三方库链接
+# 第三方库链接（库 + 可执行文件统一链接）
 find_package(nlohmann_json REQUIRED)
-target_link_libraries(fstd PRIVATE
-    spdlog
-    fmt
-    zstd
-    pcre2-8
-    nlohmann_json::nlohmann_json
-)
+foreach(TARGET ${TARGETS})
+    target_link_libraries(${TARGET} PRIVATE
+        spdlog
+        fmt
+        zstd
+        pcre2-8
+        nlohmann_json::nlohmann_json
+    )
+endforeach()
 
 # 覆盖率链接配置
 if (CMAKE_BUILD_TYPE_LOWER STREQUAL "coverage")
-    target_link_libraries(fstd PRIVATE
-        --coverage
-        -fprofile-arcs
-        -ftest-coverage
-    )
+    foreach(TARGET ${TARGETS})
+        target_link_libraries(${TARGET} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+    endforeach()
 
     add_custom_target(coverage
         COMMAND lcov --base-directory ${CMAKE_SOURCE_DIR} --directory ${CMAKE_BINARY_DIR} --capture --output-file CodeCoverage.info --ignore-errors graph --rc lcov_branch_coverage=1
@@ -122,13 +138,40 @@ endif()
 
 # gperf 性能分析
 if (CMAKE_BUILD_TYPE_LOWER STREQUAL "gperf")
-    target_link_libraries(fstd PRIVATE -lprofiler)
+    foreach(TARGET ${TARGETS})
+        target_link_libraries(${TARGET} PRIVATE -lprofiler)
+    endforeach()
 endif()
 
-# 安装
+# ===================== 安装配置（核心） =====================
+# 1. 安装可执行文件
 install(TARGETS fstd
-    DESTINATION /usr/local/bin
-    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-    GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
+
+# 2. 安装库文件（静态 + 动态）
+install(TARGETS fstd_shared fstd_static
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}  # 动态库
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  # 静态库
+)
+
+# 3. 安装头文件（安装后路径：/usr/local/include/fstd/xxx.hpp）
+install(DIRECTORY ${FSTD_INCLUDE_DIR}/fstd
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)
+
+# ===================== 卸载配置（make uninstall） =====================
+if(NOT TARGET uninstall)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+        IMMEDIATE @ONLY
+    )
+
+    add_custom_target(uninstall
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
+        COMMENT "Uninstalling fstd..."
+    )
+endif()

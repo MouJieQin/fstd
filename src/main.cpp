@@ -3,10 +3,10 @@
 #include <string>
 #include <vector>
 
-#include "CLI/CLI.hpp"
-#include "fstdx_searcher.hpp"
-#include "fstdx_writer.hpp"
-#include "logger.hpp"
+#include <CLI/CLI.hpp>
+#include <fstd/fstdx_searcher.hpp>
+#include <fstd/fstdx_writer.hpp>
+#include <fstd/logger.hpp>
 
 #define VERSION "0.1.0"
 
@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
     } else if (edit_distance) {
       LOG_INFO("指定编辑距离");
       std::vector<std::pair<std::string, uint64_t>> result =
-          fstdx_searcher.edit_distance_search(word, edit_distance);
+          fstdx_searcher.edit_distance_search(word, 1);
       if (result.empty()) {
         LOG_INFO("未找到匹配项");
         return 1;
