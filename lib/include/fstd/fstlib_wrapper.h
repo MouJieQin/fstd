@@ -1,19 +1,44 @@
 #pragma once
 
-#include <sstream>
 #include <fstd/fstlib.h>
+#include <sstream>
 
 namespace fstd {
 
+// inline std::pair<fst::Result, size_t>
+// compile(const std::vector<std::pair<std::string, uint64_t>> &input,
+//         std::ostream &os, bool sorted, bool verbose = false);
+
+template <typename output_t>
 inline std::pair<fst::Result, size_t>
-compile(const std::vector<std::pair<std::string, uint64_t>> &input,
-        std::ostream &os, bool sorted, bool verbose = false);
+compile(const std::vector<std::pair<std::string, output_t>> &input,
+        std::ostream &os, bool sorted, bool verbose) {
+  fst::FstWriter<output_t, true> writer(os, true, false, verbose,
+                                        [&](const auto &feeder) {
+                                          for (const auto &[word, _] : input) {
+                                            feeder(word);
+                                          }
+                                        });
+  return fst::build_fst<output_t>(input, writer, true, sorted);
+}
 
 void show_error_message(fst::Result result, size_t line);
 
-bool compile_fst(std::vector<std::pair<std::string, uint64_t>> &input,
+template <typename output_t>
+bool compile_fst(const std::vector<std::pair<std::string, output_t>> &input,
                  std::ostringstream &oss_out, bool opt_sorted,
-                 bool opt_verbose);
+                 bool opt_verbose) {
+  fst::Result result;
+  size_t line;
+
+  // std::tie(result, line) = fst::dot<uint64_t>(input, oss_out, false);
+  std::tie(result, line) =
+      fstd::compile(input, oss_out, opt_sorted, opt_verbose);
+
+  if (result == fst::Result::Success) { return true; }
+  show_error_message(result, line);
+  return false;
+}
 
 template <typename output_t> class FstMapSearcher {
 public:
@@ -28,6 +53,8 @@ public:
     bool ret = matcher_ptr->exact_match_search(word, output);
     return ret;
   }
+
+  bool is_valid() { return matcher_ptr != nullptr; }
 
   std::vector<std::pair<std::string, output_t>>
   common_prefix_search(std::string_view word) const {
@@ -91,9 +118,9 @@ public:
 
   std::vector<std::pair<std::string, output_t>> enumerate() const {
     std::vector<std::pair<std::string, output_t>> result;
+    result.reserve(2000000);
     matcher_ptr->enumerate(
-        [&](const std::string &word, const output_t &output) {
-          // 匹配成功时回调，收集结果
+        [&](const std::string &word, const output_t output) {
           result.emplace_back(word, output);
         });
     return result;

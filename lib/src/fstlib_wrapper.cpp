@@ -1,21 +1,22 @@
-#include <tuple>
 #include <fstd/fstlib_wrapper.h>
 #include <fstd/logger.hpp>
+#include <tuple>
 
 using namespace std;
 namespace fstd {
 
-inline std::pair<fst::Result, size_t>
-compile(const std::vector<std::pair<std::string, uint64_t>> &input,
-        std::ostream &os, bool sorted, bool verbose) {
-  fst::FstWriter<uint64_t, true> writer(os, true, false, verbose,
-                                        [&](const auto &feeder) {
-                                          for (const auto &[word, _] : input) {
-                                            feeder(word);
-                                          }
-                                        });
-  return fst::build_fst<uint64_t>(input, writer, true, sorted);
-}
+// template <typename input_container>
+// inline std::pair<fst::Result, size_t> compile(const input_container &input,
+//                                               std::ostream &os, bool sorted,
+//                                               bool verbose) {
+//   fst::FstWriter<uint64_t, true> writer(os, true, false, verbose,
+//                                         [&](const auto &feeder) {
+//                                           for (const auto &[word, _] : input) {
+//                                             feeder(word);
+//                                           }
+//                                         });
+//   return fst::build_fst<uint64_t>(input, writer, true, sorted);
+// }
 
 void show_error_message(fst::Result result, size_t line) {
   std::string error_message;
@@ -29,20 +30,6 @@ void show_error_message(fst::Result result, size_t line) {
   LOG_ERROR("line {}: {}", line, error_message);
 }
 
-bool compile_fst(std::vector<std::pair<std::string, uint64_t>> &input,
-                 std::ostringstream &oss_out, bool opt_sorted,
-                 bool opt_verbose) {
-  fst::Result result;
-  size_t line;
-
-  // std::tie(result, line) = fst::dot<uint64_t>(input, oss_out, false);
-  std::tie(result, line) =
-      fstd::compile(input, oss_out, opt_sorted, opt_verbose);
-
-  if (result == fst::Result::Success) { return true; }
-  show_error_message(result, line);
-  return false;
-}
 
 template <typename output_t> struct traits {
   static output_t convert(uint32_t n) {}
@@ -105,7 +92,8 @@ bool spellcheck_word(const T &matcher, const std::string word) {
 //       std::vector<std::pair<std::string, output_t>> &p_outputs) const {
 //     std::vector<std::pair<std::string, output_t>> tmp_outputs;
 //     ret =
-//         matcher.common_prefix_search(word, [&](size_t len, const auto &output) {
+//         matcher.common_prefix_search(word, [&](size_t len, const auto
+//         &output) {
 //           tmp_outputs.emplace_back(word.substr(0, len), output);
 //         });
 //     p_outputs.swap(tmp_outputs);
@@ -125,11 +113,14 @@ bool spellcheck_word(const T &matcher, const std::string word) {
 // };
 
 // template <typename output_t, typename T, typename U>
-// void map_search_word(const T &byte_code, SearchType search_type, bool verbose,
-//                      const U &matcher, string_view word, size_t edit_distance) {
+// void map_search_word(const T &byte_code, SearchType search_type, bool
+// verbose,
+//                      const U &matcher, string_view word, size_t
+//                      edit_distance) {
 //   auto ret = false;
 //   switch (search_type) {
-//   case SearchType::Spellcheck: spellcheck_word(matcher, string(word)); return;
+//   case SearchType::Spellcheck: spellcheck_word(matcher, string(word));
+//   return;
 
 //   case SearchType::Longest:
 //     output_t output;
@@ -141,14 +132,14 @@ bool spellcheck_word(const T &matcher, const std::string word) {
 //     break;
 //   case SearchType::Predictive:
 //     ret = matcher.predictive_search(word,
-//                                     [&](const auto &word, const auto &output) {
+//                                     [&](const auto &word, const auto &output)
+//                                     {
 //                                       cout << word << ": " << output << endl;
 //                                     });
 //   }
 //   else if (cmd == "fuzzy") {
-//     auto results = matcher.edit_distance_search(word, edit_distance, 1, 1, 2);
-//     ret = !results.empty();
-//     for (const auto &[word, output] : results) {
+//     auto results = matcher.edit_distance_search(word, edit_distance, 1, 1,
+//     2); ret = !results.empty(); for (const auto &[word, output] : results) {
 //       cout << word << ": " << output << endl;
 //     }
 //     break;
@@ -183,7 +174,8 @@ bool spellcheck_word(const T &matcher, const std::string word) {
 //                                   word, edit_distance);
 //       }
 //     } else {
-//       map_search_word<output_t>(byte_code, search_type, verbose, matcher, word,
+//       map_search_word<output_t>(byte_code, search_type, verbose, matcher,
+//       word,
 //                                 edit_distance);
 //     }
 //   } else {
@@ -192,8 +184,10 @@ bool spellcheck_word(const T &matcher, const std::string word) {
 // }
 
 // template <typename T, typename U>
-// void set_search_word(const T &byte_code, SearchType search_type, bool verbose,
-//                      const U &matcher, string_view word, size_t edit_distance) {
+// void set_search_word(const T &byte_code, SearchType search_type, bool
+// verbose,
+//                      const U &matcher, string_view word, size_t
+//                      edit_distance) {
 //   bool ret = false;
 //   switch (search_type) {
 //   case SearchType::Spellcheck:
@@ -219,9 +213,8 @@ bool spellcheck_word(const T &matcher, const std::string word) {
 //         word, [&](const auto &word) { cout << word << endl; });
 //     break;
 //   case SearchType::Fuzzy:
-//     auto results = matcher.edit_distance_search(word, edit_distance, 1, 1, 2);
-//     ret = !results.empty();
-//     for (const auto &word : results) {
+//     auto results = matcher.edit_distance_search(word, edit_distance, 1, 1,
+//     2); ret = !results.empty(); for (const auto &word : results) {
 //       cout << word << endl;
 //     }
 //     break;
@@ -274,9 +267,11 @@ bool spellcheck_word(const T &matcher, const std::string word) {
 //   auto type = fst::get_output_type(byte_code);
 
 //   if (type == fst::OutputType::uint32_t) {
-//     map_search<uint32_t>(byte_code, search_type, verbose, word, edit_distance);
+//     map_search<uint32_t>(byte_code, search_type, verbose, word,
+//     edit_distance);
 //   } else if (type == fst::OutputType::uint64_t) {
-//     map_search<uint64_t>(byte_code, search_type, verbose, word, edit_distance);
+//     map_search<uint64_t>(byte_code, search_type, verbose, word,
+//     edit_distance);
 //   } else if (type == fst::OutputType::string) {
 //     map_search<string>(byte_code, search_type, verbose, word, edit_distance);
 //   } else if (type == fst::OutputType::none_t) {

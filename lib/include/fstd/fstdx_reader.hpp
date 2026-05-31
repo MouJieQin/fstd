@@ -9,8 +9,8 @@
 
 namespace fstd {
 
+using namespace std;
 class FstdxReader {
-  using namespace std;
   using json = nlohmann::json;
 
 public:

@@ -168,9 +168,9 @@ public:
         vector<pair<string, uint64_t>> tmp;
         input.swap(tmp);
       }
-      if(compile_res){
+      if (compile_res) {
         LOG_INFO("FST compiled.");
-      }else{
+      } else {
         LOG_ERROR("Compile FST failed.");
       }
     });

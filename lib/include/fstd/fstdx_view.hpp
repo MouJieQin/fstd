@@ -1,12 +1,14 @@
 #pragma once
+#include <fstd/fstdx_reader.hpp>
 #include <set>
 #include <unordered_map>
-#include <fstd/fstdx_reader.hpp>
 
 using namespace std;
 namespace fstd {
 
 class FstdxView {
+public:
+  FstdxView() = default;
 
   //   FstdxView(const
   //   std::unordered_map<std::string,std::string>&fstdx_pathes){
@@ -46,15 +48,16 @@ class FstdxView {
     return {uni_sorted_result.cbegin(), uni_sorted_result.cend()};
   }
 
-//   std::vector<std::string>
-//   regex_search(std::string_view pattern,
-//                const std::vector<std::string> &names) const {
-//     return uniq_sort_search(
-//         pattern, names,
-//         [](std::string_view pattern, const std::shared_ptr<FstdxReader> &ptr) {
-//           return ptr->regex_search(pattern);
-//         })
-//   }
+  //   std::vector<std::string>
+  //   regex_search(std::string_view pattern,
+  //                const std::vector<std::string> &names) const {
+  //     return uniq_sort_search(
+  //         pattern, names,
+  //         [](std::string_view pattern, const std::shared_ptr<FstdxReader>
+  //         &ptr) {
+  //           return ptr->regex_search(pattern);
+  //         })
+  //   }
 
   bool insert(const std::string &name, const std::string &fstdx_path) {
     bool is_valid = false;
@@ -70,6 +73,43 @@ class FstdxView {
       return false;
     }
     fstdxes[name] = ptr;
+    return true;
+  }
+
+  bool build_fst_index() {
+    if (fstdxes.size() > 32) { return false; }
+    std::map<std::string, fst::uint32bit> input;
+    uint32_t index = 1;
+    for (const auto &item : fstdxes) {
+      std::vector<std::pair<std::string, uint64_t>> key_value =
+          item.second->enumerate();
+      std::cout << "key_value size: " << key_value.size() << std::endl;
+      for (auto &p : key_value) {
+        auto iter = input.find(p.first);
+        if (iter == input.end()) {
+          input.emplace(p.first, index);
+        } else {
+          iter->second.bits |= index;
+        }
+      }
+      index <<= 1;
+    }
+    ostringstream fst_str_stream;
+    vector<pair<string, fst::uint32bit>> v_input(input.begin(), input.end());
+    ofstream of("view_index.txt");
+    for (const auto &p : v_input) {
+      of << p.first << ": " << p.second.bits << endl;
+    }
+    if (!fstd::compile_fst(v_input, fst_str_stream, true, true)) {
+      return false;
+    }
+    string fst_str = fst_str_stream.str();
+    std::vector<char> key_fst_byte_code(fst_str.begin(), fst_str.end());
+    fst_indexes_searcher = FstMapSearcher<fst::uint32bit>(key_fst_byte_code);
+    for (const auto &p : fst_indexes_searcher.enumerate()) {
+      std::cout << p.first << " : " << p.second.bits << "\n";
+    }
+    std::cout << std::endl;
     return true;
   }
 
@@ -99,7 +139,20 @@ private:
   }
 
 private:
+  FstMapSearcher<fst::uint32bit> fst_indexes_searcher;
   std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes;
 };
 
 } // namespace fstd
+
+int main(int argc, char *argv[]) {
+  fstd::FstdxView view;
+  for (int i = 1; i < argc; ++i) {
+    view.insert(std::to_string(i), argv[i]);
+  }
+  // view.insert("1", "test.fstdx");
+  // view.insert("1", "lj.fstdx");
+  // view.insert("2", "lj.fstdx");
+  // view.insert("3", "test.fstdx");
+  view.build_fst_index();
+}

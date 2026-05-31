@@ -237,7 +237,15 @@ inline bool get_prefix_length(const std::string &s1, const std::string &s2,
 
 using none_t = int;
 
-enum class OutputType { invalid = -1, none_t, uint32_t, uint64_t, string };
+enum class OutputType {
+  invalid = -1,
+  none_t,
+  uint32_t,
+  uint64_t,
+  string,
+  uint32bit,
+  uint64bit
+};
 
 template <typename output_t> struct OutputTraits {};
 
@@ -288,6 +296,65 @@ template <> struct OutputTraits<uint32_t> {
 
   static size_t read_byte_value(const char *p, value_type &val) {
     return vb_decode_value_reverse(p, val);
+  }
+};
+
+struct uint32bit {
+  uint32bit() : bits(0) {}
+  uint32bit(uint32_t val) : bits(val) {}
+  uint32bit operator+(const uint32bit &other) const {
+    return uint32bit(bits | other.bits);
+  }
+  bool operator==(const uint32bit &other) const { return bits == other.bits; }
+  uint32_t bits;
+};
+
+inline std::ostream &operator<<(std::ostream &os, const uint32bit &val) {
+  os << val.bits;
+  return os;
+}
+
+template <> struct OutputTraits<uint32bit> {
+  using value_type = uint32bit;
+
+  static OutputType type() { return OutputType::uint32bit; }
+
+  static bool empty(value_type val) { return val.bits == 0; }
+
+  static value_type init_value() { return 0; }
+
+  static std::string to_string(value_type val) {
+    return std::to_string(val.bits);
+  }
+
+  static void prepend_value(value_type &base, value_type val) {
+    base.bits |= val.bits;
+  }
+
+  static value_type get_suffix(value_type a, value_type b) {
+    return a.bits & ~b.bits;
+  }
+
+  static value_type get_common_prefix(value_type a, value_type b) {
+    return a.bits & b.bits;
+  }
+
+  template <typename T> static size_t write_value(T &buff, value_type val) {
+    auto p = reinterpret_cast<const char *>(&val);
+    buff.insert(buff.begin(), p, p + sizeof(val));
+    return sizeof(val);
+  }
+
+  static size_t get_byte_value_size(value_type val) {
+    return vb_encode_value_length(val.bits);
+  }
+
+  static void write_byte_value(std::ostream &os, value_type val) {
+    vb_encode_value_reverse(val.bits, os);
+  }
+
+  static size_t read_byte_value(const char *p, value_type &val) {
+    return vb_decode_value_reverse(p, val.bits);
   }
 };
 
