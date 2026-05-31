@@ -2,6 +2,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include <thread>
 
 #include <fstd/compress_dx.hpp>
 #include <fstd/fstlib_wrapper.h>
@@ -159,29 +160,23 @@ public:
     value_fout.close();
 
     ostringstream oss_key_fst_out(ios_base::binary);
-    if (!compile_fst(input, oss_key_fst_out, true, opt_verbose)) { return 2; }
-    {
-      // 释放input内存
-      vector<pair<string, uint64_t>> tmp;
-      input.swap(tmp);
-    }
+    bool compile_res = false;
+    std::thread compile_thread([&]() {
+      compile_res = compile_fst(input, oss_key_fst_out, true, opt_verbose);
+      {
+        // 释放input内存
+        vector<pair<string, uint64_t>> tmp;
+        input.swap(tmp);
+      }
+      if(compile_res){
+        LOG_INFO("FST compiled.");
+      }else{
+        LOG_ERROR("Compile FST failed.");
+      }
+    });
 
     Dxcompressor compressor;
-    std::vector<char> comp_key_fst_dst;
     bool comp_res = false;
-    {
-      comp_res = compressor.compressToBuffer(oss_key_fst_out.str(),
-                                             oss_key_fst_out.str().size(),
-                                             comp_key_fst_dst, compress_level);
-      if (!comp_res) { return 4; }
-      header["key_fst"]["compress_level"] = compress_level;
-      header["key_fst"]["original_size"] = oss_key_fst_out.str().size();
-      header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
-      std::ofstream key_fst_fout("key_fst.fst", ios_base::binary);
-      key_fst_fout << oss_key_fst_out.str();
-      ostringstream tmp(ios_base::binary);
-      oss_key_fst_out.swap(tmp);
-    }
 
     std::ostringstream dictOut(ios_base::binary);
     std::ostringstream blockIdxOut(ios_base::binary);
@@ -227,6 +222,23 @@ public:
       entry_index_fout << entryIdxOut.str();
       ostringstream tmp(ios_base::binary);
       entryIdxOut.swap(tmp);
+    }
+
+    compile_thread.join();
+    if (!compile_res) { return 2; }
+    std::vector<char> comp_key_fst_dst;
+    {
+      comp_res = compressor.compressToBuffer(oss_key_fst_out.str(),
+                                             oss_key_fst_out.str().size(),
+                                             comp_key_fst_dst, compress_level);
+      if (!comp_res) { return 4; }
+      header["key_fst"]["compress_level"] = compress_level;
+      header["key_fst"]["original_size"] = oss_key_fst_out.str().size();
+      header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
+      std::ofstream key_fst_fout("key_fst.fst", ios_base::binary);
+      key_fst_fout << oss_key_fst_out.str();
+      ostringstream tmp(ios_base::binary);
+      oss_key_fst_out.swap(tmp);
     }
 
     header["comp_blocks"]["compress_level"] = compress_level;
