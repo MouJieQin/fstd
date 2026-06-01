@@ -299,6 +299,44 @@ template <> struct OutputTraits<uint32_t> {
   }
 };
 
+template <> struct OutputTraits<uint64_t> {
+  using value_type = uint64_t;
+
+  static OutputType type() { return OutputType::uint64_t; }
+
+  static bool empty(value_type val) { return val == 0; }
+
+  static value_type init_value() { return 0; }
+
+  static std::string to_string(value_type val) { return std::to_string(val); }
+
+  static void prepend_value(value_type &base, value_type val) { base += val; }
+
+  static value_type get_suffix(value_type a, value_type b) { return a - b; }
+
+  static value_type get_common_prefix(value_type a, value_type b) {
+    return std::min(a, b);
+  }
+
+  template <typename T> static size_t write_value(T &buff, value_type val) {
+    auto p = reinterpret_cast<const char *>(&val);
+    buff.insert(buff.begin(), p, p + sizeof(val));
+    return sizeof(val);
+  }
+
+  static size_t get_byte_value_size(value_type val) {
+    return vb_encode_value_length(val);
+  }
+
+  static void write_byte_value(std::ostream &os, value_type val) {
+    vb_encode_value_reverse(val, os);
+  }
+
+  static size_t read_byte_value(const char *p, value_type &val) {
+    return vb_decode_value_reverse(p, val);
+  }
+};
+
 struct uint32bit {
   uint32bit() : bits(0) {}
   uint32bit(uint32_t val) : bits(val) {}
@@ -363,23 +401,49 @@ template <> struct OutputTraits<uint32bit> {
   }
 };
 
-template <> struct OutputTraits<uint64_t> {
-  using value_type = uint64_t;
+struct uint64bit {
+  uint64bit() : bits(0) {}
+  uint64bit(uint64_t val) : bits(val) {}
+  uint64bit operator+(const uint64bit &other) const {
+    return uint64bit(bits | other.bits);
+  }
 
-  static OutputType type() { return OutputType::uint64_t; }
+  bool operator==(const uint64bit &other) const { return bits == other.bits; }
+  uint64_t bits;
+};
 
-  static bool empty(value_type val) { return val == 0; }
+inline void operator+=(uint64bit &lhs, const uint64bit &rhs) {
+  lhs = lhs + rhs;
+}
+
+inline std::ostream &operator<<(std::ostream &os, const uint64bit &val) {
+  os << val.bits;
+  return os;
+}
+
+template <> struct OutputTraits<uint64bit> {
+  using value_type = uint64bit;
+
+  static OutputType type() { return OutputType::uint64bit; }
+
+  static bool empty(value_type val) { return val.bits == 0; }
 
   static value_type init_value() { return 0; }
 
-  static std::string to_string(value_type val) { return std::to_string(val); }
+  static std::string to_string(value_type val) {
+    return std::to_string(val.bits);
+  }
 
-  static void prepend_value(value_type &base, value_type val) { base += val; }
+  static void prepend_value(value_type &base, value_type val) {
+    base.bits |= val.bits;
+  }
 
-  static value_type get_suffix(value_type a, value_type b) { return a - b; }
+  static value_type get_suffix(value_type a, value_type b) {
+    return a.bits & ~b.bits;
+  }
 
   static value_type get_common_prefix(value_type a, value_type b) {
-    return std::min(a, b);
+    return a.bits & b.bits;
   }
 
   template <typename T> static size_t write_value(T &buff, value_type val) {
@@ -389,15 +453,15 @@ template <> struct OutputTraits<uint64_t> {
   }
 
   static size_t get_byte_value_size(value_type val) {
-    return vb_encode_value_length(val);
+    return vb_encode_value_length(val.bits);
   }
 
   static void write_byte_value(std::ostream &os, value_type val) {
-    vb_encode_value_reverse(val, os);
+    vb_encode_value_reverse(val.bits, os);
   }
 
   static size_t read_byte_value(const char *p, value_type &val) {
-    return vb_decode_value_reverse(p, val);
+    return vb_decode_value_reverse(p, val.bits);
   }
 };
 

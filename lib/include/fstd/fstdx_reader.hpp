@@ -14,8 +14,8 @@ class FstdxReader {
   using json = nlohmann::json;
 
 public:
-  FstdxReader(const std::string &fstdx_path_, bool &is_valid)
-      : fstdx_path_(fstdx_path_), key_size_(0), fst_key_size_(0),
+  FstdxReader(const std::string &fstdx_path, bool &is_valid)
+      : fstdx_path_(fstdx_path), key_size_(0), fst_key_size_(0),
         ddict_(nullptr) {
     if (!parse_fstdx(fstdx_path_)) {
       is_valid = false;
@@ -23,9 +23,7 @@ public:
     }
     is_valid = true;
   }
-  ~FstdxReader() {
-    ZSTD_freeDDict(ddict_);
-  }
+  ~FstdxReader() { ZSTD_freeDDict(ddict_); }
 
   const json &get_meta() const { return mx_json_header_["meta"]; }
 
@@ -50,10 +48,14 @@ public:
     LOG_INFO("index: {}, duplicate: {}", index, duplicate);
     std::vector<std::string> tmp_result;
     for (uint32_t i = 0; i <= duplicate; ++i) {
+      LOG_INFO("index + i: {}, block_indexes_.size(): {}, entry_indexes_.size(): "
+               "{}, compstdx_path_: {}, comp_text_offset_: {}",
+               index + i, block_indexes_.size(), entry_indexes_.size(), fstdx_path_,
+               comp_text_offset_);
       std::string text = dx_compressor_.readTextByIndex(
           index + i, ddict_, block_indexes_, entry_indexes_, fstdx_path_,
           comp_text_offset_);
-      tmp_result.emplace_back(text);
+      tmp_result.emplace_back(std::move(text));
     }
     result.swap(tmp_result);
     return true;
@@ -95,16 +97,16 @@ public:
   }
 
 private:
-  bool parse_fstdx(const std::string &fstdx_path_) {
-    std::ifstream ins(fstdx_path_, std::ios::binary | std::ios::ate);
+  bool parse_fstdx(const std::string &fstdx_path) {
+    std::ifstream ins(fstdx_path, std::ios::binary | std::ios::ate);
     if (!ins) {
-      LOG_ERROR("Cannot open the file: {}", fstdx_path_);
+      LOG_ERROR("Cannot open the file: {}", fstdx_path);
       return false;
     }
     size_t fstdx_size = ins.tellg();
     size_t record_size = sizeof(MxHeaderSizeRecord);
     if (fstdx_size < record_size) {
-      LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path_);
+      LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
       return false;
     }
     LOG_INFO("fstdx_size:{}", fstdx_size);
@@ -113,7 +115,7 @@ private:
     LOG_INFO("record_size:{}", record_size);
     ins.read(reinterpret_cast<char *>(&header_size_record), record_size);
     if (fstdx_size < header_size_record.compressed_size) {
-      LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path_);
+      LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
       return false;
     }
 
@@ -198,7 +200,7 @@ private:
   }
 
 private:
-  const std::string &fstdx_path_;
+  const std::string fstdx_path_;
   MxJsonHeader mx_json_header_;
   size_t key_size_;
   size_t fst_key_size_;

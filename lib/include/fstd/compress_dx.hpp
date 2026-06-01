@@ -101,11 +101,11 @@ public:
     return true;
   }
 
-  std::string readTextByIndex(uint32_t index, ZSTD_DDict *ddict,
+  std::string readTextByIndex(const uint32_t index, const ZSTD_DDict *ddict,
                               const std::vector<BlockIndex> &blockIndexes,
                               const std::vector<EntryIndex> &entryIndexes,
                               const std::string &compFile,
-                              size_t offset) const {
+                              const size_t offset) const {
 
     if (blockIndexes.empty() || entryIndexes.empty()) { return ""; }
 
@@ -304,11 +304,12 @@ private:
   // ==============================
   // 解压函数 (🔥修复：增加ZSTD_getFrameContentSize的安全性校验)
   // ==============================
-  std::string getTextByIndex(size_t idx,
+  std::string getTextByIndex(const size_t idx,
                              const std::vector<BlockIndex> &block_indexes,
                              const std::vector<EntryIndex> &entry_indexes,
                              const ZSTD_DDict *ddict,
-                             const std::string &compFile, size_t offset) const {
+                             const std::string &compFile,
+                             const size_t offset) const {
     std::ifstream compIn(compFile, std::ios::binary);
     if (!compIn) return "";
     if (idx >= entry_indexes.size()) return "";
@@ -334,7 +335,7 @@ private:
     ZSTD_freeDCtx(dctx);
 
     if (ZSTD_isError(decompSize)) {
-      std::cerr << "解压失败: " << ZSTD_getErrorName(decompSize) << "\n";
+      LOG_ERROR("解压失败: {}", ZSTD_getErrorName(decompSize));
       return "";
     }
 

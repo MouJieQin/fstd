@@ -9,6 +9,60 @@ namespace fstd {
 // compile(const std::vector<std::pair<std::string, uint64_t>> &input,
 //         std::ostream &os, bool sorted, bool verbose = false);
 
+// ------------------------------
+// 通用：根据元素大小排序索引
+// ------------------------------
+template <typename Cont_p>
+inline std::vector<size_t> sort_indexes(const Cont_p &input) {
+  std::vector<size_t> indices(input.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(),
+            [&](size_t i, size_t j) { return input[i] < input[j]; });
+  return indices;
+}
+
+// ------------------------------
+// 特化：针对 vector<pair<...>> 按 first 排序
+// ------------------------------
+template <typename T1, typename T2>
+inline std::vector<size_t>
+sort_indexes(const std::vector<std::pair<T1, T2>> &input) {
+  std::vector<size_t> indices(input.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(), [&](size_t i, size_t j) {
+    return input[i].first < input[j].first;
+  });
+  return indices;
+}
+
+// ------------------------------
+// 通用版本：支持 pair 等结构
+// ------------------------------
+template <typename T1, typename T2>
+inline std::vector<std::string>
+sort_container(std::vector<std::pair<T1, T2>> &&input) {
+  auto indices = sort_indexes(input);
+  std::vector<std::string> res;
+  res.reserve(indices.size());
+
+  for (size_t i : indices) {
+    res.emplace_back(std::move(input[i].first));
+  }
+  return res;
+}
+
+inline std::vector<std::string>
+sort_container(std::vector<std::string> &&input) {
+  auto indices = sort_indexes(input);
+  std::vector<std::string> res;
+  res.reserve(indices.size());
+
+  for (size_t i : indices) {
+    res.emplace_back(std::move(input[i]));
+  }
+  return res;
+}
+
 template <typename output_t>
 inline std::pair<fst::Result, size_t>
 compile(const std::vector<std::pair<std::string, output_t>> &input,
