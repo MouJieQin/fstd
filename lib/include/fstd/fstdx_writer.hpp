@@ -133,7 +133,7 @@ public:
 
     vector<pair<string, uint64_t>> input;
     make_output(keys, input);
-
+    header["key_fst"]["keys_size"] = input.size();
     {
       // 释放keys内存
       vector<string> tmp;

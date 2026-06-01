@@ -87,7 +87,7 @@ public:
       for (auto &p : key_value) {
         auto iter = input.find(p.first);
         if (iter == input.end()) {
-          input.emplace(p.first, index);
+          input.emplace(std::move(p.first), index);
         } else {
           iter->second.bits |= index;
         }
@@ -105,8 +105,8 @@ public:
     }
     string fst_str = fst_str_stream.str();
     std::vector<char> key_fst_byte_code(fst_str.begin(), fst_str.end());
-    fst_indexes_searcher = FstMapSearcher<fst::uint32bit>(key_fst_byte_code);
-    for (const auto &p : fst_indexes_searcher.enumerate()) {
+    fst_indexes_searcher = FstMapSearcher<fst::uint32bit>(std::move(key_fst_byte_code));
+    for (const auto &p : fst_indexes_searcher.enumerate(v_input.size())) {
       std::cout << p.first << " : " << p.second.bits << "\n";
     }
     std::cout << std::endl;

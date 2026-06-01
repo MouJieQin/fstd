@@ -305,9 +305,14 @@ struct uint32bit {
   uint32bit operator+(const uint32bit &other) const {
     return uint32bit(bits | other.bits);
   }
+
   bool operator==(const uint32bit &other) const { return bits == other.bits; }
   uint32_t bits;
 };
+
+inline void operator+=(uint32bit &lhs, const uint32bit &rhs) {
+  lhs = lhs + rhs;
+}
 
 inline std::ostream &operator<<(std::ostream &os, const uint32bit &val) {
   os << val.bits;
