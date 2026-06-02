@@ -1,203 +1,313 @@
 #pragma once
-
-#include <fstream>
-#include <nlohmann/json.hpp>
-
-#include <fstd/compress_dx.hpp>
 #include <fstd/fstdx_reader.hpp>
-#include <fstd/fstdx_writer.hpp>
-#include <fstd/logger.hpp>
+#include <set>
+#include <unordered_map>
 
 using namespace std;
-using json = nlohmann::json;
-
 namespace fstd {
-using FstdxSearcher = FstdxReader;
 
-// class FstdxSearcher {
-// public:
-//   FstdxSearcher(const std::string &fstdx_path, bool &is_valid)
-//       : fstdx_path(fstdx_path), ddict(nullptr) {
-//     if (!parse_fstdx(fstdx_path)) {
-//       is_valid = false;
-//       return;
-//     }
-//     is_valid = true;
-//   }
-//   ~FstdxSearcher() { ZSTD_freeDDict(ddict); }
+class FstdxSearcher {
+public:
+  FstdxSearcher() = default;
 
-//   const json &get_meta() const { return mx_json_header["meta"]; }
+  //   FstdxSearcher(const
+  //   std::unordered_map<std::string,std::string>&fstdx_pathes){
 
-//   bool exact_match_search(std::string_view word,
-//                           std::vector<std::string> &result) const {
-//     uint64_t index_res = 0;
-//     if (!fst_map_searcher.exact_match_search(word, index_res)) { return false; }
-//     uint32_t index = 0;
-//     uint32_t duplicate = 0;
-//     if (index_res < UINT32_MAX) {
-//       index = static_cast<uint32_t>(index_res);
-//     } else {
-//       index = static_cast<uint32_t>(index_res & 0xFFFFFFFF);
-//       duplicate = static_cast<uint32_t>(index_res >> 32);
-//     }
-//     LOG_INFO("index: {}, duplicate: {}", index, duplicate);
-//     std::vector<std::string> tmp_result;
-//     for (uint32_t i = 0; i <= duplicate; ++i) {
-//       std::string text = dx_compressor.readTextByIndex(
-//           index + i, ddict, block_indexes, entry_indexes, fstdx_path,
-//           comp_text_offset);
-//       tmp_result.emplace_back(text);
-//     }
-//     result.swap(tmp_result);
-//     return true;
-//   }
+  //   }
 
-//   std::vector<std::pair<std::string, uint64_t>>
-//   common_prefix_search(std::string_view word) const {
-//     return fst_map_searcher.common_prefix_search(word);
-//   }
+  std::vector<std::string> search(std::string_view word,
+                                  const std::string &name) {
+    std::vector<std::string> result;
+    auto iter = fstdxes_.find(name);
+    if (iter != fstdxes_.end()) {
+      iter->second->exact_match_search(word, result);
+    }
+    return result;
+  }
 
-//   size_t
-//   longest_common_prefix_search(std::string_view word,
-//                                std::pair<std::string, uint64_t> &result) const {
-//     return fst_map_searcher.longest_common_prefix_search(word, result);
-//   }
+  std::unordered_map<std::string, std::vector<std::string>>
+  search(std::string_view word, const std::vector<std::string> &names) const {
+    std::unordered_map<std::string, std::vector<std::string>> results;
+    for (const string &name : names) {
+      vector<string> result;
+      auto iter = fstdxes_.find(name);
+      if (iter != fstdxes_.end()) {
+        bool res = iter->second->exact_match_search(word, result);
+        if (res) { results.emplace(name, std::move(result)); }
+      }
+    }
+    return results;
+  }
 
-//   std::vector<std::pair<std::string, uint64_t>>
-//   predictive_search(std::string_view word) const {
-//     return fst_map_searcher.predictive_search(word);
-//   }
+  std::vector<std::string>
+  edit_distance_search(std::string_view word,
+                       const std::vector<std::string> &names,
+                       size_t edit_distance = 1) const {
+    auto [index, not_indexes_names] = cost_analysis(names);
+    std::vector<std::pair<std::string, fst::uint64bit>> indexes_search_result;
+    if (index != 0) {
+      indexes_search_result =
+          fst_indexes_searcher_.edit_distance_search(word, edit_distance);
+    }
+    std::vector<std::string> filtered_indexes_search_result;
+    for (const auto &p : indexes_search_result) {
+      if (match_index(p.second, index)) {
+        filtered_indexes_search_result.emplace_back(std::move(p.first));
+      }
+    }
+    if (not_indexes_names.empty()) {
+      return sort_container(std::move(filtered_indexes_search_result));
+    }
 
-//   std::vector<std::pair<std::string, uint64_t>>
-//   edit_distance_search(std::string_view word, size_t edit_distance) const {
-//     return fst_map_searcher.edit_distance_search(word, edit_distance);
-//   }
+    std::unordered_set<std::string> uni_result;
+    for (const string &name : names) {
+      auto iter = fstdxes_.find(name);
+      if (iter == fstdxes_.end()) {
+        LOG_ERROR("FstdxSearcher::edit_distance_search, name {} not found",
+                  name);
+      } else {
+        std::vector<std::pair<std::string, uint64_t>> edit_distance_results =
+            iter->second->edit_distance_search(word, edit_distance);
+        if (!edit_distance_results.empty()) {
+          for (auto &p : edit_distance_results) {
+            uni_result.emplace(std::move(p.first));
+          }
+        }
+      }
+    }
+    for (const string &p : filtered_indexes_search_result) {
+      uni_result.emplace(std::move(p));
+    }
+    std::vector<std::string> result(uni_result.begin(), uni_result.end());
+    return sort_container(std::move(result));
+  }
 
-//   std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
-//   regex_search(std::string_view pattern) const {
-//     return fst_map_searcher.regex_search(pattern);
-//   }
+  std::vector<std::string>
+  predictive_search(std::string_view word,
+                    const std::vector<std::string> &names) const {
+    auto [index, not_indexes_names] = cost_analysis(names);
 
-//   std::vector<std::tuple<double, std::string, uint64_t>>
-//   spellcheck_word(std::string_view word, const size_t n = 10) const {
-//     return fst_map_searcher.spellcheck_word(word, n);
-//   }
+    std::vector<std::pair<std::string, fst::uint64bit>> indexes_search_result;
+    if (index != 0) {
+      indexes_search_result = fst_indexes_searcher_.predictive_search(word);
+    }
+    std::vector<std::string> filtered_indexes_search_result;
+    for (const auto &p : indexes_search_result) {
+      if (match_index(p.second, index)) {
+        filtered_indexes_search_result.emplace_back(std::move(p.first));
+      }
+    }
+    if (not_indexes_names.empty()) {
+      return sort_container(std::move(filtered_indexes_search_result));
+    }
 
-//   std::vector<std::pair<std::string, uint64_t>> enumerate() const {
-//     return fst_map_searcher.enumerate();
-//   }
+    std::unordered_set<std::string> uni_result;
+    for (const string &name : names) {
+      auto iter = fstdxes_.find(name);
+      if (iter == fstdxes_.end()) {
+        LOG_ERROR("FstdxSearcher::predictive_search, name {} not found", name);
+      } else {
+        std::vector<std::pair<std::string, uint64_t>> predictive_results =
+            iter->second->predictive_search(word);
+        if (!predictive_results.empty()) {
+          for (auto &p : predictive_results) {
+            uni_result.emplace(std::move(p.first));
+          }
+        }
+      }
+    }
+    for (const string &p : filtered_indexes_search_result) {
+      uni_result.emplace(std::move(p));
+    }
+    std::vector<std::string> result(uni_result.begin(), uni_result.end());
+    return sort_container(std::move(result));
+  }
 
-// private:
-//   bool parse_fstdx(const std::string &fstdx_path) {
-//     std::ifstream ins(fstdx_path, std::ios::binary | std::ios::ate);
-//     if (!ins) {
-//       LOG_ERROR("Cannot open the file: {}", fstdx_path);
-//       return false;
-//     }
-//     size_t fstdx_size = ins.tellg();
-//     size_t record_size = sizeof(MxHeaderSizeRecord);
-//     if (fstdx_size < record_size) {
-//       LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
-//       return false;
-//     }
-//     LOG_INFO("fstdx_size:{}", fstdx_size);
-//     ins.seekg(-record_size, std::ios::end);
-//     MxHeaderSizeRecord header_size_record;
-//     LOG_INFO("record_size:{}", record_size);
-//     ins.read(reinterpret_cast<char *>(&header_size_record), record_size);
-//     if (fstdx_size < header_size_record.compressed_size) {
-//       LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
-//       return false;
-//     }
 
-//     LOG_INFO("header_size_record: original_size:{}, compressed_size:{}",
-//              header_size_record.original_size,
-//              header_size_record.compressed_size);
+  bool insert(const std::string &name, const std::string &fstdx_path) {
+    if (fstdxes_.find(name) != fstdxes_.end()) {
+      LOG_ERROR("Insert fstdx failed, as name {} already exists", name);
+      return false;
+    }
+    bool is_valid = false;
+    shared_ptr<FstdxReader> ptr =
+        make_shared<FstdxReader>(fstdx_path, is_valid);
+    if (!is_valid) {
+      LOG_ERROR("Insert fstdx failed, as path {} is not a valid fstdx file",
+                fstdx_path);
+      return false;
+    }
+    fstdxes_[name] = ptr;
+    return true;
+  }
 
-//     vector<char> header_compressed_byte(header_size_record.compressed_size);
-//     ins.seekg(-(record_size + header_size_record.compressed_size),
-//               std::ios::end);
-//     ins.read(const_cast<char *>(header_compressed_byte.data()),
-//              header_size_record.compressed_size);
-//     std::vector<char> header_json_raw_str;
-//     dx_compressor.decompressToBuffer(
-//         header_compressed_byte.data(), header_compressed_byte.size(),
-//         header_size_record.original_size, header_json_raw_str);
-//     // MxJsonHeader mx_json_header;
-//     try {
-//       mx_json_header = json::parse(string(header_json_raw_str.data()));
-//       LOG_INFO("{}", mx_json_header.dump());
-//     } catch (const json::exception &e) {
-//       LOG_ERROR("解析 header 失败: {}", e.what());
-//       return false;
-//     } catch (...) {
-//       LOG_ERROR("解析 header 失败: 未知异常");
-//       return false;
-//     }
+  bool build_fst_index() {
+    if (fstdxes_.size() > 64) {
+      LOG_ERROR("Build fst index failed, as fstdx count {} is greater than 64",
+                fstdxes_.size());
+      return false;
+    }
+    std::unordered_map<std::string, fst::uint64bit> unordered_input;
+    uint64_t index = 1;
+    for (const auto &item : fstdxes_) {
+      fst_indexes_names_.emplace_back(item.first);
+      fst_indexes_names_set_.emplace(item.first);
+      std::vector<std::pair<std::string, uint64_t>> key_value =
+          item.second->enumerate();
+      std::cout << "key_value size: " << key_value.size() << std::endl;
+      for (auto &p : key_value) {
+        auto iter = unordered_input.find(p.first);
+        if (iter == unordered_input.end()) {
+          unordered_input.emplace(std::move(p.first), index);
+        } else {
+          iter->second.bits |= index;
+        }
+      }
+      index <<= 1;
+    }
+    ostringstream fst_str_stream;
+    vector<pair<string, fst::uint64bit>> v_input(unordered_input.begin(),
+                                                 unordered_input.end());
+    {
+      unordered_map<string, fst::uint64bit> tmp;
+      unordered_input.swap(tmp);
+    }
+    vector<size_t> indices(v_input.size());
+    iota(indices.begin(), indices.end(), 0);
+    sort(indices.begin(), indices.end(), [&](size_t i, size_t j) {
+      return v_input[i].first < v_input[j].first;
+    });
+    vector<pair<string, fst::uint64bit>> sorted_input;
+    sorted_input.reserve(v_input.size());
+    for (size_t i : indices) {
+      sorted_input.emplace_back(std::move(v_input[i].first), v_input[i].second);
+    }
 
-//     std::vector<char> key_fst_byte_code;
-//     if (!decompress(ins, "key_fst", mx_json_header, key_fst_byte_code)) {
-//       return false;
-//     }
-//     fst_map_searcher = FstMapSearcher<uint64_t>(key_fst_byte_code);
+    ofstream of("view_index.txt");
+    for (const auto &p : sorted_input) {
+      of << p.first << ": " << p.second.bits << endl;
+    }
+    if (!fstd::compile_fst(sorted_input, fst_str_stream, true, true)) {
+      return false;
+    }
+    string fst_str = fst_str_stream.str();
+    std::vector<char> key_fst_byte_code(fst_str.begin(), fst_str.end());
+    fst_indexes_searcher_ =
+        FstMapSearcher<fst::uint64bit>(std::move(key_fst_byte_code));
+    fst_indexes_size_ = sorted_input.size();
+    std::cout << "FST index built, size: " << sorted_input.size() << std::endl;
+    return true;
+  }
 
-//     std::vector<char> dictBuffer;
-//     if (!decompress(ins, "comp_dict", mx_json_header, dictBuffer)) {
-//       return false;
-//     }
-//     ddict = ZSTD_createDDict(dictBuffer.data(), dictBuffer.size());
+private:
+  bool match_index(fst::uint64bit index, uint64_t mask) const {
+    return (index.bits & mask) != 0;
+  }
 
-//     if (!decompress(ins, "block_indexes", mx_json_header, block_indexes)) {
-//       return false;
-//     }
+  std::pair<uint64_t, std::vector<std::string>>
+  cost_analysis(const std::vector<std::string> &names) const {
+    if (names.size() < 2) { return {0, names}; }
+    size_t key_size = 0;
+    for (const string &name : names) {
+      auto iter = fstdxes_.find(name);
+      if (iter != fstdxes_.end()) {
+        key_size += iter->second->get_fst_key_size();
+      }
+    }
+    if (key_size < fst_indexes_size_) { return {0, names}; }
+    uint64_t index = 1;
+    uint64_t result_index = 0;
+    std::vector<std::string> result_names;
+    std::unordered_set<std::string> names_set(names.begin(), names.end());
+    for (const string &name : fst_indexes_names_) {
+      if (names_set.find(name) != names_set.end()) {
+        result_index |= index;
+      } else {
+        result_names.emplace_back(name);
+      }
+      index <<= 1;
+    }
+    return {result_index, result_names};
+  }
 
-//     if (!decompress(ins, "entry_indexes", mx_json_header, entry_indexes)) {
-//       return false;
-//     }
+  std::vector<std::string>
+  uniq_sort_search(std::string_view word, const std::vector<std::string> &names,
+                   std::function<std::vector<std::pair<std::string, uint64_t>>(
+                       std::string_view, const std::shared_ptr<FstdxReader> &)>
+                       search_method) const {
 
-//     ins.close();
+    std::set<string> uni_sorted_result;
+    for (const string &name : names) {
+      auto iter = fstdxes_.find(name);
+      if (iter != fstdxes_.end()) {
+        std::vector<std::pair<std::string, uint64_t>> predictive_results =
+            search_method(word, iter->second);
+        if (!predictive_results.empty()) {
+          for (auto &p : predictive_results) {
+            uni_sorted_result.emplace(std::move(p.first));
+          }
+        }
+      }
+    }
+    return {uni_sorted_result.cbegin(), uni_sorted_result.cend()};
+  }
 
-//     comp_text_offset = mx_json_header["comp_blocks"]["offset"];
+private:
+  FstMapSearcher<fst::uint64bit> fst_indexes_searcher_;
+  size_t fst_indexes_size_;
+  std::vector<std::string> fst_indexes_names_;
+  std::set<std::string> fst_indexes_names_set_;
+  std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes_;
+};
 
-//     return true;
-//   }
-
-//   template <typename T>
-//   bool decompress(istream &ins, const std::string &block_name,
-//                   const MxJsonHeader &mx_json_header, std::vector<T> &con) {
-//     const json &json_block = mx_json_header[block_name];
-//     int compress_level = json_block["compress_level"];
-//     uint64_t offset = json_block["offset"];
-//     uint64_t original_size = json_block["original_size"];
-//     std::vector<T> tmp_con;
-//     tmp_con.resize(original_size / sizeof(T));
-//     if (compress_level == 0) {
-//       ins.seekg(offset);
-//       ins.read(reinterpret_cast<char *>(tmp_con.data()), tmp_con.size());
-//     } else {
-//       uint64_t compressed_size = json_block["compressed_size"];
-//       vector<char> compressed_block(compressed_size);
-//       ins.seekg(offset);
-//       ins.read(compressed_block.data(), compressed_block.size());
-//       std::vector<char> dst_buff(original_size);
-//       bool res = dx_compressor.decompressToBuffer(compressed_block.data(),
-//                                                   compressed_block.size(),
-//                                                   original_size, dst_buff);
-//       if (!res) { return false; }
-//       memcpy(tmp_con.data(), dst_buff.data(), dst_buff.size());
-//     }
-//     con.swap(tmp_con);
-//     return true;
-//   }
-
-// private:
-//   const std::string &fstdx_path;
-//   MxJsonHeader mx_json_header;
-//   FstMapSearcher<uint64_t> fst_map_searcher;
-//   Dxcompressor dx_compressor;
-//   ZSTD_DDict *ddict;
-//   std::vector<BlockIndex> block_indexes;
-//   std::vector<EntryIndex> entry_indexes;
-//   uint64_t comp_text_offset;
-// };
 } // namespace fstd
+
+int main(int argc, char *argv[]) {
+  fstd::FstdxSearcher view;
+  for (int i = 1; i < argc; ++i) {
+    view.insert(std::to_string(i), argv[i]);
+  }
+  view.build_fst_index();
+  while (true) {
+    std::string word;
+    std::string cmd;
+    std::cout << "Enter command (search/predict/exit): " << std::endl;
+    std::cin >> cmd;
+
+    if (cmd == "search") {
+      std::cin >> word;
+      std::string name;
+      std::vector<std::string> names;
+      while (std::cin >> name) {
+        if (name == "end") { break; }
+        names.emplace_back(name);
+      }
+      std::unordered_map<std::string, std::vector<std::string>> results =
+          view.search(word, names);
+      for (const auto &p : results) {
+        std::cout << "name: " << p.first << "\n";
+        for (const auto &item : p.second) {
+          std::cout << item << "\n";
+        }
+      }
+    } else if (cmd == "predict") {
+      std::cin >> word;
+      std::string name;
+      std::vector<std::string> names;
+      while (std::cin >> name) {
+        if (name == "end") { break; }
+        names.emplace_back(name);
+      }
+      std::vector<std::string> results = view.predictive_search(word, names);
+      std::cout << "predictive search result:\n";
+      for (const auto &item : results) {
+        std::cout << item << "\n";
+      }
+    } else if (cmd == "exit") {
+      break;
+    } else {
+      LOG_ERROR("Unknown command: {}", word);
+    }
+    if (cmd == "exit") { break; }
+  }
+}

@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <CLI/CLI.hpp>
-#include <fstd/fstdx_searcher.hpp>
+#include <fstd/fstdx_reader.hpp>
 #include <fstd/fstdx_writer.hpp>
 #include <fstd/logger.hpp>
 
@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
 
   if (*search_cmd) {
     bool is_valid = false;
-    fstd::FstdxSearcher fstdx_searcher(file_path, is_valid);
+    fstd::FstdxReader fstdx_searcher(file_path, is_valid);
     if (!is_valid) {
       LOG_ERROR("文件 {} 不是有效的 fstdx 文件", file_path);
       return 1;
