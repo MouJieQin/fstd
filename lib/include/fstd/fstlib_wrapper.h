@@ -112,6 +112,10 @@ public:
     byte_code_ptr_ = rhs.byte_code_ptr_;
   }
 
+  const std::shared_ptr<const std::vector<char>> &get_fst_byte_code() const {
+    return byte_code_ptr_;
+  }
+
   bool exact_match_search(std::string_view word, output_t &output) const {
     bool ret = matcher_ptr_->exact_match_search(word, output);
     return ret;

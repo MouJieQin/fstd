@@ -148,12 +148,6 @@ private:
       sampleSizes.push_back(texts[random_index].size());
     }
 
-    // ZDICT需要所有的样本放在同一个连续的Buffer里
-    // for (const auto &text : texts) {
-    //   samplesBlob.insert(samplesBlob.end(), text.begin(), text.end());
-    //   sampleSizes.push_back(text.size());
-    // }
-
     LOG_INFO("字典训练 ...");
     size_t ret = ZDICT_trainFromBuffer(dictBuffer, dictSize, samplesBlob.data(),
                                        sampleSizes.data(), sampleSizes.size());
