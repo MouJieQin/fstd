@@ -50,6 +50,53 @@ public:
   }
 
   std::vector<std::string>
+  common_prefix_search(std::string_view word,
+                       const std::vector<std::string> &names) const {
+    std::vector<std::pair<std::string, fst::uint64bit>> indexes_search_result;
+    auto [index, not_indexes_names] = cost_analysis(names);
+    if (index != 0) {
+      indexes_search_result = fst_indexes_searcher_.common_prefix_search(word);
+    }
+    std::vector<std::string> filtered_indexes_search_result;
+    for (const auto &p : indexes_search_result) {
+      if (match_index(p.second, index)) {
+        filtered_indexes_search_result.emplace_back(std::move(p.first));
+      }
+    }
+    if (not_indexes_names.empty()) {
+      return sort_container(std::move(filtered_indexes_search_result));
+    }
+    return sort_container(std::move(filtered_indexes_search_result));
+  }
+
+  size_t
+  longest_common_prefix_search(std::string_view word,
+                               const std::vector<std::string> &names) const {
+    std::pair<std::string, fst::uint64bit> index_result;
+    auto [index, not_indexes_names] = cost_analysis(names);
+    size_t longest_prefix_len = 0;
+    if (index != 0) {
+      longest_prefix_len = fst_indexes_searcher_.longest_common_prefix_search(
+          word, index_result);
+    }
+    if (not_indexes_names.empty()) { return longest_prefix_len; }
+
+    std::pair<std::string, uint64_t> result;
+    for (const string &name : names) {
+      auto iter = fstdxes_.find(name);
+      if (iter == fstdxes_.end()) {
+        LOG_ERROR(
+            "FstdxSearcher::longest_common_prefix_search, name {} not found",
+            name);
+      } else {
+        size_t len = iter->second->longest_common_prefix_search(word, result);
+        if (len > longest_prefix_len) { longest_prefix_len = len; }
+      }
+    }
+    return longest_prefix_len;
+  }
+
+  std::vector<std::string>
   edit_distance_search(std::string_view word,
                        const std::vector<std::string> &names,
                        size_t edit_distance = 1) const {
@@ -131,6 +178,54 @@ public:
     }
     std::vector<std::string> result(uni_result.begin(), uni_result.end());
     return sort_container(std::move(result));
+  }
+
+  std::vector<std::string>
+  suggest(std::string_view word, const std::vector<std::string> &names) const {
+    auto [index, not_indexes_names] = cost_analysis(names);
+    std::vector<std::tuple<double, std::string, fst::uint64bit>>
+        indexes_search_result;
+    if (index != 0) {
+      indexes_search_result = fst_indexes_searcher_.suggest(word);
+    }
+    std::vector<std::string> filtered_indexes_search_result;
+    for (const auto &p : indexes_search_result) {
+      if (match_index(std::get<2>(p), index)) {
+        filtered_indexes_search_result.emplace_back(std::get<1>(p));
+      }
+    }
+    if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
+    return filtered_indexes_search_result;
+  }
+
+  std::pair<std::vector<std::string>, std::string>
+  regex_search(std::string_view pattern,
+               const std::vector<std::string> &names) const {
+    auto [index, not_indexes_names] = cost_analysis(names);
+    std::pair<std::vector<std::pair<std::string, fst::uint64bit>>, std::string>
+        indexes_search_result;
+    if (index != 0) {
+      indexes_search_result = fst_indexes_searcher_.regex_search(pattern);
+    }
+    if (!indexes_search_result.second.empty()) {
+      return {std::vector<std::string>(), indexes_search_result.second};
+    }
+    std::vector<std::string> filtered_indexes_search_result;
+    for (const auto &p : indexes_search_result.first) {
+      if (match_index(p.second, index)) {
+        filtered_indexes_search_result.emplace_back(std::move(p.first));
+      }
+    }
+    if (not_indexes_names.empty()) {
+      return {sort_container(std::move(filtered_indexes_search_result)), ""};
+    }
+    return {sort_container(std::move(filtered_indexes_search_result)), ""};
+  }
+
+  void insert_if_not_exists(const std::string &name,
+                            const std::string &fstdx_path) {
+    if (fstdxes_.find(name) != fstdxes_.end()) { return; }
+    insert(name, fstdx_path);
   }
 
   bool insert(const std::string &name, const std::string &fstdx_path) {
@@ -398,7 +493,7 @@ int main(int argc, char *argv[]) {
     LOG_ERROR("Usage: {} <meta_json_path>", argv[0]);
     return 1;
   }
-  std::cout<< "argv[1]: "<< argv[1]<< std::endl;
+  std::cout << "argv[1]: " << argv[1] << std::endl;
   if (string(argv[1]) == "load") {
     bool is_valid = false;
     fstd::FstdxSearcher view("searcher_meta.json", is_valid);

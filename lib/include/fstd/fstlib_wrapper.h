@@ -167,7 +167,7 @@ public:
 
   std::vector<std::tuple<double, std::string, output_t>>
   suggest(std::string_view word) const {
-    return fst::matcher<output_t>::suggest_core(word, *this);
+    return matcher_ptr_->suggest(word);
   }
 
   std::vector<std::tuple<double, std::string, output_t>>
