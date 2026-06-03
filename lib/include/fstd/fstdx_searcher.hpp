@@ -198,6 +198,40 @@ public:
     return filtered_indexes_search_result;
   }
 
+  std::vector<std::string>
+  prefix_distance_search(std::string_view word,
+                         const std::vector<std::string> &names,
+                         size_t max_distance) const {
+    auto [index, not_indexes_names] = cost_analysis(names);
+    std::vector<std::vector<std::pair<std::string, fst::uint64bit>>>
+        indexes_search_result;
+    if (index != 0) {
+      indexes_search_result =
+          fst_indexes_searcher_.prefix_distance_search(word, max_distance);
+    }
+    std::vector<std::string> filtered_indexes_search_result;
+    size_t dist = 0;
+    for (auto &v : indexes_search_result) {
+      std::cout << "v.size(): " << v.size() << " indexes_search_result.size(): "
+                << indexes_search_result.size() << std::endl;
+      std::vector<size_t> indices;
+      indices.reserve(v.size());
+      for (size_t i = 0; i < v.size(); ++i) {
+        if (match_index(v[i].second, index)) { indices.push_back(i); }
+      }
+      std::sort(indices.begin(), indices.end(),
+                [&](size_t i, size_t j) { return v[i].first < v[j].first; });
+      for (size_t i : indices) {
+        std::cout << "v[i].first: " << v[i].first << " dist: " << dist
+                  << std::endl;
+        filtered_indexes_search_result.emplace_back(std::move(v[i].first));
+      }
+      dist+=1;
+    }
+    if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
+    return filtered_indexes_search_result;
+  }
+
   std::pair<std::vector<std::string>, std::string>
   regex_search(std::string_view pattern,
                const std::vector<std::string> &names) const {

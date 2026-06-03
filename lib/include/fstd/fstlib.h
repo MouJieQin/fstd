@@ -1759,8 +1759,22 @@ public:
   }
 
 protected:
+  size_t longest_prefix_len(std::string_view sv) const {
+    size_t longest_prefix_len;
+    matcher<output_t>::match(sv.data(), sv.size(), longest_prefix_len);
+    return longest_prefix_len;
+  }
+
   bool match(
       const char *str, size_t len,
+      std::function<void(const output_t &)> outputs = nullptr,
+      std::function<void(size_t, const output_t &)> prefixes = nullptr) const {
+    size_t longest_prefix_len;
+    return match(str, len, longest_prefix_len, outputs, prefixes);
+  }
+
+  bool match(
+      const char *str, size_t len, size_t &longest_prefix_len,
       std::function<void(const output_t &)> outputs = nullptr,
       std::function<void(size_t, const output_t &)> prefixes = nullptr) const {
 
@@ -1903,7 +1917,7 @@ protected:
         address -= byte_size;
       }
     }
-
+    longest_prefix_len = i;
     return ret;
   }
 
@@ -1972,8 +1986,20 @@ protected:
                 should_append_state_output = true;
               }
             }
-            accept(word,
-                   should_append_state_output ? output + state_output : output);
+
+            const auto &final_output =
+                should_append_state_output ? output + state_output : output;
+
+            // 编译期判断：accept 是否支持 3 个参数 (word, output, transit)
+            if constexpr (std::is_invocable_v<U &, decltype(word),
+                                              decltype(final_output),
+                                              const T &>) {
+              // 3参数版本：传入 atm
+              accept(word, final_output, atm);
+            } else {
+              // 2参数版本：原有逻辑（兼容旧代码）
+              accept(word, final_output);
+            }
           }
         }
       }
@@ -2066,6 +2092,142 @@ protected:
 };
 
 //-----------------------------------------------------------------------------
+// UTF-8 -> UTF-32 decoder
+//-----------------------------------------------------------------------------
+
+inline bool decode_codepoint(std::string_view s8, char32_t &cp) {
+  auto l = s8.size();
+  if (l) {
+    uint8_t b = s8[0];
+    if ((b & 0x80) == 0) {
+      cp = b;
+      return true;
+    } else if ((b & 0xE0) == 0xC0) {
+      if (l >= 2) {
+        cp = ((static_cast<char32_t>(s8[0] & 0x1F)) << 6) |
+             (static_cast<char32_t>(s8[1] & 0x3F));
+        return true;
+      }
+    } else if ((b & 0xF0) == 0xE0) {
+      if (l >= 3) {
+        cp = ((static_cast<char32_t>(s8[0] & 0x0F)) << 12) |
+             ((static_cast<char32_t>(s8[1] & 0x3F)) << 6) |
+             (static_cast<char32_t>(s8[2] & 0x3F));
+        return true;
+      }
+    } else if ((b & 0xF8) == 0xF0) {
+      if (l >= 4) {
+        cp = ((static_cast<char32_t>(s8[0] & 0x07)) << 18) |
+             ((static_cast<char32_t>(s8[1] & 0x3F)) << 12) |
+             ((static_cast<char32_t>(s8[2] & 0x3F)) << 6) |
+             (static_cast<char32_t>(s8[3] & 0x3F));
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+inline std::u32string decode(std::string_view s8) {
+  std::u32string out;
+  size_t i = 0;
+  while (i < s8.size()) {
+    auto beg = i++;
+    while (i < s8.size() && (s8[i] & 0xc0) == 0x80) {
+      i++;
+    }
+    char32_t cp;
+    decode_codepoint(s8.substr(beg, i - beg), cp);
+    out += cp;
+  }
+  return out;
+}
+
+inline size_t calc_c_len(std::string_view s8) {
+  char32_t cp;
+  std::string u8code_ = "";
+  size_t c_len = 0;
+  for (size_t i = 0; i < s8.size(); ++i) {
+    u8code_ += s8[i];
+    if (decode_codepoint(u8code_, cp)) {
+      u8code_.clear();
+      c_len += 1;
+    }
+  }
+  return c_len;
+}
+
+//-----------------------------------------------------------------------------
+// PrefixDistanceAutomaton
+//-----------------------------------------------------------------------------
+
+class PrefixDistanceAutomaton {
+public:
+  PrefixDistanceAutomaton(std::string_view sv, const size_t max_distance,
+                          const size_t longest_prefix_len)
+      : s_(decode(sv)), max_distance_(max_distance),
+        longest_prefix_len_(calc_c_len(sv.substr(0, longest_prefix_len))),
+        common_prefix_len_(0), prefix_distance_(0), word_("") {
+    std::cout << "orginal world: " << sv << " practical len: " << calc_c_len(sv)
+              << std::endl;
+  }
+
+  PrefixDistanceAutomaton(const PrefixDistanceAutomaton &rhs) = default;
+
+  void step(char c) {
+    word_ += c;
+    u8code_ += c;
+    char32_t cp;
+    if (!decode_codepoint(u8code_, cp)) { return; }
+    u8code_.clear();
+
+    if (prefix_distance_ != 0) {
+      prefix_distance_ += 1;
+      return;
+    }
+
+    if (s_[common_prefix_len_] == cp) {
+      common_prefix_len_ += 1;
+    } else {
+      prefix_distance_ += 1;
+    }
+  }
+
+  bool is_match() const {
+    if (common_prefix_len_ == 0) {
+      // one common prefix at least.
+      return false;
+    }
+    return distance() <= max_distance_;
+  }
+
+  bool can_match() const {
+    if (prefix_distance_ == 0) {
+      return true;
+    } else {
+      if (common_prefix_len_ == 0) {
+        return false;
+      } else {
+        return distance() < max_distance_;
+      }
+    }
+  }
+
+  size_t distance() const {
+    return (longest_prefix_len_ - common_prefix_len_) + prefix_distance_;
+  }
+
+private:
+  const std::u32string s_;
+  const size_t max_distance_;
+  const size_t longest_prefix_len_;
+  size_t common_prefix_len_;
+  size_t prefix_distance_;
+  std::string u8code_;
+  std::string word_;
+};
+
+//-----------------------------------------------------------------------------
 // LevenshteinAutomaton
 //-----------------------------------------------------------------------------
 
@@ -2119,54 +2281,6 @@ private:
   size_t replace_cost_; // TODO: better cost function is needed?
   std::vector<size_t> state_;
   std::string u8code_;
-
-  bool decode_codepoint(std::string_view s8, char32_t &cp) const {
-    auto l = s8.size();
-    if (l) {
-      uint8_t b = s8[0];
-      if ((b & 0x80) == 0) {
-        cp = b;
-        return true;
-      } else if ((b & 0xE0) == 0xC0) {
-        if (l >= 2) {
-          cp = ((static_cast<char32_t>(s8[0] & 0x1F)) << 6) |
-               (static_cast<char32_t>(s8[1] & 0x3F));
-          return true;
-        }
-      } else if ((b & 0xF0) == 0xE0) {
-        if (l >= 3) {
-          cp = ((static_cast<char32_t>(s8[0] & 0x0F)) << 12) |
-               ((static_cast<char32_t>(s8[1] & 0x3F)) << 6) |
-               (static_cast<char32_t>(s8[2] & 0x3F));
-          return true;
-        }
-      } else if ((b & 0xF8) == 0xF0) {
-        if (l >= 4) {
-          cp = ((static_cast<char32_t>(s8[0] & 0x07)) << 18) |
-               ((static_cast<char32_t>(s8[1] & 0x3F)) << 12) |
-               ((static_cast<char32_t>(s8[2] & 0x3F)) << 6) |
-               (static_cast<char32_t>(s8[3] & 0x3F));
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  std::u32string decode(std::string_view s8) const {
-    std::u32string out;
-    size_t i = 0;
-    while (i < s8.size()) {
-      auto beg = i++;
-      while (i < s8.size() && (s8[i] & 0xc0) == 0x80) {
-        i++;
-      }
-      char32_t cp;
-      decode_codepoint(s8.substr(beg, i - beg), cp);
-      out += cp;
-    }
-    return out;
-  }
 };
 
 //-----------------------------------------------------------------------------
@@ -2340,6 +2454,10 @@ public:
     return prefix_len;
   }
 
+  size_t longest_common_prefix_search(std::string_view sv) const {
+    return matcher<output_t>::longest_prefix_len(sv);
+  }
+
   bool
   predictive_search(std::string_view sv,
                     std::function<void(const std::string &, const output_t &)>
@@ -2380,6 +2498,24 @@ public:
                              replace_cost),
         [&](const auto &word, const auto &output) {
           ret.emplace_back(std::pair(word, output));
+        });
+
+    return ret;
+  }
+
+  std::vector<std::vector<std::pair<std::string, output_t>>>
+  prefix_distance_search(std::string_view sv, size_t max_distance) const {
+    std::vector<std::vector<std::pair<std::string, output_t>>> ret(
+        max_distance, std::vector<std::pair<std::string, output_t>>());
+    if (sv.empty()) { return ret; }
+    size_t longest_prefix_len = matcher<output_t>::longest_prefix_len(sv);
+    std::cout << "sv.size(): " << sv.size() << std::endl;
+    std::cout << "longest_prefix_len: " << longest_prefix_len << std::endl;
+    matcher<output_t>::depth_first_visit(
+        matcher<output_t>::header_.start_address, std::string(), output_t{},
+        PrefixDistanceAutomaton(sv, max_distance, longest_prefix_len),
+        [&](const auto &word, const auto &output, const auto &automaton) {
+          ret[automaton.distance()].emplace_back(word, output);
         });
 
     return ret;

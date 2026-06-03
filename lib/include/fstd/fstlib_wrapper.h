@@ -142,6 +142,10 @@ public:
     return len;
   }
 
+  size_t longest_common_prefix_search(std::string_view word) const {
+    return matcher_ptr_->longest_common_prefix_search(word);
+  }
+
   std::vector<std::pair<std::string, output_t>>
   predictive_search(std::string_view word) const {
     std::vector<std::pair<std::string, output_t>> result;
@@ -168,6 +172,11 @@ public:
   std::vector<std::tuple<double, std::string, output_t>>
   suggest(std::string_view word) const {
     return matcher_ptr_->suggest(word);
+  }
+
+  std::vector<std::vector<std::pair<std::string, output_t>>>
+  prefix_distance_search(std::string_view sv, size_t max_distance) const {
+    return matcher_ptr_->prefix_distance_search(sv, max_distance);
   }
 
   std::vector<std::tuple<double, std::string, output_t>>
