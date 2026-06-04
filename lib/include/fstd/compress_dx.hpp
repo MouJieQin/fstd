@@ -115,6 +115,16 @@ public:
     return res;
   }
 
+  std::vector<std::string>
+  extract(const std::string &compFile, const size_t offset,
+          const ZSTD_DDict *ddict, const std::vector<BlockIndex> &block_indexes,
+          const std::vector<EntryIndex> &entry_indexes) const
+
+  {
+    return extract_comp_blocks(compFile, offset, ddict, block_indexes,
+                               entry_indexes);
+  }
+
 private:
   // 生成 [0, max) 之间的随机整数
   int random_int(int max) {
@@ -183,7 +193,7 @@ private:
                                  std::ostream &blockIdxOut,
                                  std::ostream &entryIdxOut,
                                  std::ostream &compOut, size_t blockSize,
-                                 int compressionLevel) {
+                                 int compressionLevel) const {
     if (!blockIdxOut || !entryIdxOut || !compOut) return false;
 
     ZSTD_CDict *cdict =
@@ -305,8 +315,15 @@ private:
                              const std::string &compFile,
                              const size_t offset) const {
     std::ifstream compIn(compFile, std::ios::binary);
-    if (!compIn) return "";
-    if (idx >= entry_indexes.size()) return "";
+    if (!compIn) {
+      LOG_ERROR("Couldn't open file: {}", compFile);
+      return "";
+    }
+    if (idx >= entry_indexes.size()) {
+      LOG_ERROR("Entry index is out of range({}): {}", entry_indexes.size(),
+                idx);
+      return "";
+    }
     const EntryIndex &entry_index = entry_indexes[idx];
 
     size_t block_index_idx = bin_search_block_index(idx, block_indexes);
@@ -320,7 +337,10 @@ private:
 
     std::vector<char> decompBuf(decompBufSize);
     ZSTD_DCtx *dctx = ZSTD_createDCtx();
-    if (!dctx) return "";
+    if (!dctx) {
+      LOG_ERROR("Create Decompression context failed.");
+      return "";
+    }
 
     size_t decompSize =
         ZSTD_decompress_usingDDict(dctx, decompBuf.data(), decompBuf.size(),
@@ -335,6 +355,54 @@ private:
 
     return std::string(decompBuf.data() + entry_index.entry_offset,
                        entry_index.entry_size);
+  }
+
+  std::vector<std::string>
+  extract_comp_blocks(const std::string &compFile, const size_t offset,
+                      const ZSTD_DDict *ddict,
+                      const std::vector<BlockIndex> &block_indexes,
+                      const std::vector<EntryIndex> &entry_indexes) const {
+    std::vector<std::string> result;
+    std::ifstream compIn(compFile, std::ios::binary);
+    if (!compIn) {
+      LOG_ERROR("Couldn't open file: {}", compFile);
+      return result;
+    }
+
+    ZSTD_DCtx *dctx = ZSTD_createDCtx();
+    if (!dctx) {
+      LOG_ERROR("Create Decompression context failed.");
+      return result;
+    }
+
+    size_t idx = 0;
+    std::vector<char> compBuf;
+    std::vector<char> decompBuf;
+    result.reserve(entry_indexes.size());
+    for (const BlockIndex &block_index : block_indexes) {
+      compIn.seekg(offset + block_index.block_offset);
+      compBuf.resize(block_index.block_size);
+      compIn.read(compBuf.data(), compBuf.size());
+
+      decompBuf.resize(block_index.original_block_size);
+      size_t decompSize =
+          ZSTD_decompress_usingDDict(dctx, decompBuf.data(), decompBuf.size(),
+                                     compBuf.data(), compBuf.size(), ddict);
+      if (ZSTD_isError(decompSize)) {
+        ZSTD_freeDCtx(dctx);
+        LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decompSize));
+        return {};
+      }
+
+      for (; idx < block_index.end_entry_index; ++idx) {
+        const char *data_ptr = decompBuf.data();
+        const EntryIndex &entry_index = entry_indexes[idx];
+        result.emplace_back(std::string(data_ptr + entry_index.entry_offset,
+                                        entry_index.entry_size));
+      }
+    }
+    ZSTD_freeDCtx(dctx);
+    return result;
   }
 };
 

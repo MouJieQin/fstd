@@ -226,7 +226,7 @@ public:
                   << std::endl;
         filtered_indexes_search_result.emplace_back(std::move(v[i].first));
       }
-      dist+=1;
+      dist += 1;
     }
     if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
     return filtered_indexes_search_result;

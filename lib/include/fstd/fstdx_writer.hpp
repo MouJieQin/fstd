@@ -5,7 +5,8 @@
 #include <thread>
 
 #include <fstd/compress_dx.hpp>
-#include <fstd/fstlib_wrapper.h>
+// #include <fstd/fstlib_wrapper.h>
+#include <fstd/fstdx_reader.hpp>
 #include <fstd/logger.hpp>
 
 using namespace fst;
@@ -13,14 +14,6 @@ using namespace std;
 using json = nlohmann::json;
 
 namespace fstd {
-
-struct MxHeaderSizeRecord {
-  MxHeaderSizeRecord() = default;
-  MxHeaderSizeRecord(uint32_t original_size, uint32_t compressed_size)
-      : original_size(original_size), compressed_size(compressed_size) {}
-  uint32_t original_size;
-  uint32_t compressed_size;
-};
 
 std::string get_current_date() {
   std::time_t now = std::time(nullptr);
@@ -33,8 +26,6 @@ std::string get_current_date() {
 
   return std::string(buf);
 }
-
-using MxJsonHeader = json;
 
 class FstdxWriter {
 public:
@@ -117,6 +108,7 @@ public:
       fin.close();
       return 1;
     }
+    header["delimiter"] = delimiter;
     header["meta"]["Record"] = keys.size();
     header["meta"]["Stripkey"] = true;
     header["meta"]["CompressionLevel"] = compress_level;
@@ -294,6 +286,25 @@ public:
     fout.write(reinterpret_cast<const char *>(&header_size_record),
                sizeof(MxHeaderSizeRecord));
     return 0;
+  }
+
+  bool extract_fstdx(const std::string &input_file,
+                     const std::string &output_file) {
+    bool is_valid = false;
+    FstdxReader reader(input_file, is_valid);
+    if (!is_valid) { return false; }
+    ofstream fout(output_file, ios_base::out);
+    if (!fout) {
+      LOG_ERROR("Failed to open file {} for writing.", output_file);
+      return 1;
+    }
+    std::vector<std::string> keys = reader.extract_keys();
+    std::vector<std::string> values = reader.extract_values();
+    std::string delimiter = reader.get_delimiter();
+    for (size_t i = 0; i < keys.size(); ++i) {
+      fout << keys[i] << "\n" << values[i] << "\n" << delimiter << "\n";
+    }
+    return true;
   }
 
 private:

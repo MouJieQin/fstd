@@ -4,12 +4,23 @@
 #include <nlohmann/json.hpp>
 
 #include <fstd/compress_dx.hpp>
-#include <fstd/fstdx_writer.hpp>
+#include <fstd/fstlib_wrapper.h>
 #include <fstd/logger.hpp>
 
 namespace fstd {
 
 using namespace std;
+using json = nlohmann::json;
+struct MxHeaderSizeRecord {
+  MxHeaderSizeRecord() = default;
+  MxHeaderSizeRecord(uint32_t original_size, uint32_t compressed_size)
+      : original_size(original_size), compressed_size(compressed_size) {}
+  uint32_t original_size;
+  uint32_t compressed_size;
+};
+
+using MxJsonHeader = json;
+
 class FstdxReader {
   using json = nlohmann::json;
 
@@ -29,7 +40,21 @@ public:
 
   size_t get_key_size() const { return key_size_; }
 
+  std::string get_delimiter() const { return mx_json_header_["delimiter"]; }
+
   size_t get_fst_key_size() const { return fst_key_size_; }
+
+  std::pair<uint32_t, uint32_t> extract_index(uint64_t index) const {
+    uint32_t index_ = 0;
+    uint32_t duplicate = 0;
+    if (index < UINT32_MAX) {
+      index_ = static_cast<uint32_t>(index);
+    } else {
+      index_ = static_cast<uint32_t>(index & 0xFFFFFFFF);
+      duplicate = static_cast<uint32_t>(index >> 32);
+    }
+    return {index_, duplicate};
+  }
 
   bool exact_match_search(std::string_view word,
                           std::vector<std::string> &result) const {
@@ -37,21 +62,15 @@ public:
     if (!fst_map_searcher_.exact_match_search(word, index_res)) {
       return false;
     }
-    uint32_t index = 0;
-    uint32_t duplicate = 0;
-    if (index_res < UINT32_MAX) {
-      index = static_cast<uint32_t>(index_res);
-    } else {
-      index = static_cast<uint32_t>(index_res & 0xFFFFFFFF);
-      duplicate = static_cast<uint32_t>(index_res >> 32);
-    }
+    auto [index, duplicate] = extract_index(index_res);
     LOG_INFO("index: {}, duplicate: {}", index, duplicate);
     std::vector<std::string> tmp_result;
     for (uint32_t i = 0; i <= duplicate; ++i) {
-      LOG_INFO("index + i: {}, block_indexes_.size(): {}, entry_indexes_.size(): "
-               "{}, compstdx_path_: {}, comp_text_offset_: {}",
-               index + i, block_indexes_.size(), entry_indexes_.size(), fstdx_path_,
-               comp_text_offset_);
+      LOG_INFO(
+          "index + i: {}, block_indexes_.size(): {}, entry_indexes_.size(): "
+          "{}, compstdx_path_: {}, comp_text_offset_: {}",
+          index + i, block_indexes_.size(), entry_indexes_.size(), fstdx_path_,
+          comp_text_offset_);
       std::string text = dx_compressor_.readTextByIndex(
           index + i, ddict_, block_indexes_, entry_indexes_, fstdx_path_,
           comp_text_offset_);
@@ -94,6 +113,25 @@ public:
 
   std::vector<std::pair<std::string, uint64_t>> enumerate() const {
     return fst_map_searcher_.enumerate(fst_key_size_);
+  }
+
+  std::vector<std::string> extract_values() const {
+    return dx_compressor_.extract(fstdx_path_, comp_text_offset_, ddict_,
+                                  block_indexes_, entry_indexes_);
+  }
+
+  std::vector<std::string> extract_keys() const {
+    std::vector<std::pair<std::string, uint64_t>> key_output = enumerate();
+    std::vector<std::string> result;
+    result.resize(key_size_);
+    for (size_t i = 0; i < key_output.size(); ++i) {
+      auto [index, duplicate] = extract_index(key_output[i].second);
+      result[index] = std::move(key_output[i].first);
+      for (uint32_t j = 1; j <= duplicate; ++j) {
+        result[index + j] = result[index];
+      }
+    }
+    return result;
   }
 
 private:

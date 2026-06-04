@@ -22,6 +22,15 @@ bool read_file(const std::string &file_path, std::string &content) {
   return true;
 }
 
+std::string change_ext(const std::string &file_path, const std::string &ext) {
+  size_t pos = file_path.find_last_of('.');
+  if (pos == file_path.npos) {
+    return file_path + "." + ext;
+  } else {
+    return file_path.substr(0, pos + 1) + ext;
+  }
+}
+
 int main(int argc, char **argv) {
   Logger::instance(); // init logger
   spdlog::cfg::load_env_levels();
@@ -39,6 +48,16 @@ int main(int argc, char **argv) {
   // 3. 布尔开关
   bool verbose = false;
   app.add_flag("-v,--verbose", verbose, "开启详细日志输出");
+
+  CLI::App *extract_cmd = app.add_subcommand("extract", "extract fstdx/fstdd");
+
+  std::string extract_input_file;
+  extract_cmd->add_option("input", extract_input_file, "输入文件路径")
+      ->required();
+
+  std::string extract_output_file;
+  extract_cmd->add_option("-o,--output", extract_output_file, "输入文件路径")
+      ->default_val(change_ext(extract_input_file, "txt"));
 
   CLI::App *search_cmd = app.add_subcommand("search", "执行搜索操作");
 
@@ -75,14 +94,15 @@ int main(int argc, char **argv) {
 
   std::string word;
   search_cmd->add_option("word", word, "输入单词");
-  
-  // 4. 多值参数
-  std::vector<int> nums;
-  app.add_option("-n,--nums", nums, "传入一组数字");
+
+  // // 4. 多值参数
+  // std::vector<int> nums;
+  // app.add_option("-n,--nums", nums, "传入一组数字");
 
   CLI::App *write_cmd = app.add_subcommand("write", "执行写操作");
-  std::string input_file;
-  write_cmd->add_option("-f,--file", input_file, "输入文件路径")->required();
+  std::string write_input_file;
+  write_cmd->add_option("-f,--file", write_input_file, "输入文件路径")
+      ->required();
   std::string delimiter = "</>";
   write_cmd->add_option("--delimiter", delimiter, "分隔符，默认</>")
       ->default_val("</>");
@@ -121,7 +141,7 @@ int main(int argc, char **argv) {
   } catch (const CLI::ParseError &e) { return app.exit(e); }
 
   //   std::cout << "子命令：" << write_cmd->get_subcommand()->name() << "\n";
-  std::cout << "输入文件：" << input_file << "\n";
+  std::cout << "输入文件：" << write_input_file << "\n";
   std::cout << "行索引键,值,步长列表：\n";
   std::cout << "输出文件：" << output_file << "\n";
   std::cout << "压缩块大小：" << block_size << " KB\n";
@@ -280,19 +300,23 @@ int main(int argc, char **argv) {
     if (!description.empty()) { meta_json["description"] = description; }
 
     fstd::FstdxWriter fstd_writer;
-    int ret = fstd_writer.compile_fstdmx(input_file, output_file, delimiter,
-                                         meta_json, block_size, compress_level,
-                                         zstd_dict_size, opt_sorted, verbose);
+    int ret = fstd_writer.compile_fstdmx(
+        write_input_file, output_file, delimiter, meta_json, block_size,
+        compress_level, zstd_dict_size, opt_sorted, verbose);
 
     if (ret != 0) {
       LOG_ERROR("编译失败，返回码：{}", ret);
       return ret;
     }
     LOG_INFO("编译成功");
+  } else if (*extract_cmd) {
+    fstd::FstdxWriter fstd_writer;
+    bool ret =
+        fstd_writer.extract_fstdx(extract_input_file, extract_output_file);
+    if (!ret) { return 3; }
   } else {
     LOG_ERROR("未知子命令");
     return 1;
   }
-
   return 0;
 }
