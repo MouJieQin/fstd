@@ -1,9 +1,9 @@
 #include <fstream>
 #include <thread>
 
-#include <fstd/compress_dx.hpp>
+#include <fstd/fstdx_compressor.h>
 #include <fstd/fstdx_writer.h>
-#include <fstd/logger.hpp>
+#include <fstd/logger.h>
 
 using namespace fst;
 using namespace std;
@@ -200,7 +200,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     }
   });
 
-  Dxcompressor compressor;
+  FstdxCompressor compressor;
   bool comp_res = false;
 
   std::ostringstream dictOut(ios_base::binary);

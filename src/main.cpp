@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <CLI/CLI.hpp>
-#include <fstd/fstdx_reader.hpp>
+#include <fstd/fstdx_reader.h>
 #include <fstd/fstdx_writer.h>
 #include <fstd/logger.hpp>
 

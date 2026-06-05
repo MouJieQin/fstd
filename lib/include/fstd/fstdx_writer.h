@@ -1,7 +1,8 @@
 #pragma once
-#include <fstd/fstdx_reader.hpp>
-#include <nlohmann/json.hpp>
 #include <sstream>
+#include <nlohmann/json.hpp>
+
+#include <fstd/fstdx_reader.h>
 
 namespace fstd {
 constexpr auto DELIMITER = "</>";
@@ -51,7 +52,7 @@ private:
                      std::vector<std::string> &keys,
                      std::vector<std::string> &values);
 
-  bool load_file(ifstream &fin, std::vector<std::string> &keys,
+  bool load_file(std::ifstream &fin, std::vector<std::string> &keys,
                  std::vector<std::string> &values);
 
   void sort_keys_values(std::vector<std::string> &keys,
