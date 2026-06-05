@@ -5,10 +5,8 @@
 
 #include <CLI/CLI.hpp>
 #include <fstd/fstdx_reader.hpp>
-#include <fstd/fstdx_writer.hpp>
+#include <fstd/fstdx_writer.h>
 #include <fstd/logger.hpp>
-
-#define VERSION "0.1.0"
 
 using namespace std;
 using json = nlohmann::json;
@@ -277,7 +275,6 @@ int main(int argc, char **argv) {
         }
       }
     }
-    meta_json["Version"] = VERSION;
 
     if (!title.empty()) {
       string content;
@@ -300,9 +297,9 @@ int main(int argc, char **argv) {
     if (!description.empty()) { meta_json["description"] = description; }
 
     fstd::FstdxWriter fstd_writer;
-    int ret = fstd_writer.compile_fstdmx(
-        write_input_file, output_file, delimiter, meta_json, block_size,
-        compress_level, zstd_dict_size, opt_sorted, verbose);
+    int ret = fstd_writer.compile_fstdx(write_input_file, output_file,
+                                        meta_json, block_size, compress_level,
+                                        zstd_dict_size, opt_sorted, verbose);
 
     if (ret != 0) {
       LOG_ERROR("编译失败，返回码：{}", ret);

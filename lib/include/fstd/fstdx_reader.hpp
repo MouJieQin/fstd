@@ -7,6 +7,7 @@
 #include <fstd/fstlib_wrapper.h>
 #include <fstd/logger.hpp>
 
+#define FSTD_VERSION "0.1.0"
 namespace fstd {
 
 using namespace std;
@@ -39,8 +40,6 @@ public:
   const json &get_meta() const { return mx_json_header_["meta"]; }
 
   size_t get_key_size() const { return key_size_; }
-
-  std::string get_delimiter() const { return mx_json_header_["delimiter"]; }
 
   size_t get_fst_key_size() const { return fst_key_size_; }
 
