@@ -7,9 +7,11 @@
 #include <fstd/fstdx_compressor.h>
 #include <fstd/logger.h>
 
+using namespace indicators;
+
 namespace fstd {
 
-BlockIndex::BlockIndex(uint32_t end_entry_index, uint32_t block_offset,
+BlockIndex::BlockIndex(uint32_t end_entry_index, uint64_t block_offset,
                        uint32_t block_size, uint32_t original_block_size)
     : end_entry_index(end_entry_index), block_offset(block_offset),
       block_size(block_size), original_block_size(original_block_size) {}
@@ -20,7 +22,8 @@ EntryIndex::EntryIndex(uint32_t entry_offset, uint32_t entry_size)
 bool FstdxCompressor::compressTextToStream(
     const std::vector<std::string> &texts, std::ostream &dictOut,
     std::ostream &blockIdxOut, std::ostream &entryIdxOut, std::ostream &compOut,
-    size_t dictSize, size_t blockSize, int compressionLevel) {
+    size_t dictSize, size_t blockSize, int compressionLevel,
+    ThreadPool &thread_pool, DynamicProgress<BlockProgressBar> &bars) {
   // 1. 训练并保存字典
   std::vector<char> dictBuffer(dictSize);
   if (!trainZstdDictionary(texts, dictBuffer.data(), dictSize)) {
@@ -32,7 +35,7 @@ bool FstdxCompressor::compressTextToStream(
   // 2. 压缩
   if (!compressTextsToStreamImpl(texts, dictBuffer.data(), dictSize,
                                  blockIdxOut, entryIdxOut, compOut, blockSize,
-                                 compressionLevel)) {
+                                 compressionLevel, thread_pool, bars)) {
     LOG_ERROR("压缩失败！");
     return false;
   }
@@ -149,7 +152,8 @@ bool FstdxCompressor::saveDictionary(std::ostream &os, const char *dictBuffer,
 bool FstdxCompressor::compressTextsToStreamImpl(
     const std::vector<std::string> &texts, const char *dictBuffer,
     size_t dictSize, std::ostream &blockIdxOut, std::ostream &entryIdxOut,
-    std::ostream &compOut, size_t blockSize, int compressionLevel) const {
+    std::ostream &compOut, size_t blockSize, int compressionLevel,
+    ThreadPool &thread_pool, DynamicProgress<BlockProgressBar> &bars) const {
   if (!blockIdxOut || !entryIdxOut || !compOut) return false;
 
   ZSTD_CDict *cdict = ZSTD_createCDict(dictBuffer, dictSize, compressionLevel);
@@ -165,67 +169,79 @@ bool FstdxCompressor::compressTextsToStreamImpl(
 
   ZSTD_CCtx_setParameter(cctx, ZSTD_c_checksumFlag, ENABLE_CHECKSUM ? 1 : 0);
 
-  std::string blockBuffer;
-  blockBuffer.reserve(blockSize * 2);
   std::vector<BlockIndex> block_indexes;
   std::vector<EntryIndex> entry_indexes;
   entry_indexes.reserve(texts.size());
 
-  uint64_t currentCompOffset = 0;
-  size_t blockStartIndex = 0;
-  bool success = true;
+  std::vector<std::tuple<size_t, size_t, size_t>> block_record;
+  size_t total_size = 0;
+  size_t block_buf_size = 0;
+  size_t block_pos = 0;
 
-  for (uint32_t i = 0; i < texts.size(); ++i) {
-    const std::string &text = texts[i];
-    uint32_t entry_size = (uint32_t)text.size();
-    uint32_t entry_offset = (uint32_t)blockBuffer.size();
+  for (size_t i = 0; i < texts.size(); ++i) {
+    total_size += texts[i].size();
+    uint32_t entry_size = (uint32_t)texts[i].size();
+    uint32_t entry_offset = (uint32_t)block_buf_size;
     entry_indexes.emplace_back(entry_offset, entry_size);
-    blockBuffer.append(text);
-
-    if (blockBuffer.size() >= blockSize) {
-      size_t compBufSize = ZSTD_compressBound(blockBuffer.size());
-      std::vector<char> compBuf(compBufSize);
-
-      size_t compSize = ZSTD_compress_usingCDict(
-          cctx, compBuf.data(), compBuf.size(), blockBuffer.data(),
-          blockBuffer.size(), cdict);
-
-      if (ZSTD_isError(compSize)) {
-        free_zstd_resource();
-        return false;
-      }
-
-      compOut.write(compBuf.data(), compSize);
-
-      blockStartIndex = i + 1;
-      block_indexes.emplace_back(blockStartIndex, currentCompOffset,
-                                 (uint32_t)compSize,
-                                 (uint32_t)blockBuffer.size());
-
-      currentCompOffset += compSize;
-      blockBuffer.clear();
+    block_buf_size += texts[i].size();
+    if (block_buf_size >= blockSize) {
+      block_record.emplace_back(block_pos, block_buf_size, i + 1);
+      block_pos += block_buf_size;
+      block_buf_size = 0;
     }
   }
+  if (block_buf_size != 0) {
+    block_record.emplace_back(block_pos, block_buf_size, texts.size());
+  }
 
-  // 处理最后一块未满的缓冲区
-  if (!blockBuffer.empty()) {
-    size_t compBufSize = ZSTD_compressBound(blockBuffer.size());
-    std::vector<char> compBuf(compBufSize);
+  std::string texts_buff;
+  texts_buff.reserve(total_size);
+  for (uint32_t i = 0; i < texts.size(); ++i) {
+    texts_buff += texts[i];
+  }
 
-    size_t compSize =
-        ZSTD_compress_usingCDict(cctx, compBuf.data(), compBuf.size(),
-                                 blockBuffer.data(), blockBuffer.size(), cdict);
+  const bool show_progress = is_terminal();
+
+  std::vector<char> compBuf;
+  uint64_t currentCompOffset = 0;
+  size_t last_progress = 0;
+
+  size_t bar_idx = 0;
+  // progress bar
+  auto progress_comp_block = [&](const size_t index, const size_t block_size) {
+    size_t count = index + 1;
+    if (show_progress) {
+      size_t progress = count * 100 / block_size;
+      if (progress > last_progress) {
+        bars[bar_idx].set_option(option::PostfixText{
+            std::to_string(count) + "/" + std::to_string(block_size)});
+        bars[bar_idx].set_progress(progress);
+        last_progress = progress;
+      }
+      if (count == block_size) { bars[bar_idx].mark_as_completed(); }
+    }
+  };
+
+  for (size_t i = 0; i < block_record.size(); ++i) {
+    auto [block_pos, block_buf_size, end_entry_index] = block_record[i];
+    size_t compBufSize = ZSTD_compressBound(block_buf_size);
+    compBuf.resize(compBufSize);
+    size_t compSize = ZSTD_compress_usingCDict(
+        cctx, compBuf.data(), compBuf.size(), texts_buff.c_str() + block_pos,
+        block_buf_size, cdict);
 
     if (ZSTD_isError(compSize)) {
       free_zstd_resource();
+      LOG_ERROR("Compress blocks failed: {}", ZSTD_getErrorName(compSize));
       return false;
     }
 
     compOut.write(compBuf.data(), compSize);
-
-    block_indexes.emplace_back(texts.size(), currentCompOffset,
-                               (uint32_t)compSize,
-                               (uint32_t)blockBuffer.size());
+    block_indexes.emplace_back((uint32_t)end_entry_index,
+                               (uint64_t)currentCompOffset, (uint32_t)compSize,
+                               (uint32_t)block_buf_size);
+    currentCompOffset += compSize;
+    progress_comp_block(i, block_record.size());
   }
 
   blockIdxOut.write(reinterpret_cast<const char *>(block_indexes.data()),
@@ -234,7 +250,7 @@ bool FstdxCompressor::compressTextsToStreamImpl(
                     entry_indexes.size() * sizeof(EntryIndex));
 
   free_zstd_resource();
-  return success;
+  return true;
 }
 
 size_t FstdxCompressor::bin_search_block_index(

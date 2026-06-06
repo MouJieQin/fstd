@@ -12,7 +12,7 @@
 #include <vector>
 
 // 获取 CPU 逻辑核心数（兼容所有系统）
-unsigned int get_cpu_core_count() {
+inline unsigned int get_cpu_core_count() {
   unsigned int core_num = std::thread::hardware_concurrency();
   // 容错：旧系统不支持时，默认返回 4 核心
   if (core_num == 0) { core_num = 4; }
@@ -25,7 +25,7 @@ enum class TaskType {
   IO_INTENSIVE   // IO 密集型
 };
 
-unsigned int get_optimal_thread_num(TaskType type) {
+inline unsigned int get_optimal_thread_num(TaskType type) {
   unsigned int core_num = get_cpu_core_count();
   switch (type) {
   case TaskType::CPU_INTENSIVE:
@@ -45,6 +45,8 @@ public:
   auto enqueue(F &&f, Args &&...args)
       -> std::future<std::invoke_result_t<F, Args...>>;
   ~ThreadPool();
+
+  size_t worker_num() const;
 
 private:
   // 需要保留线程对象，让它们保持运行
@@ -78,6 +80,8 @@ inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
       }
     });
 }
+
+inline size_t ThreadPool::worker_num() const { return workers.size(); }
 
 // 添加任务到线程池
 template <class F, class... Args>

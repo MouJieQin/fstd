@@ -6,7 +6,6 @@
 #include <fstd/thread_pool.h>
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/dynamic_progress.hpp>
-#include <indicators/progress_bar.hpp>
 
 using namespace fst;
 using namespace std;
@@ -189,33 +188,32 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   value_fout.close();
 
   DynamicProgress<BlockProgressBar> bars;
+  auto build_fst_bar_ptr = std::make_unique<BlockProgressBar>(
+      option::BarWidth{80}, option::Start{"["}, option::End{"]"},
+      option::PrefixText{"Compiling key FST: "}, option::ShowElapsedTime{true},
+      option::ShowRemainingTime{true}, option::ForegroundColor{Color::cyan},
+      option::ShowPercentage{true},
+      option::FontStyles{std::vector<FontStyle>{FontStyle::bold}});
+  bars.set_option(option::HideBarWhenComplete{false});
   size_t thread_num = worker_num;
   if (worker_num == 0) { thread_num = get_cpu_core_count(); }
   ThreadPool thread_pool(thread_num);
+  vector<shared_ptr<BlockProgressBar>> block_bars;
+
+  for (size_t i = 0; i < thread_num; ++i) {
+    block_bars.emplace_back(std::make_shared<BlockProgressBar>(
+        option::BarWidth{80}, option::Start{"["}, option::End{"]"},
+        option::PrefixText{"Compressing value blocks:        "},
+        option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
+        option::ForegroundColor{Color::white}, option::ShowPercentage{true},
+        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}));
+    bars.push_back(*block_bars.back());
+  }
 
   ostringstream oss_key_fst_out(ios_base::binary);
   const bool show_progress = is_terminal();
   auto compile_res = thread_pool.enqueue([&]() {
-    // ProgressBar build_fst_bar(
-    //     option::BarWidth{50}, option::ForegroundColor{Color::cyan},
-    //     option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
-    //     option::PrefixText{"Compiling key FST: "},
-    //     option::PostfixText{"Loading dependency 1/4"},
-    //     option::ShowPercentage{true},
-    //     option::FontStyles{std::vector<FontStyle>{FontStyle::bold}});
-
-    BlockProgressBar build_fst_bar{
-        option::BarWidth{80},
-        option::Start{"["},
-        option::End{"]"},
-        option::PrefixText{"Compiling key FST: "},
-        option::ShowElapsedTime{true},
-        option::ShowRemainingTime{true},
-        option::ForegroundColor{Color::cyan},
-        option::ShowPercentage{true},
-        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}};
-
-    size_t i = bars.push_back(build_fst_bar);
+    size_t i = bars.push_back(*build_fst_bar_ptr);
     size_t last_progress = 0;
     auto progress_build_fst = [&](const size_t index) {
       if (show_progress) {
@@ -230,19 +228,19 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
       }
     };
 
-    bool compile_res = compile_fst(input, oss_key_fst_out, true, opt_verbose,
-                                   progress_build_fst);
+    bool res = compile_fst(input, oss_key_fst_out, true, opt_verbose,
+                           progress_build_fst);
     {
       // 释放input内存
       vector<pair<string, uint64_t>> tmp;
       input.swap(tmp);
     }
-    if (compile_res) {
+    if (res) {
       LOG_INFO("FST compiled.");
     } else {
       LOG_ERROR("Compile FST failed.");
     }
-    return compile_res;
+    return res;
   });
 
   FstdxCompressor compressor;
@@ -255,7 +253,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   LOG_INFO("Compressing values...");
   if (!compressor.compressTextToStream(
           values, dictOut, blockIdxOut, entryIdxOut, compOut,
-          block_size_kb * 1024, zstd_dict_size_kb * 1024, compress_level)) {
+          zstd_dict_size_kb * 1024, block_size_kb * 1024, compress_level,
+          thread_pool, bars)) {
     return 3;
   }
 

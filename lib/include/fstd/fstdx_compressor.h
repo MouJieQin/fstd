@@ -2,6 +2,9 @@
 #include <string>
 #include <vector>
 
+#include <fstd/thread_pool.h>
+#include <indicators/block_progress_bar.hpp>
+#include <indicators/dynamic_progress.hpp>
 #include <zstd.h>
 
 constexpr bool ENABLE_CHECKSUM = true;
@@ -9,7 +12,7 @@ namespace fstd {
 
 struct BlockIndex {
   BlockIndex() = default;
-  BlockIndex(uint32_t end_entry_index, uint32_t block_offset,
+  BlockIndex(uint32_t end_entry_index, uint64_t block_offset,
              uint32_t block_size, uint32_t original_block_size);
   uint32_t end_entry_index;
   uint64_t block_offset;
@@ -30,11 +33,12 @@ public:
   FstdxCompressor() = default;
   ~FstdxCompressor() = default;
 
-  bool compressTextToStream(const std::vector<std::string> &texts,
-                            std::ostream &dictOut, std::ostream &blockIdxOut,
-                            std::ostream &entryIdxOut, std::ostream &compOut,
-                            size_t dictSize, size_t blockSize,
-                            int compressionLevel);
+  bool compressTextToStream(
+      const std::vector<std::string> &texts, std::ostream &dictOut,
+      std::ostream &blockIdxOut, std::ostream &entryIdxOut,
+      std::ostream &compOut, size_t dictSize, size_t blockSize,
+      int compressionLevel, ThreadPool &thread_pool,
+      indicators::DynamicProgress<indicators::BlockProgressBar> &bars);
 
   bool compressToBuffer(const std::string &src, size_t srcSize,
                         std::vector<char> &dst, int compressionLevel);
@@ -67,12 +71,12 @@ private:
 
   std::vector<char> loadDictionary(const char *dictFile);
 
-  bool compressTextsToStreamImpl(const std::vector<std::string> &texts,
-                                 const char *dictBuffer, size_t dictSize,
-                                 std::ostream &blockIdxOut,
-                                 std::ostream &entryIdxOut,
-                                 std::ostream &compOut, size_t blockSize,
-                                 int compressionLevel) const;
+  bool compressTextsToStreamImpl(
+      const std::vector<std::string> &texts, const char *dictBuffer,
+      size_t dictSize, std::ostream &blockIdxOut, std::ostream &entryIdxOut,
+      std::ostream &compOut, size_t blockSize, int compressionLevel,
+      ThreadPool &thread_pool,
+      indicators::DynamicProgress<indicators::BlockProgressBar> &bars) const;
 
   size_t
   bin_search_block_index(uint32_t entry_index,
