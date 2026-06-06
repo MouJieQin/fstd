@@ -5,10 +5,6 @@
 
 namespace fstd {
 
-// inline std::pair<fst::Result, size_t>
-// compile(const std::vector<std::pair<std::string, uint64_t>> &input,
-//         std::ostream &os, bool sorted, bool verbose = false);
-
 // ------------------------------
 // 通用：根据元素大小排序索引
 // ------------------------------
@@ -66,28 +62,29 @@ sort_container(std::vector<std::string> &&input) {
 template <typename output_t>
 inline std::pair<fst::Result, size_t>
 compile(const std::vector<std::pair<std::string, output_t>> &input,
-        std::ostream &os, bool sorted, bool verbose) {
+        std::ostream &os, bool sorted, bool verbose,
+        std::function<void(size_t)> progress) {
   fst::FstWriter<output_t, true> writer(os, true, false, verbose,
                                         [&](const auto &feeder) {
                                           for (const auto &[word, _] : input) {
                                             feeder(word);
                                           }
                                         });
-  return fst::build_fst<output_t>(input, writer, true, sorted);
+  return fst::build_fst<output_t>(input, writer, true, sorted, progress);
 }
 
 void show_error_message(fst::Result result, size_t line);
 
 template <typename output_t>
 bool compile_fst(const std::vector<std::pair<std::string, output_t>> &input,
-                 std::ostringstream &oss_out, bool opt_sorted,
-                 bool opt_verbose) {
+                 std::ostringstream &oss_out, bool opt_sorted, bool opt_verbose,
+                 std::function<void(size_t)> progress = nullptr) {
   fst::Result result;
   size_t line;
 
   // std::tie(result, line) = fst::dot<uint64_t>(input, oss_out, false);
   std::tie(result, line) =
-      fstd::compile(input, oss_out, opt_sorted, opt_verbose);
+      fstd::compile(input, oss_out, opt_sorted, opt_verbose, progress);
 
   if (result == fst::Result::Success) { return true; }
   show_error_message(result, line);

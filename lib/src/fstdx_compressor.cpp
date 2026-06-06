@@ -154,9 +154,12 @@ bool FstdxCompressor::compressTextsToStreamImpl(
 
   ZSTD_CDict *cdict = ZSTD_createCDict(dictBuffer, dictSize, compressionLevel);
   ZSTD_CCtx *cctx = ZSTD_createCCtx();
-  if (!cdict || !cctx) {
+  const auto free_zstd_resource = [cctx, cdict]() {
     ZSTD_freeCCtx(cctx);
     ZSTD_freeCDict(cdict);
+  };
+  if (!cdict || !cctx) {
+    free_zstd_resource();
     return false;
   }
 
@@ -188,8 +191,8 @@ bool FstdxCompressor::compressTextsToStreamImpl(
           blockBuffer.size(), cdict);
 
       if (ZSTD_isError(compSize)) {
-        success = false;
-        goto cleanup;
+        free_zstd_resource();
+        return false;
       }
 
       compOut.write(compBuf.data(), compSize);
@@ -214,8 +217,8 @@ bool FstdxCompressor::compressTextsToStreamImpl(
                                  blockBuffer.data(), blockBuffer.size(), cdict);
 
     if (ZSTD_isError(compSize)) {
-      success = false;
-      goto cleanup;
+      free_zstd_resource();
+      return false;
     }
 
     compOut.write(compBuf.data(), compSize);
@@ -230,9 +233,7 @@ bool FstdxCompressor::compressTextsToStreamImpl(
   entryIdxOut.write(reinterpret_cast<const char *>(entry_indexes.data()),
                     entry_indexes.size() * sizeof(EntryIndex));
 
-cleanup:
-  ZSTD_freeCCtx(cctx);
-  ZSTD_freeCDict(cdict);
+  free_zstd_resource();
   return success;
 }
 

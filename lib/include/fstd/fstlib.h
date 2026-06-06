@@ -927,9 +927,10 @@ build_fst_core(const Input &input, Writer &writer, bool need_output) {
 // build_fst
 //-----------------------------------------------------------------------------
 
-template <typename output_t, typename Input, typename Writer>
+template <typename output_t, typename Input, typename Writer, typename Progess>
 inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
-                                           bool need_output, bool sorted) {
+                                           bool need_output, bool sorted,
+                                           Progess progress = nullptr) {
   return build_fst_core<output_t>(
       [&](const auto &feeder) {
         if (sorted) {
@@ -939,6 +940,7 @@ inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
             const auto &output = item.second;
             if (!feeder(word, output, input_index)) { break; }
             input_index++;
+            if (progress) { progress(input_index); }
           }
         } else {
           std::vector<size_t> sorted_indexes(input.size());
@@ -949,10 +951,12 @@ inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
                         return input[a].first < input[b].first;
                       });
           }
-
+          size_t count = 0;
           for (auto input_index : sorted_indexes) {
             const auto &[word, output] = input[input_index];
             if (!feeder(word, output, input_index)) { break; }
+            count += 1;
+            if (progress) { progress(count); }
           }
         }
       },

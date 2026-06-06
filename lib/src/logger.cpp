@@ -1,5 +1,3 @@
-#pragma once
-
 #include <fstd/logger.h>
 
 Logger &Logger::instance() {

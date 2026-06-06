@@ -5,6 +5,17 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+// 跨平台判断：标准输出是否是终端
+#ifdef _WIN32
+#include <windows.h>
+bool is_terminal() {
+  return GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), nullptr) != 0;
+}
+#else
+#include <unistd.h>
+inline bool is_terminal() { return isatty(STDOUT_FILENO) == 1; }
+#endif
+
 // 日志配置（可自行修改）
 #define LOG_FILE_NAME "fstd.log"     // 日志文件名
 #define LOG_MAX_SIZE 1024 * 1024 * 5 // 单个日志最大 5MB

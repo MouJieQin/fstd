@@ -6,7 +6,7 @@
 #include <CLI/CLI.hpp>
 #include <fstd/fstdx_reader.h>
 #include <fstd/fstdx_writer.h>
-#include <fstd/logger.hpp>
+#include <fstd/logger.h>
 
 using namespace std;
 using json = nlohmann::json;
@@ -101,9 +101,6 @@ int main(int argc, char **argv) {
   std::string write_input_file;
   write_cmd->add_option("-f,--file", write_input_file, "输入文件路径")
       ->required();
-  std::string delimiter = "</>";
-  write_cmd->add_option("--delimiter", delimiter, "分隔符，默认</>")
-      ->default_val("</>");
   std::string title = "";
   write_cmd->add_option("-t,--title", title, "标题，[字符串/文件路径]")
       ->default_val("");
@@ -132,6 +129,12 @@ int main(int argc, char **argv) {
       ->default_val("32");
   bool opt_sorted = false;
   write_cmd->add_flag("-s,--sorted", opt_sorted, "是否已按键排序，默认false");
+
+  size_t write_worker_num = 0;
+  write_cmd
+      ->add_option("-w,--worker", write_worker_num,
+                   "the number of thread workers.")
+      ->default_val(0);
 
   // 解析参数，异常自动捕获并打印帮助
   try {
@@ -258,6 +261,7 @@ int main(int argc, char **argv) {
 
   } else if (*write_cmd) {
     json meta_json;
+    meta_json["Version"] = FSTD_VERSION;
     if (!meta_json_file.empty()) {
       std::string content;
       if (!read_file(meta_json_file, content)) {
@@ -297,9 +301,9 @@ int main(int argc, char **argv) {
     if (!description.empty()) { meta_json["description"] = description; }
 
     fstd::FstdxWriter fstd_writer;
-    int ret = fstd_writer.compile_fstdx(write_input_file, output_file,
-                                        meta_json, block_size, compress_level,
-                                        zstd_dict_size, opt_sorted, verbose);
+    int ret = fstd_writer.compile_fstdx(
+        write_input_file, output_file, meta_json, block_size, compress_level,
+        zstd_dict_size, write_worker_num, opt_sorted, verbose);
 
     if (ret != 0) {
       LOG_ERROR("编译失败，返回码：{}", ret);

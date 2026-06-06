@@ -1,12 +1,16 @@
 #include <fstream>
-#include <thread>
 
 #include <fstd/fstdx_compressor.h>
 #include <fstd/fstdx_writer.h>
 #include <fstd/logger.h>
+#include <fstd/thread_pool.h>
+#include <indicators/block_progress_bar.hpp>
+#include <indicators/dynamic_progress.hpp>
+#include <indicators/progress_bar.hpp>
 
 using namespace fst;
 using namespace std;
+using namespace indicators;
 using json = nlohmann::json;
 
 namespace fstd {
@@ -73,15 +77,15 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                                std::vector<std::string> &values,
                                const json &meta, uint16_t block_size_kb,
                                uint8_t compress_level,
-                               uint16_t zstd_dict_size_kb, bool opt_sorted,
-                               bool opt_verbose) {
+                               uint16_t zstd_dict_size_kb, size_t worker_num,
+                               bool opt_sorted, bool opt_verbose) {
   ofstream fout(output_file, ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
     return 1;
   }
   return compile_fstdx(fout, keys, values, meta, block_size_kb, compress_level,
-                       zstd_dict_size_kb, opt_sorted, opt_verbose);
+                       zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
 }
 
 int FstdxWriter::compile_fstdx(const std::string &output_file,
@@ -89,8 +93,8 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                                std::vector<std::string> &values,
                                const std::string &meta_json_str,
                                uint16_t block_size_kb, uint8_t compress_level,
-                               uint16_t zstd_dict_size_kb, bool opt_sorted,
-                               bool opt_verbose) {
+                               uint16_t zstd_dict_size_kb, size_t worker_num,
+                               bool opt_sorted, bool opt_verbose) {
 
   json meta_json;
   try {
@@ -103,15 +107,15 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
     return 1;
   }
   return compile_fstdx(output_file, keys, values, meta_json, block_size_kb,
-                       compress_level, zstd_dict_size_kb, opt_sorted,
-                       opt_verbose);
+                       compress_level, zstd_dict_size_kb, worker_num,
+                       opt_sorted, opt_verbose);
 }
 
 int FstdxWriter::compile_fstdx(const std::string &input_file,
                                const std::string &output_file, const json &meta,
                                uint16_t block_size_kb, uint8_t compress_level,
-                               uint16_t zstd_dict_size_kb, bool opt_sorted,
-                               bool opt_verbose) {
+                               uint16_t zstd_dict_size_kb, size_t worker_num,
+                               bool opt_sorted, bool opt_verbose) {
   ifstream fin(input_file);
   if (!fin) {
     LOG_ERROR("Failed to open file {} for reading.", input_file);
@@ -129,7 +133,7 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
   if (!load_file(fin, keys, values)) { return 1; }
   fin.close();
   return compile_fstdx(fout, keys, values, meta, block_size_kb, compress_level,
-                       zstd_dict_size_kb, opt_sorted, opt_verbose);
+                       zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
 }
 
 int FstdxWriter::compile_fstdx(std::ostream &fout,
@@ -137,8 +141,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
                                std::vector<std::string> &values,
                                const json &meta, uint16_t block_size_kb,
                                uint8_t compress_level,
-                               uint16_t zstd_dict_size_kb, bool opt_sorted,
-                               bool opt_verbose) {
+                               uint16_t zstd_dict_size_kb, size_t worker_num,
+                               bool opt_sorted, bool opt_verbose) {
   MxJsonHeader header;
   if (!handle_meta(meta, header)) { return 5; }
   LOG_INFO("handle_meta success.");
@@ -184,10 +188,50 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   }
   value_fout.close();
 
+  DynamicProgress<BlockProgressBar> bars;
+  size_t thread_num = worker_num;
+  if (worker_num == 0) { thread_num = get_cpu_core_count(); }
+  ThreadPool thread_pool(thread_num);
+
   ostringstream oss_key_fst_out(ios_base::binary);
-  bool compile_res = false;
-  std::thread compile_thread([&]() {
-    compile_res = compile_fst(input, oss_key_fst_out, true, opt_verbose);
+  const bool show_progress = is_terminal();
+  auto compile_res = thread_pool.enqueue([&]() {
+    // ProgressBar build_fst_bar(
+    //     option::BarWidth{50}, option::ForegroundColor{Color::cyan},
+    //     option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
+    //     option::PrefixText{"Compiling key FST: "},
+    //     option::PostfixText{"Loading dependency 1/4"},
+    //     option::ShowPercentage{true},
+    //     option::FontStyles{std::vector<FontStyle>{FontStyle::bold}});
+
+    BlockProgressBar build_fst_bar{
+        option::BarWidth{80},
+        option::Start{"["},
+        option::End{"]"},
+        option::PrefixText{"Compiling key FST: "},
+        option::ShowElapsedTime{true},
+        option::ShowRemainingTime{true},
+        option::ForegroundColor{Color::cyan},
+        option::ShowPercentage{true},
+        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}};
+
+    size_t i = bars.push_back(build_fst_bar);
+    size_t last_progress = 0;
+    auto progress_build_fst = [&](const size_t index) {
+      if (show_progress) {
+        size_t progress = index * 100 / input.size();
+        if (progress > last_progress) {
+          bars[i].set_option(option::PostfixText{std::to_string(index) + "/" +
+                                                 std::to_string(input.size())});
+          bars[i].set_progress(progress);
+          last_progress = progress;
+        }
+        if (index == input.size()) { bars[i].mark_as_completed(); }
+      }
+    };
+
+    bool compile_res = compile_fst(input, oss_key_fst_out, true, opt_verbose,
+                                   progress_build_fst);
     {
       // 释放input内存
       vector<pair<string, uint64_t>> tmp;
@@ -198,6 +242,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     } else {
       LOG_ERROR("Compile FST failed.");
     }
+    return compile_res;
   });
 
   FstdxCompressor compressor;
@@ -249,8 +294,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     entryIdxOut.swap(tmp);
   }
 
-  compile_thread.join();
-  if (!compile_res) { return 2; }
+  if (!compile_res.get()) { return 2; }
   std::vector<char> comp_key_fst_dst;
   {
     comp_res = compressor.compressToBuffer(oss_key_fst_out.str(),
@@ -485,9 +529,10 @@ void FstdxWriter::make_output(
 
 bool FstdxWriter::compile_fst(
     std::vector<std::pair<std::string, uint64_t>> &input,
-    std::ostringstream &oss_out, bool opt_sorted, bool opt_verbose) {
+    std::ostringstream &oss_out, bool opt_sorted, bool opt_verbose,
+    std::function<void(size_t)> progress) {
   LOG_INFO("Compiling FST for {} keys...", input.size());
-  return fstd::compile_fst(input, oss_out, opt_sorted, opt_verbose);
+  return fstd::compile_fst(input, oss_out, opt_sorted, opt_verbose, progress);
 }
 
 const nlohmann::json FstdxWriter::meta_default =
