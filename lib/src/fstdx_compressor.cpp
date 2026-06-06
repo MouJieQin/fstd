@@ -8,7 +8,7 @@
 #include <fstd/logger.h>
 
 using namespace indicators;
-
+using namespace std;
 namespace fstd {
 
 BlockIndex::BlockIndex(uint32_t end_entry_index, uint64_t block_offset,
@@ -157,18 +157,8 @@ bool FstdxCompressor::compressTextsToStreamImpl(
   if (!blockIdxOut || !entryIdxOut || !compOut) return false;
 
   ZSTD_CDict *cdict = ZSTD_createCDict(dictBuffer, dictSize, compressionLevel);
-  ZSTD_CCtx *cctx = ZSTD_createCCtx();
-  const auto free_zstd_resource = [cctx, cdict]() {
-    ZSTD_freeCCtx(cctx);
-    ZSTD_freeCDict(cdict);
-  };
-  if (!cdict || !cctx) {
-    free_zstd_resource();
-    return false;
-  }
-
-  ZSTD_CCtx_setParameter(cctx, ZSTD_c_checksumFlag, ENABLE_CHECKSUM ? 1 : 0);
-
+  if (!cdict) { return false; }
+  std::atomic<bool> success = true;
   std::vector<BlockIndex> block_indexes;
   std::vector<EntryIndex> entry_indexes;
   entry_indexes.reserve(texts.size());
@@ -202,54 +192,116 @@ bool FstdxCompressor::compressTextsToStreamImpl(
 
   const bool show_progress = is_terminal();
 
-  std::vector<char> compBuf;
-  uint64_t currentCompOffset = 0;
-  size_t last_progress = 0;
+  size_t worker_size = thread_pool.worker_num();
+  std::vector<std::unique_ptr<std::ostringstream>> comp_os_buffs;
+  comp_os_buffs.reserve(worker_size); // 预分配
 
-  size_t bar_idx = 0;
-  // progress bar
-  auto progress_comp_block = [&](const size_t index, const size_t block_size) {
-    size_t count = index + 1;
-    if (show_progress) {
-      size_t progress = count * 100 / block_size;
-      if (progress > last_progress) {
-        bars[bar_idx].set_option(option::PostfixText{
-            std::to_string(count) + "/" + std::to_string(block_size)});
-        bars[bar_idx].set_progress(progress);
-        last_progress = progress;
+  for (size_t i = 0; i < worker_size; ++i) {
+    // 关键：创建时指定 binary 模式
+    comp_os_buffs.emplace_back(
+        std::make_unique<std::ostringstream>(std::ios_base::binary));
+  }
+  vector<vector<BlockIndex>> block_index_buff(worker_size);
+
+  auto comp_worker = [&](size_t begin_idx, size_t end_idx, size_t bar_idx) {
+    LOG_INFO("{}, {}, {}", begin_idx, end_idx, bar_idx);
+    uint64_t currentCompOffset = 0;
+    ZSTD_CCtx *cctx = ZSTD_createCCtx();
+    if (!cctx) { return false; }
+    ZSTD_CCtx_setParameter(cctx, ZSTD_c_checksumFlag, ENABLE_CHECKSUM ? 1 : 0);
+    vector<char> compBuf;
+    size_t last_progress = 0;
+
+    // progress bar
+    auto progress_comp_block = [&](const size_t index, const size_t block_size,
+                                   const size_t bar_idx) {
+      size_t count = index + 1;
+      if (show_progress) {
+        size_t progress = count * 100 / block_size;
+        if (progress > last_progress) {
+          bars[bar_idx].set_option(option::PostfixText{
+              std::to_string(count) + "/" + std::to_string(block_size)});
+          bars[bar_idx].set_progress(progress);
+          last_progress = progress;
+        }
+        if (count == block_size) { bars[bar_idx].mark_as_completed(); }
       }
-      if (count == block_size) { bars[bar_idx].mark_as_completed(); }
+    };
+
+    for (size_t i = begin_idx; i < end_idx; ++i) {
+      if (!success) {
+        // compression failed in other workers
+        ZSTD_freeCCtx(cctx);
+        return false;
+      }
+      auto [block_pos, block_buf_size, end_entry_index] = block_record[i];
+      size_t compBufSize = ZSTD_compressBound(block_buf_size);
+      compBuf.resize(compBufSize);
+      size_t compSize = ZSTD_compress_usingCDict(
+          cctx, compBuf.data(), compBuf.size(), texts_buff.c_str() + block_pos,
+          block_buf_size, cdict);
+
+      if (ZSTD_isError(compSize)) {
+        success = false;
+        ZSTD_freeCCtx(cctx);
+        LOG_ERROR("Compress blocks failed: {}", ZSTD_getErrorName(compSize));
+        return false;
+      }
+
+      comp_os_buffs[bar_idx]->write(compBuf.data(), compSize);
+      block_index_buff[bar_idx].emplace_back(
+          (uint32_t)end_entry_index, (uint64_t)currentCompOffset,
+          (uint32_t)compSize, (uint32_t)block_buf_size);
+      currentCompOffset += compSize;
+
+      progress_comp_block(i - begin_idx + 1, end_idx - begin_idx, bar_idx);
     }
+    ZSTD_freeCCtx(cctx);
+    return true;
   };
 
-  for (size_t i = 0; i < block_record.size(); ++i) {
-    auto [block_pos, block_buf_size, end_entry_index] = block_record[i];
-    size_t compBufSize = ZSTD_compressBound(block_buf_size);
-    compBuf.resize(compBufSize);
-    size_t compSize = ZSTD_compress_usingCDict(
-        cctx, compBuf.data(), compBuf.size(), texts_buff.c_str() + block_pos,
-        block_buf_size, cdict);
+  size_t task_num = block_record.size() / worker_size;
 
-    if (ZSTD_isError(compSize)) {
-      free_zstd_resource();
-      LOG_ERROR("Compress blocks failed: {}", ZSTD_getErrorName(compSize));
-      return false;
-    }
-
-    compOut.write(compBuf.data(), compSize);
-    block_indexes.emplace_back((uint32_t)end_entry_index,
-                               (uint64_t)currentCompOffset, (uint32_t)compSize,
-                               (uint32_t)block_buf_size);
-    currentCompOffset += compSize;
-    progress_comp_block(i, block_record.size());
+  size_t start_index = 0;
+  size_t end_index = 0;
+  vector<future<bool>> results;
+  for (size_t i = 0; i < worker_size - 1; ++i) {
+    end_index = start_index + task_num;
+    results.emplace_back(
+        thread_pool.enqueue(comp_worker, start_index, end_index, i));
+    start_index = end_index;
   }
 
+  results.emplace_back(thread_pool.enqueue(
+      comp_worker, start_index, block_record.size(), worker_size - 1));
+
+  for (auto &f : results) {
+    if (!f.get()) { success = false; }
+  }
+
+  if (!success) {
+    ZSTD_freeCDict(cdict);
+    return false;
+  }
+
+  uint64_t currentCompOffset = 0;
+  for (size_t i = 0; i < block_index_buff.size(); ++i) {
+    for (auto &idx : block_index_buff[i]) {
+      idx.block_offset += currentCompOffset;
+      block_indexes.emplace_back(std::move(idx));
+    }
+    currentCompOffset += comp_os_buffs[i]->str().size();
+  }
+  for (auto &os_ptr : comp_os_buffs) {
+    LOG_INFO("os.str().size(): {}", os_ptr->str().size());
+    compOut.write(os_ptr->str().c_str(), os_ptr->str().size());
+  }
   blockIdxOut.write(reinterpret_cast<const char *>(block_indexes.data()),
                     block_indexes.size() * sizeof(BlockIndex));
   entryIdxOut.write(reinterpret_cast<const char *>(entry_indexes.data()),
                     entry_indexes.size() * sizeof(EntryIndex));
 
-  free_zstd_resource();
+  ZSTD_freeCDict(cdict);
   return true;
 }
 

@@ -6,6 +6,7 @@
 #include <fstd/thread_pool.h>
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/dynamic_progress.hpp>
+#include <indicators/cursor_control.hpp>
 
 using namespace fst;
 using namespace std;
@@ -187,10 +188,12 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   }
   value_fout.close();
 
+    // Hide cursor
+  show_console_cursor(false);
   DynamicProgress<BlockProgressBar> bars;
   auto build_fst_bar_ptr = std::make_unique<BlockProgressBar>(
       option::BarWidth{80}, option::Start{"["}, option::End{"]"},
-      option::PrefixText{"Compiling key FST: "}, option::ShowElapsedTime{true},
+      option::PrefixText{"Compiling key FST:        "}, option::ShowElapsedTime{true},
       option::ShowRemainingTime{true}, option::ForegroundColor{Color::cyan},
       option::ShowPercentage{true},
       option::FontStyles{std::vector<FontStyle>{FontStyle::bold}});
@@ -203,7 +206,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   for (size_t i = 0; i < thread_num; ++i) {
     block_bars.emplace_back(std::make_shared<BlockProgressBar>(
         option::BarWidth{80}, option::Start{"["}, option::End{"]"},
-        option::PrefixText{"Compressing value blocks:        "},
+        option::PrefixText{"Compressing value blocks: "},
         option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
         option::ForegroundColor{Color::white}, option::ShowPercentage{true},
         option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}));
@@ -257,6 +260,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
           thread_pool, bars)) {
     return 3;
   }
+  // Show cursor
+  show_console_cursor(true);
 
   std::ofstream dict_fout("zstd_dict.bin", ios_base::binary);
   dict_fout << dictOut.str();
