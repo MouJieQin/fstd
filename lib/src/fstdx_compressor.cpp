@@ -204,7 +204,7 @@ bool FstdxCompressor::compressTextsToStreamImpl(
   vector<vector<BlockIndex>> block_index_buff(worker_size);
 
   auto comp_worker = [&](size_t begin_idx, size_t end_idx, size_t bar_idx) {
-    LOG_INFO("{}, {}, {}", begin_idx, end_idx, bar_idx);
+    // LOG_INFO("{}, {}, {}", begin_idx, end_idx, bar_idx);
     uint64_t currentCompOffset = 0;
     ZSTD_CCtx *cctx = ZSTD_createCCtx();
     if (!cctx) { return false; }
@@ -293,7 +293,7 @@ bool FstdxCompressor::compressTextsToStreamImpl(
     currentCompOffset += comp_os_buffs[i]->str().size();
   }
   for (auto &os_ptr : comp_os_buffs) {
-    LOG_INFO("os.str().size(): {}", os_ptr->str().size());
+    // LOG_INFO("os.str().size(): {}", os_ptr->str().size());
     compOut.write(os_ptr->str().c_str(), os_ptr->str().size());
   }
   blockIdxOut.write(reinterpret_cast<const char *>(block_indexes.data()),
