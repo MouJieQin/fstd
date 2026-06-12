@@ -410,9 +410,7 @@ bool FstdxSearcher::save_fst_index_to_disk(const std::string &fst_index_path) {
   auto ptr = fst_indexes_searcher_.get_fst_byte_code();
   meta_json_["fst_index"]["byte_size"] = ptr->size();
   std::vector<char> dst;
-  if (!compressor.compressToBuffer(ptr->data(), ptr->size(), dst, 5)) {
-    return false;
-  }
+  if (!compress_to_buffer(ptr->data(), ptr->size(), dst, 5)) { return false; }
   ofs.write(dst.data(), dst.size());
   meta_json_["fst_index"]["path"] = fs::absolute(fst_index_path).string();
   return true;
@@ -438,8 +436,7 @@ bool FstdxSearcher::load_fst_index(const std::string &fst_index_path) {
   }
   size_t original_size = meta_json_["fst_index"]["byte_size"].get<size_t>();
   std::vector<char> dst;
-  if (!compressor.decompressToBuffer(src.data(), src.size(), original_size,
-                                     dst)) {
+  if (!decompress_to_buffer(src.data(), src.size(), original_size, dst)) {
     return false;
   }
   fst_indexes_searcher_ = FstMapSearcher<fst::uint64bit>(std::move(dst));

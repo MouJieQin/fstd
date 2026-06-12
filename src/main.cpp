@@ -4,6 +4,8 @@
 #include <vector>
 
 #include <CLI/CLI.hpp>
+#include <fstd/fstdd_reader.h>
+#include <fstd/fstdd_writer.h>
 #include <fstd/fstdx_reader.h>
 #include <fstd/fstdx_writer.h>
 #include <fstd/logger.h>
@@ -18,6 +20,11 @@ bool read_file(const std::string &file_path, std::string &content) {
   content = std::string((std::istreambuf_iterator<char>(file_stream)),
                         std::istreambuf_iterator<char>());
   return true;
+}
+
+bool ends_with(std::string const &value, std::string const &ending) {
+  if (ending.size() > value.size()) return false;
+  return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
 }
 
 std::string change_ext(const std::string &file_path, const std::string &ext) {
@@ -52,6 +59,9 @@ int main(int argc, char **argv) {
   std::string extract_input_file;
   extract_cmd->add_option("input", extract_input_file, "输入文件路径")
       ->required();
+
+  std::string key_file_path;
+  extract_cmd->add_option("-k,--key-file-path", key_file_path, "输入文件路径");
 
   std::string extract_output_file;
   extract_cmd->add_option("-o,--output", extract_output_file, "输入文件路径")
@@ -112,8 +122,8 @@ int main(int argc, char **argv) {
   write_cmd->add_option("-m,--meta", meta_json_file, "JSON元数据文件路径")
       ->default_val("");
   std::string output_file;
-  write_cmd->add_option("-o,--output", output_file, "输出文件路径")
-      ->default_val("output.fstdx");
+  write_cmd->add_option("-o,--output", output_file, "输出文件路径");
+
   uint16_t block_size = 8;
   write_cmd
       ->add_option("-b,--block-size", block_size, "压缩块大小，默认8，单位KB")
@@ -300,21 +310,50 @@ int main(int argc, char **argv) {
 
     if (!description.empty()) { meta_json["description"] = description; }
 
-    fstd::FstdxWriter fstd_writer;
-    int ret = fstd_writer.compile_fstdx(
-        write_input_file, output_file, meta_json, block_size, compress_level,
-        zstd_dict_size, write_worker_num, opt_sorted, verbose);
+    if (std::filesystem::is_directory(write_input_file)) {
+      if (output_file.empty()) { output_file = "output.fstdd"; }
+      fstd::FstddWriter fstdd_writer;
+      int ret = fstdd_writer.compile_fstdd(
+          write_input_file, output_file, meta_json, block_size, compress_level,
+          write_worker_num, verbose);
+      if (ret != 0) {
+        LOG_ERROR("编译失败，返回码：{}", ret);
+        return ret;
+      }
+    } else if (std::filesystem::is_regular_file(write_input_file)) {
+      if (output_file.empty()) { output_file = "output.fstdx"; }
+      fstd::FstdxWriter fstdx_writer;
+      int ret = fstdx_writer.compile_fstdx(
+          write_input_file, output_file, meta_json, block_size, compress_level,
+          zstd_dict_size, write_worker_num, opt_sorted, verbose);
 
-    if (ret != 0) {
-      LOG_ERROR("编译失败，返回码：{}", ret);
-      return ret;
+      if (ret != 0) {
+        LOG_ERROR("编译失败，返回码：{}", ret);
+        return ret;
+      }
+    } else {
     }
+
     LOG_INFO("编译成功");
   } else if (*extract_cmd) {
-    fstd::FstdxWriter fstd_writer;
-    bool ret =
-        fstd_writer.extract_fstdx(extract_input_file, extract_output_file);
-    if (!ret) { return 3; }
+
+    if (ends_with(extract_input_file, ".fstdx")) {
+      fstd::FstdxWriter fstdx_writer;
+      bool ret =
+          fstdx_writer.extract_fstdx(extract_input_file, extract_output_file);
+      if (!ret) { return 3; }
+    } else if (ends_with(extract_input_file, ".fstdd")) {
+      if (key_file_path.empty()) {
+        LOG_ERROR("Please spicify key file path");
+        return 1;
+      }
+      bool is_valid = true;
+      fstd::FstddReader fstdd_reader(extract_input_file, is_valid);
+      if (!is_valid || !fstdd_reader.extract(key_file_path)) { return 1; }
+    } else {
+      LOG_ERROR("Only support fstdd/fstdx");
+      return 1;
+    }
   } else {
     LOG_ERROR("未知子命令");
     return 1;

@@ -40,15 +40,6 @@ public:
       int compressionLevel, ThreadPool &thread_pool,
       indicators::DynamicProgress<indicators::BlockProgressBar> &bars);
 
-  bool compressToBuffer(const std::string &src, size_t srcSize,
-                        std::vector<char> &dst, int compressionLevel);
-
-  bool compressToBuffer(const char *src, size_t srcSize, std::vector<char> &dst,
-                        int compressionLevel);
-
-  bool decompressToBuffer(const void *src, size_t compressedSize,
-                          size_t originalSize, std::vector<char> &dst);
-
   std::string readTextByIndex(const uint32_t index, const ZSTD_DDict *ddict,
                               const std::vector<BlockIndex> &blockIndexes,
                               const std::vector<EntryIndex> &entryIndexes,

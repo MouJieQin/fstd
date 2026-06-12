@@ -1,13 +1,11 @@
 #pragma once
-#include <nlohmann/json.hpp>
 #include <sstream>
+#include <nlohmann/json.hpp>
 
 #include <fstd/fstdx_reader.h>
 
 namespace fstd {
 constexpr auto DELIMITER = "</>";
-
-std::string get_current_date();
 
 class FstdxWriter {
 public:
@@ -44,8 +42,6 @@ public:
 
 private:
   std::string trim_whitespace(const std::string &s);
-
-  bool handle_meta(const nlohmann::json &meta, MxJsonHeader &header);
 
   bool parse_raw_txt(std::vector<std::string> &raw_lines,
                      std::vector<size_t> &delimiter_indices,

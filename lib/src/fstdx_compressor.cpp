@@ -43,42 +43,6 @@ bool FstdxCompressor::compressTextToStream(
   return true;
 }
 
-bool FstdxCompressor::compressToBuffer(const std::string &src, size_t srcSize,
-                                       std::vector<char> &dst,
-                                       int compressionLevel) {
-  return compressToBuffer(src.c_str(), srcSize, dst, compressionLevel);
-}
-
-bool FstdxCompressor::compressToBuffer(const char *src, size_t srcSize,
-                                       std::vector<char> &dst,
-                                       int compressionLevel) {
-  size_t compBufSize = ZSTD_compressBound(srcSize);
-  std::vector<char> compBuf(compBufSize);
-  size_t compSize = ZSTD_compress(compBuf.data(), compBuf.size(), src, srcSize,
-                                  compressionLevel);
-  if (ZSTD_isError(compSize)) {
-    LOG_ERROR("压缩失败: {}", ZSTD_getErrorName(compSize));
-    return false;
-  }
-  compBuf.resize(compSize);
-  dst.swap(compBuf);
-  return true;
-}
-
-bool FstdxCompressor::decompressToBuffer(const void *src, size_t compressedSize,
-                                         size_t originalSize,
-                                         std::vector<char> &dst) {
-  std::vector<char> decomp_buf(originalSize);
-  size_t actual_decomp_size =
-      ZSTD_decompress(decomp_buf.data(), originalSize, src, compressedSize);
-  if (ZSTD_isError(actual_decomp_size)) {
-    LOG_ERROR("解压失败: {}", ZSTD_getErrorName(actual_decomp_size));
-    return false;
-  }
-  dst.swap(decomp_buf);
-  return true;
-}
-
 std::string
 FstdxCompressor::readTextByIndex(const uint32_t index, const ZSTD_DDict *ddict,
                                  const std::vector<BlockIndex> &blockIndexes,

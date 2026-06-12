@@ -7,10 +7,6 @@ namespace fstd {
 using namespace std;
 using json = nlohmann::json;
 
-MxHeaderSizeRecord::MxHeaderSizeRecord(uint32_t original_size,
-                                       uint32_t compressed_size)
-    : original_size(original_size), compressed_size(compressed_size) {}
-
 FstdxReader::FstdxReader(const std::string &fstdx_path, bool &is_valid)
     : fstdx_path_(fstdx_path), key_size_(0), fst_key_size_(0), ddict_(nullptr) {
   if (!parse_fstdx(fstdx_path_)) {
@@ -122,41 +118,10 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
     return false;
   }
   size_t fstdx_size = ins.tellg();
-  size_t record_size = sizeof(MxHeaderSizeRecord);
+  if (!parse_header(ins, fstdx_size, mx_json_header_)) { return false; }
+  size_t record_size = sizeof(HeaderSizeRecord);
   if (fstdx_size < record_size) {
     LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
-    return false;
-  }
-  LOG_INFO("fstdx_size:{}", fstdx_size);
-  ins.seekg(-record_size, std::ios::end);
-  MxHeaderSizeRecord header_size_record;
-  LOG_INFO("record_size:{}", record_size);
-  ins.read(reinterpret_cast<char *>(&header_size_record), record_size);
-  if (fstdx_size < header_size_record.compressed_size) {
-    LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
-    return false;
-  }
-
-  LOG_INFO("header_size_record: original_size:{}, compressed_size:{}",
-           header_size_record.original_size,
-           header_size_record.compressed_size);
-
-  vector<char> header_compressed_byte(header_size_record.compressed_size);
-  ins.seekg(-(record_size + header_size_record.compressed_size), std::ios::end);
-  ins.read(const_cast<char *>(header_compressed_byte.data()),
-           header_size_record.compressed_size);
-  std::vector<char> header_json_raw_str;
-  dx_compressor_.decompressToBuffer(
-      header_compressed_byte.data(), header_compressed_byte.size(),
-      header_size_record.original_size, header_json_raw_str);
-  try {
-    mx_json_header_ = json::parse(string(header_json_raw_str.data()));
-    LOG_INFO("{}", mx_json_header_.dump());
-  } catch (const json::exception &e) {
-    LOG_ERROR("解析 header 失败: {}", e.what());
-    return false;
-  } catch (...) {
-    LOG_ERROR("解析 header 失败: 未知异常");
     return false;
   }
 

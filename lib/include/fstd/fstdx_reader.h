@@ -3,20 +3,11 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include <fstd/common.h>
 #include <fstd/fstdx_compressor.h>
 #include <fstd/fstlib_wrapper.h>
 
 namespace fstd {
-#define FSTD_VERSION "0.1.0"
-
-struct MxHeaderSizeRecord {
-  MxHeaderSizeRecord() = default;
-  MxHeaderSizeRecord(uint32_t original_size, uint32_t compressed_size);
-  uint32_t original_size;
-  uint32_t compressed_size;
-};
-
-using MxJsonHeader = nlohmann::json;
 
 class FstdxReader {
 
@@ -63,34 +54,6 @@ public:
 
 private:
   bool parse_fstdx(const std::string &fstdx_path);
-
-  template <typename T>
-  bool decompress(std::istream &ins, const std::string &block_name,
-                  const MxJsonHeader &mx_json_header_, std::vector<T> &con) {
-    const nlohmann::json &json_block = mx_json_header_[block_name];
-    int compress_level = json_block["compress_level"];
-    uint64_t offset = json_block["offset"];
-    uint64_t original_size = json_block["original_size"];
-    std::vector<T> tmp_con;
-    tmp_con.resize(original_size / sizeof(T));
-    if (compress_level == 0) {
-      ins.seekg(offset);
-      ins.read(reinterpret_cast<char *>(tmp_con.data()), tmp_con.size());
-    } else {
-      uint64_t compressed_size = json_block["compressed_size"];
-      std::vector<char> compressed_block(compressed_size);
-      ins.seekg(offset);
-      ins.read(compressed_block.data(), compressed_block.size());
-      std::vector<char> dst_buff(original_size);
-      bool res = dx_compressor_.decompressToBuffer(compressed_block.data(),
-                                                   compressed_block.size(),
-                                                   original_size, dst_buff);
-      if (!res) { return false; }
-      memcpy(tmp_con.data(), dst_buff.data(), dst_buff.size());
-    }
-    con.swap(tmp_con);
-    return true;
-  }
 
 private:
   const std::string fstdx_path_;

@@ -1,12 +1,13 @@
 #include <fstream>
 
+#include <fstd/common.h>
 #include <fstd/fstdx_compressor.h>
 #include <fstd/fstdx_writer.h>
 #include <fstd/logger.h>
 #include <fstd/thread_pool.h>
 #include <indicators/block_progress_bar.hpp>
-#include <indicators/dynamic_progress.hpp>
 #include <indicators/cursor_control.hpp>
+#include <indicators/dynamic_progress.hpp>
 
 using namespace fst;
 using namespace std;
@@ -14,63 +15,6 @@ using namespace indicators;
 using json = nlohmann::json;
 
 namespace fstd {
-
-std::string get_current_date() {
-  std::time_t now = std::time(nullptr);
-  std::tm local_tm = *std::localtime(&now);
-  char buf[32];
-  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", local_tm.tm_year + 1900,
-                local_tm.tm_mon + 1, local_tm.tm_mday);
-  return std::string(buf);
-}
-
-bool FstdxWriter::handle_meta(const json &meta, MxJsonHeader &header) {
-  if (!meta.is_object()) {
-    LOG_ERROR("Meta is not an object.");
-    return false;
-  }
-
-  json &h_meta = header["meta"];
-  // 遍历 meta_default
-  for (const auto &item : FstdxWriter::meta_default) {
-    // item 是数组里的每个小对象，比如 {"Version":""}
-
-    // 遍历这个小对象里的 唯一一个 键值对
-    for (const auto &[key, value] : item.items()) {
-      if (!meta.contains(key)) {
-        h_meta[key] = value;
-      } else if (value.is_string()) {
-        if (meta[key].is_string()) {
-          h_meta[key] = meta[key];
-        } else {
-          LOG_ERROR("Meta {} is not a string.", key);
-          return false;
-        }
-      } else if (value.is_boolean()) {
-        if (meta[key].is_boolean()) {
-          h_meta[key] = meta[key];
-        } else {
-          LOG_ERROR("Meta {} is not a boolean.", key);
-          return false;
-        }
-      } else if (value.is_number()) {
-        if (meta[key].is_number()) {
-          h_meta[key] = meta[key];
-        } else {
-          LOG_ERROR("Meta {} is not a number.", key);
-          return false;
-        }
-      } else {
-        LOG_ERROR(
-            "Internal Error: Meta {} is not a string, boolean, or number.",
-            key);
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
 
 int FstdxWriter::compile_fstdx(const std::string &output_file,
                                std::vector<std::string> &keys,
@@ -144,8 +88,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
                                bool opt_sorted, bool opt_verbose) {
   MxJsonHeader header;
-  if (!handle_meta(meta, header)) { return 5; }
-  LOG_INFO("handle_meta success.");
+  if (!handle_meta(meta, meta_default, header)) { return 5; }
+  LOG_INFO("handle meta success.");
   header["meta"]["Record"] = keys.size();
   header["meta"]["Stripkey"] = true;
   header["meta"]["Compressionlevel"] = compress_level;
@@ -188,14 +132,14 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   }
   value_fout.close();
 
-    // Hide cursor
+  // Hide cursor
   show_console_cursor(false);
   DynamicProgress<BlockProgressBar> bars;
   auto build_fst_bar_ptr = std::make_unique<BlockProgressBar>(
       option::BarWidth{80}, option::Start{"["}, option::End{"]"},
-      option::PrefixText{"Compiling key FST:        "}, option::ShowElapsedTime{true},
-      option::ShowRemainingTime{true}, option::ForegroundColor{Color::cyan},
-      option::ShowPercentage{true},
+      option::PrefixText{"Compiling key FST:        "},
+      option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
+      option::ForegroundColor{Color::cyan}, option::ShowPercentage{true},
       option::FontStyles{std::vector<FontStyle>{FontStyle::bold}});
   bars.set_option(option::HideBarWhenComplete{false});
   size_t thread_num = worker_num;
@@ -270,9 +214,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
 
   std::vector<char> comp_block_index_dst;
   {
-    comp_res =
-        compressor.compressToBuffer(blockIdxOut.str(), blockIdxOut.str().size(),
-                                    comp_block_index_dst, compress_level);
+    comp_res = compress_to_buffer(blockIdxOut.str(), blockIdxOut.str().size(),
+                                  comp_block_index_dst, compress_level);
     if (!comp_res) { return 4; }
     header["block_indexes"]["compress_level"] = compress_level;
     header["block_indexes"]["compressed_size"] = comp_block_index_dst.size();
@@ -285,9 +228,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
 
   std::vector<char> comp_entry_index_dst;
   {
-    comp_res =
-        compressor.compressToBuffer(entryIdxOut.str(), entryIdxOut.str().size(),
-                                    comp_entry_index_dst, compress_level);
+    comp_res = compress_to_buffer(entryIdxOut.str(), entryIdxOut.str().size(),
+                                  comp_entry_index_dst, compress_level);
     if (!comp_res) { return 4; }
     header["entry_indexes"]["compress_level"] = compress_level;
     header["entry_indexes"]["original_size"] = entryIdxOut.str().size();
@@ -301,9 +243,9 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   if (!compile_res.get()) { return 2; }
   std::vector<char> comp_key_fst_dst;
   {
-    comp_res = compressor.compressToBuffer(oss_key_fst_out.str(),
-                                           oss_key_fst_out.str().size(),
-                                           comp_key_fst_dst, compress_level);
+    comp_res =
+        compress_to_buffer(oss_key_fst_out.str(), oss_key_fst_out.str().size(),
+                           comp_key_fst_dst, compress_level);
     if (!comp_res) { return 4; }
     header["key_fst"]["compress_level"] = compress_level;
     header["key_fst"]["original_size"] = oss_key_fst_out.str().size();
@@ -348,8 +290,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   std::vector<char> comp_header_dst;
   std::string header_str = header.dump();
   {
-    comp_res = compressor.compressToBuffer(
-        header_str.c_str(), header_str.size(), comp_header_dst, compress_level);
+    comp_res = compress_to_buffer(header_str.c_str(), header_str.size(),
+                                  comp_header_dst, compress_level);
     if (!comp_res) { return 4; }
   }
   fout.write(comp_header_dst.data(), comp_header_dst.size());
@@ -357,13 +299,13 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   std::ofstream header_fout("header.zst", ios_base::binary);
   header_fout << comp_header_dst.data();
 
-  MxHeaderSizeRecord header_size_record(header_str.size(),
+  HeaderSizeRecord header_size_record(header_str.size(),
                                         comp_header_dst.size());
   LOG_INFO("{}", header_str);
   LOG_INFO("{},{}", header_size_record.original_size,
            header_size_record.compressed_size);
   fout.write(reinterpret_cast<const char *>(&header_size_record),
-             sizeof(MxHeaderSizeRecord));
+             sizeof(HeaderSizeRecord));
   return 0;
 }
 
