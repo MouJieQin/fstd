@@ -1,5 +1,5 @@
-
 #include <fstd/fstdx_reader.h>
+#include <fstd/hash_index.h>
 #include <fstd/logger.h>
 
 namespace fstd {
@@ -39,7 +39,13 @@ std::pair<uint32_t, uint32_t> FstdxReader::extract_index(uint64_t index) const {
 bool FstdxReader::exact_match_search(std::string_view word,
                                      std::vector<std::string> &result) const {
   uint64_t index_res = 0;
-  if (!fst_map_searcher_.exact_match_search(word, index_res)) { return false; }
+  string key(word);
+  if (!read_hash_index(fstdx_path_, key, index_res, dup_idxes_, bucket_size_,
+                       hash_bucket_offset_, hash_index_offset_)) {
+    return false;
+  }
+  // if (!fst_map_searcher_.exact_match_search(word, index_res)) { return false;
+  // }
   auto [index, duplicate] = extract_index(index_res);
   LOG_INFO("index: {}, duplicate: {}", index, duplicate);
   std::vector<std::string> tmp_result;
@@ -125,11 +131,11 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
     return false;
   }
 
-  std::vector<char> key_fst_byte_code;
-  if (!decompress(ins, "key_fst", mx_json_header_, key_fst_byte_code)) {
-    return false;
-  }
-  fst_map_searcher_ = FstMapSearcher<uint64_t>(std::move(key_fst_byte_code));
+  // std::vector<char> key_fst_byte_code;
+  // if (!decompress(ins, "key_fst", mx_json_header_, key_fst_byte_code)) {
+  //   return false;
+  // }
+  // fst_map_searcher_ = FstMapSearcher<uint64_t>(std::move(key_fst_byte_code));
 
   std::vector<char> dictBuffer;
   if (!decompress(ins, "comp_dict", mx_json_header_, dictBuffer)) {
@@ -147,9 +153,15 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
 
   ins.close();
 
-  comp_text_offset_ = mx_json_header_["comp_blocks"]["offset"];
   key_size_ = mx_json_header_["meta"]["Record"];
   fst_key_size_ = mx_json_header_["key_fst"]["keys_size"];
+  comp_text_offset_ = mx_json_header_["comp_blocks"]["offset"];
+  bucket_size_ = mx_json_header_["hash_index"]["bucket_size"];
+  hash_bucket_offset_ = mx_json_header_["hash_buckets"]["offset"];
+  hash_index_offset_ = mx_json_header_["hash_index"]["offset"];
+  for (auto idx : mx_json_header_["hash_index"]["dup_idxes"]) {
+    dup_idxes_.insert(static_cast<size_t>(idx));
+  }
   return true;
 }
 

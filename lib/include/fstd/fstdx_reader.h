@@ -66,5 +66,9 @@ private:
   std::vector<BlockIndex> block_indexes_;
   std::vector<EntryIndex> entry_indexes_;
   uint64_t comp_text_offset_;
+  std::set<size_t> dup_idxes_;
+  size_t bucket_size_;
+  uint64_t hash_bucket_offset_;
+  uint64_t hash_index_offset_;
 };
 } // namespace fstd

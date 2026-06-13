@@ -3,6 +3,7 @@
 #include <fstd/common.h>
 #include <fstd/fstdx_compressor.h>
 #include <fstd/fstdx_writer.h>
+#include <fstd/hash_index.h>
 #include <fstd/logger.h>
 #include <fstd/thread_pool.h>
 #include <indicators/block_progress_bar.hpp>
@@ -97,12 +98,12 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   if (!opt_sorted) { sort_keys_values(keys, values); }
   LOG_INFO("Sorted {} keys and {} values.", keys.size(), values.size());
 
-  ofstream sorted_keys_fout("sorted_keys.txt", ios_base::out);
-  if (!sorted_keys_fout) { return 1; }
-  for (const auto &key : keys) {
-    sorted_keys_fout << key << "\n";
-  }
-  sorted_keys_fout.close();
+  // ofstream sorted_keys_fout("sorted_keys.txt", ios_base::out);
+  // if (!sorted_keys_fout) { return 1; }
+  // for (const auto &key : keys) {
+  //   sorted_keys_fout << key << "\n";
+  // }
+  // sorted_keys_fout.close();
 
   vector<pair<string, uint64_t>> input;
   make_output(keys, input);
@@ -113,24 +114,24 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     keys.swap(tmp);
   }
 
-  ofstream input_fout("input.txt", ios_base::out);
-  if (!input_fout) { return 1; }
-  for (const auto &p : input) {
-    input_fout << '|' << p.first << "|" << p.first.size() << ": " << p.second
-               << "\n";
-  }
-  input_fout.close();
+  // ofstream input_fout("input.txt", ios_base::out);
+  // if (!input_fout) { return 1; }
+  // for (const auto &p : input) {
+  //   input_fout << '|' << p.first << "|" << p.first.size() << ": " << p.second
+  //              << "\n";
+  // }
+  // input_fout.close();
 
-  ofstream value_fout("values.txt", ios_base::out);
-  if (!value_fout) { return 1; }
-  for (const auto &value : values) {
-    std::string line = "";
-    for (auto c : value) {
-      if (c != '\n') { line += c; }
-    }
-    value_fout << line << "\n";
-  }
-  value_fout.close();
+  // ofstream value_fout("values.txt", ios_base::out);
+  // if (!value_fout) { return 1; }
+  // for (const auto &value : values) {
+  //   std::string line = "";
+  //   for (auto c : value) {
+  //     if (c != '\n') { line += c; }
+  //   }
+  //   value_fout << line << "\n";
+  // }
+  // value_fout.close();
 
   // Hide cursor
   show_console_cursor(false);
@@ -158,6 +159,9 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   }
 
   ostringstream oss_key_fst_out(ios_base::binary);
+  ostringstream oss_hash_index_out(ios_base::binary);
+  std::set<size_t> dup_hash_idxes;
+  size_t bucket_size, bucket_data_size;
   const bool show_progress = is_terminal();
   auto compile_res = thread_pool.enqueue([&]() {
     size_t i = bars.push_back(*build_fst_bar_ptr);
@@ -177,16 +181,21 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
 
     bool res = compile_fst(input, oss_key_fst_out, true, opt_verbose,
                            progress_build_fst);
-    {
-      // 释放input内存
-      vector<pair<string, uint64_t>> tmp;
-      input.swap(tmp);
-    }
     if (res) {
       LOG_INFO("FST compiled.");
     } else {
       LOG_ERROR("Compile FST failed.");
     }
+
+    // auto res_p = write_hash_index(oss_hash_index_out, input, dup_hash_idxes);
+    // bucket_size = res_p.first;
+    // bucket_data_size = res_p.second;
+
+    // {
+    //   // 释放input内存
+    //   vector<pair<string, uint64_t>> tmp;
+    //   input.swap(tmp);
+    // }
     return res;
   });
 
@@ -266,10 +275,26 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
   header["key_fst"]["offset"] = 0;
 
-  fout << dictOut.str();
-  header["comp_dict"]["offset"] =
+  auto write_hash_res = thread_pool.enqueue([&]() {
+    auto res_p = write_hash_index(oss_hash_index_out, input, dup_hash_idxes);
+    bucket_size = res_p.first;
+    bucket_data_size = res_p.second;
+  });
+  write_hash_res.get();
+  const string hash_data(oss_hash_index_out.str());
+  fout << hash_data;
+  header["hash_buckets"]["offset"] =
       static_cast<size_t>(header["key_fst"]["offset"]) +
       comp_key_fst_dst.size();
+  header["hash_index"]["offset"] =
+      static_cast<size_t>(header["hash_buckets"]["offset"]) + bucket_data_size;
+  header["hash_index"]["dup_idxes"] =
+      vector<size_t>(dup_hash_idxes.begin(), dup_hash_idxes.end());
+  header["hash_index"]["bucket_size"] = bucket_size;
+
+  fout << dictOut.str();
+  header["comp_dict"]["offset"] =
+      static_cast<size_t>(header["hash_buckets"]["offset"]) + hash_data.size();
 
   // fout << blockIdxOut.str();
   fout.write(comp_block_index_dst.data(), comp_block_index_dst.size());
@@ -300,7 +325,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   header_fout << comp_header_dst.data();
 
   HeaderSizeRecord header_size_record(header_str.size(),
-                                        comp_header_dst.size());
+                                      comp_header_dst.size());
   LOG_INFO("{}", header_str);
   LOG_INFO("{},{}", header_size_record.original_size,
            header_size_record.compressed_size);

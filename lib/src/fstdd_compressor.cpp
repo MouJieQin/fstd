@@ -120,8 +120,8 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
         size_t end_count = buf_size / zstd_block_size;
         uint64_t end_offset = buf_size % zstd_block_size;
         uint64_t end_block_index = block_index + end_count;
-        cout << file << " : " << start_block_index << "," << start_offset << ","
-             << end_block_index << "," << end_offset << "\n";
+        // cout << file << " : " << start_block_index << "," << start_offset << ","
+            //  << end_block_index << "," << end_offset << "\n";
         index_record.emplace_back(
             std::move(file), ValueBlockPosIndex(start_block_index, start_offset,
                                                 end_block_index, end_offset));
