@@ -1,6 +1,7 @@
 #pragma once
 #include <fstream>
 
+#include <fstd/logger.h>
 #include <nlohmann/json.hpp>
 
 namespace fstd {
@@ -36,8 +37,8 @@ bool parse_header(std::ifstream &ins, const size_t file_size,
 
 template <typename T>
 bool decompress(std::istream &ins, const std::string &block_name,
-                const MxJsonHeader &mx_json_header_, std::vector<T> &con) {
-  const nlohmann::json &json_block = mx_json_header_[block_name];
+                const nlohmann::json &json_header_, std::vector<T> &con) {
+  const nlohmann::json &json_block = json_header_[block_name];
   int compress_level = json_block["compress_level"];
   uint64_t offset = json_block["offset"];
   uint64_t original_size = json_block["original_size"];
@@ -60,6 +61,17 @@ bool decompress(std::istream &ins, const std::string &block_name,
   }
   con.swap(tmp_con);
   return true;
+}
+
+template <typename T>
+bool decompress(const std::string &file_path, const std::string &block_name,
+                const nlohmann::json &json_header_, std::vector<T> &con) {
+  std::ifstream in(file_path, std::ios::binary);
+  if (!in) {
+    LOG_ERROR("Cannot open the file: {}", file_path);
+    return false;
+  }
+  return decompress(in, block_name, json_header_, con);
 }
 
 // ------------------------------

@@ -146,7 +146,7 @@ read_hash_index(std::ifstream &in, const std::string &key, VT &value,
   in.seekg(pos + bucket_offset);
   if (dup_idxes.find(index) == dup_idxes.end()) {
     size_t size = offset / (sizeof(uint64_t) + sizeof(VT));
-    LOG_INFO("size: {}", size);
+    // LOG_INFO("size: {}", size);
     std::vector<uint64_t> hash_codes(size);
     std::vector<VT> values(size);
     in.read(reinterpret_cast<char *>(hash_codes.data()),

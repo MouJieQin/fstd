@@ -343,13 +343,14 @@ int main(int argc, char **argv) {
           fstdx_writer.extract_fstdx(extract_input_file, extract_output_file);
       if (!ret) { return 3; }
     } else if (ends_with(extract_input_file, ".fstdd")) {
-      if (key_file_path.empty()) {
-        LOG_ERROR("Please spicify key file path");
-        return 1;
-      }
       bool is_valid = true;
       fstd::FstddReader fstdd_reader(extract_input_file, is_valid);
-      if (!is_valid || !fstdd_reader.extract(key_file_path)) { return 1; }
+      if (!is_valid) { return 1; }
+      if (key_file_path.empty()) {
+        if (!fstdd_reader.extract_all()) { return 1; }
+      } else {
+        if (!fstdd_reader.extract(key_file_path)) { return 1; }
+      }
     } else {
       LOG_ERROR("Only support fstdd/fstdx");
       return 1;

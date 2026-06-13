@@ -86,25 +86,28 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
   vector<char> disk_buf(disk_read_size);
   size_t buf_size = 0;
   uint64_t block_index = 0;
-  vector<string> files_paths;
-  for (const string &data_path : data_paths) {
+  vector<pair<string, size_t>> files_paths;
+  for (size_t i = 0; i < data_paths.size(); ++i) {
+    const string &data_path = data_paths[i];
     for (const auto &entry : fs::recursive_directory_iterator(data_path)) {
       if (!entry.is_regular_file()) { continue; }
-      string file = entry.path().string();
-      // std::string file =
-      //     std::filesystem::relative(entry.path(), data_path).string();
+      // string file = entry.path().string();
+      std::string file =
+          std::filesystem::relative(entry.path(), data_path).string();
       // 统一路径分隔符为 '/'，避免跨平台解压问题
       std::replace(file.begin(), file.end(), '\\', '/');
-      files_paths.emplace_back(std::move(file));
+      files_paths.emplace_back(std::move(file), i);
     }
   }
 
   size_t record = 0;
   for (size_t i = 0; i < files_paths.size(); ++i) {
-    string &file = files_paths[i];
-    ifstream ifs(file, ios::binary);
+    string key = files_paths[i].first;
+    fs::path file_path =
+        fs::path(data_paths[files_paths[i].second]) / fs::path(key);
+    ifstream ifs(file_path.string(), ios::binary);
     if (!ifs) {
-      cerr << "无法打开文件: " << file << endl;
+      cerr << "无法打开文件: " << file_path.string() << endl;
       continue;
     }
     size_t start_count = buf_size / zstd_block_size;
@@ -120,11 +123,12 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
         size_t end_count = buf_size / zstd_block_size;
         uint64_t end_offset = buf_size % zstd_block_size;
         uint64_t end_block_index = block_index + end_count;
-        // cout << file << " : " << start_block_index << "," << start_offset << ","
-            //  << end_block_index << "," << end_offset << "\n";
+        // cout << file << " : " << start_block_index << "," << start_offset <<
+        // ","
+        //  << end_block_index << "," << end_offset << "\n";
         index_record.emplace_back(
-            std::move(file), ValueBlockPosIndex(start_block_index, start_offset,
-                                                end_block_index, end_offset));
+            std::move(key), ValueBlockPosIndex(start_block_index, start_offset,
+                                               end_block_index, end_offset));
         break;
       }
 
@@ -296,7 +300,8 @@ void FstddCompressor::write_output(std::ostream &out, MdJsonHeader &header) {
   }
   out.write(dst.data(), dst.size());
   header["keys"]["offset"] =
-      static_cast<size_t>(header["hash_index"]["offset"]) + bucket_data_size;
+      static_cast<size_t>(header["hash_index"]["offset"]) +
+      bucket_size * sizeof(uint64_t);
   header["keys"]["compress_level"] = zstd_level;
   header["keys"]["original_size"] = keys_size;
   header["keys"]["compressed_size"] = dst.size();

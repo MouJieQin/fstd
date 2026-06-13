@@ -14,7 +14,9 @@ public:
 
   ~FstddReader() {}
 
-  bool extract(const std::string &key, const std::string &dst_dir = ".");
+  bool extract(const std::string &key, const std::string &dst_dir = "data");
+
+  bool extract_all(const std::string &dst_dir = "data");
 
   const nlohmann::json &get_meta() const;
 

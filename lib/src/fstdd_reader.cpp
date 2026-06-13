@@ -6,6 +6,7 @@
 
 namespace fstd {
 
+namespace fs = std::filesystem;
 using namespace std;
 using json = nlohmann::json;
 
@@ -43,11 +44,42 @@ bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
   return true;
 }
 
-bool FstddReader::extract(const std::string &key, const std::string &dst_dir) {
-  return extract_impl(key, dst_dir);
+bool FstddReader::extract_all(const std::string &dst_dir_str) {
+  std::vector<char> keys_buff;
+  if (!decompress(fstdd_path_, "keys", md_json_header_, keys_buff)) {
+    return false;
+  }
+
+  size_t start_idx = 0;
+  for (size_t i = 0; i < keys_buff.size(); ++i) {
+    if (keys_buff[i] == '\0') {
+      string key(keys_buff.data() + start_idx, i - start_idx);
+      if (!extract(key, dst_dir_str)) { return false; }
+      start_idx = i + 1;
+    }
+  }
+  return true;
 }
 
-bool FstddReader::extract_impl(const string &key, const string &dst_dir) {
+bool FstddReader::extract(const std::string &key,
+                          const std::string &dst_dir_str) {
+  fs::path dst_dir(dst_dir_str);
+  if (fs::exists(dst_dir)) {
+    if (!fs::is_directory(dst_dir)) {
+      LOG_ERROR("Destination must be a directory: {}", dst_dir_str);
+      return false;
+    }
+  } else {
+    if (!fs::create_directories(dst_dir)) {
+      LOG_ERROR("Cannot create the destination directory: {}", dst_dir_str);
+      return false;
+    }
+  }
+  fs::path output_path = dst_dir / fs::path(key);
+  return extract_impl(key, output_path.string());
+}
+
+bool FstddReader::extract_impl(const string &key, const string &output_path) {
   std::ifstream ins(fstdd_path_, std::ios::binary);
   if (!ins) {
     LOG_ERROR("Cannot open the file: {}", fstdd_path_);
@@ -72,16 +104,19 @@ bool FstddReader::extract_impl(const string &key, const string &dst_dir) {
 
   vector<char> comp_blocks;
   size_t step = 4;
-
-  string rel_path(key);
-  std::replace(rel_path.begin(), rel_path.end(), '/', '_');
-  const string file_path = dst_dir + "/" + rel_path;
-
-  ofstream out(file_path, std::ios::binary);
+  fs::path parent_path = fs::path(output_path).parent_path();
+  if (!fs::exists(parent_path)) {
+    if (!fs::create_directories(parent_path)) {
+      LOG_ERROR("Cannot create directories: {}", parent_path.string());
+      return false;
+    }
+  }
+  ofstream out(output_path, std::ios::binary);
   if (!out) {
-    std::cout << "open error" << std::endl;
+    LOG_ERROR("Cannot open the file: {}", output_path);
     return false;
   }
+
   std::vector<char> decomp_buf(zstd_block_size);
   for (size_t block_idx = 0; block_idx < block_indexes.size(); ++block_idx) {
     size_t idx = block_idx;

@@ -1,7 +1,6 @@
 #include <zstd.h>
 
 #include <fstd/common.h>
-#include <fstd/logger.h>
 namespace fstd {
 
 using namespace std;
@@ -95,7 +94,7 @@ bool decompress_to_buffer(const void *src, size_t compressed_size,
   size_t actual_decomp_size =
       ZSTD_decompress(decomp_buf.data(), original_size, src, compressed_size);
   if (ZSTD_isError(actual_decomp_size)) {
-    LOG_ERROR("Depression failed: {}", ZSTD_getErrorName(actual_decomp_size));
+    LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(actual_decomp_size));
     return false;
   }
   dst.swap(decomp_buf);
