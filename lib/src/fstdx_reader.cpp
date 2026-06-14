@@ -47,10 +47,10 @@ bool FstdxReader::exact_match_search(std::string_view word,
   // if (!fst_map_searcher_.exact_match_search(word, index_res)) { return false;
   // }
   auto [index, duplicate] = extract_index(index_res);
-  LOG_INFO("index: {}, duplicate: {}", index, duplicate);
+  LOG_DEBUG("index: {}, duplicate: {}", index, duplicate);
   std::vector<std::string> tmp_result;
   for (uint32_t i = 0; i <= duplicate; ++i) {
-    LOG_INFO("index + i: {}, block_indexes_.size(): {}, entry_indexes_.size(): "
+    LOG_DEBUG("index + i: {}, block_indexes_.size(): {}, entry_indexes_.size(): "
              "{}, compstdx_path_: {}, comp_text_offset_: {}",
              index + i, block_indexes_.size(), entry_indexes_.size(),
              fstdx_path_, comp_text_offset_);

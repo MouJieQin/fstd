@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
+
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
@@ -15,6 +18,43 @@ bool is_terminal() {
 #include <unistd.h>
 inline bool is_terminal() { return isatty(STDOUT_FILENO) == 1; }
 #endif
+
+// 跨平台获取应用日志目录：优先系统标准路径，失败回退到 ./logs
+inline std::filesystem::path get_app_log_dir(const std::string &app_name = "Fstd") {
+  std::filesystem::path log_dir;
+
+#ifdef _WIN32
+  // Windows: %LOCALAPPDATA%\app_name\Logs
+  const char *local_appdata = std::getenv("LOCALAPPDATA");
+  if (local_appdata) {
+    log_dir = std::filesystem::path(local_appdata) / app_name / "Logs";
+  }
+#elif __APPLE__
+  // macOS: ~/Library/Logs/app_name
+  const char *home = std::getenv("HOME");
+  if (home) {
+    log_dir = std::filesystem::path(home) / "Library" / "Logs" / app_name;
+  }
+#elif __linux__
+  // Linux: ~/.local/share/app_name/logs
+  const char *home = std::getenv("HOME");
+  if (home) {
+    log_dir =
+        std::filesystem::path(home) / ".local" / "share" / app_name / "logs";
+  }
+#endif
+  // 回退：当前目录下的 logs
+  if (log_dir.empty()) { log_dir = std::filesystem::current_path() / "logs"; }
+
+  // 自动创建目录（包括父目录）
+  try {
+    std::filesystem::create_directories(log_dir);
+  } catch (const std::filesystem::filesystem_error &e) {
+    printf("Failed to create log dir: %s\n", e.what());
+  }
+
+  return log_dir;
+}
 
 // 日志配置（可自行修改）
 #define LOG_FILE_NAME "fstd.log"     // 日志文件名

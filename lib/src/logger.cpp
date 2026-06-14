@@ -12,7 +12,7 @@ Logger::Logger() {
     // 1. 创建两个 sink：彩色终端 + 滚动文件
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        LOG_FILE_NAME, LOG_MAX_SIZE, LOG_MAX_FILES);
+        get_app_log_dir() / LOG_FILE_NAME, LOG_MAX_SIZE, LOG_MAX_FILES);
 
     // 2. 设置日志格式
     console_sink->set_pattern(LOG_PATTERN);

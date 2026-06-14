@@ -36,6 +36,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # 标准安装路径（兼容所有系统）
 include(GNUInstallDirs)
 
+# 开启测试
+enable_testing()
+
 # ===================== 库文件配置（核心：静态库 + 动态库） =====================
 # 自动收集库源码
 aux_source_directory(${fstd_ROOT_DIR}/lib/src DIR_LIB_SRCS)
@@ -113,6 +116,33 @@ foreach(TARGET ${TARGETS})
         nlohmann_json::nlohmann_json
     )
 endforeach()
+
+# ===================== GTest 混合模式：优先系统/brew，失败则自动下载 =====================
+find_package(GTest QUIET)
+
+if(GTest_FOUND)
+    message(STATUS "Found system/brew installed Google Test, use it.")
+else()
+    message(STATUS "Google Test not found locally, will download and build from source...")
+    include(FetchContent)
+    FetchContent_Declare(
+      googletest
+      GIT_REPOSITORY https://github.com/google/googletest.git
+      GIT_TAG        v1.17.0
+      # 禁止 gtest 安装，避免和系统库冲突
+      EXCLUDE_FROM_ALL
+    )
+    # 关闭 gtest 自身测试，加快编译
+    set(gtest_build_tests OFF CACHE BOOL "" FORCE)
+    set(gmock_build_tests OFF CACHE BOOL "" FORCE)
+    # 新增：关闭 gtest 内部依赖检查（进一步防重复）
+    set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+endif()
+
+# 加载测试子目录
+add_subdirectory(tests)
+# ========================================================================================
 
 # 覆盖率链接配置
 if (CMAKE_BUILD_TYPE_LOWER STREQUAL "coverage")

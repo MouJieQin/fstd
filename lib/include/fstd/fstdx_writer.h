@@ -1,6 +1,6 @@
 #pragma once
-#include <sstream>
 #include <nlohmann/json.hpp>
+#include <sstream>
 
 #include <fstd/fstdx_reader.h>
 
@@ -39,6 +39,9 @@ public:
 
   bool extract_fstdx(const std::string &input_file,
                      const std::string &output_file);
+
+  bool load_file(const std::string &file_path, std::vector<std::string> &keys,
+                 std::vector<std::string> &values);
 
 private:
   std::string trim_whitespace(const std::string &s);

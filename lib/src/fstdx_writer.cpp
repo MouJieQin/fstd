@@ -98,13 +98,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   if (!opt_sorted) { sort_keys_values(keys, values); }
   LOG_INFO("Sorted {} keys and {} values.", keys.size(), values.size());
 
-  // ofstream sorted_keys_fout("sorted_keys.txt", ios_base::out);
-  // if (!sorted_keys_fout) { return 1; }
-  // for (const auto &key : keys) {
-  //   sorted_keys_fout << key << "\n";
-  // }
-  // sorted_keys_fout.close();
-
   vector<pair<string, uint64_t>> input;
   make_output(keys, input);
   header["key_fst"]["keys_size"] = input.size();
@@ -113,25 +106,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     vector<string> tmp;
     keys.swap(tmp);
   }
-
-  // ofstream input_fout("input.txt", ios_base::out);
-  // if (!input_fout) { return 1; }
-  // for (const auto &p : input) {
-  //   input_fout << '|' << p.first << "|" << p.first.size() << ": " << p.second
-  //              << "\n";
-  // }
-  // input_fout.close();
-
-  // ofstream value_fout("values.txt", ios_base::out);
-  // if (!value_fout) { return 1; }
-  // for (const auto &value : values) {
-  //   std::string line = "";
-  //   for (auto c : value) {
-  //     if (c != '\n') { line += c; }
-  //   }
-  //   value_fout << line << "\n";
-  // }
-  // value_fout.close();
 
   // Hide cursor
   show_console_cursor(false);
@@ -150,7 +124,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
 
   for (size_t i = 0; i < thread_num; ++i) {
     block_bars.emplace_back(std::make_shared<BlockProgressBar>(
-        option::BarWidth{80}, option::Start{"["}, option::End{"]"},
+        option::BarWidth{80}, option::Start{"|"}, option::End{"}"},
         option::PrefixText{"Compressing value blocks: "},
         option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
         option::ForegroundColor{Color::white}, option::ShowPercentage{true},
@@ -186,16 +160,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     } else {
       LOG_ERROR("Compile FST failed.");
     }
-
-    // auto res_p = write_hash_index(oss_hash_index_out, input, dup_hash_idxes);
-    // bucket_size = res_p.first;
-    // bucket_data_size = res_p.second;
-
-    // {
-    //   // 释放input内存
-    //   vector<pair<string, uint64_t>> tmp;
-    //   input.swap(tmp);
-    // }
     return res;
   });
 
@@ -216,8 +180,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   // Show cursor
   show_console_cursor(true);
 
-  std::ofstream dict_fout("zstd_dict.bin", ios_base::binary);
-  dict_fout << dictOut.str();
   header["comp_dict"]["compress_level"] = 0;
   header["comp_dict"]["original_size"] = dictOut.str().size();
 
@@ -229,8 +191,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     header["block_indexes"]["compress_level"] = compress_level;
     header["block_indexes"]["compressed_size"] = comp_block_index_dst.size();
     header["block_indexes"]["original_size"] = blockIdxOut.str().size();
-    std::ofstream block_index_fout("block.idx", ios_base::binary);
-    block_index_fout << blockIdxOut.str();
     ostringstream tmp(ios_base::binary);
     blockIdxOut.swap(tmp);
   }
@@ -243,8 +203,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     header["entry_indexes"]["compress_level"] = compress_level;
     header["entry_indexes"]["original_size"] = entryIdxOut.str().size();
     header["entry_indexes"]["compressed_size"] = comp_entry_index_dst.size();
-    std::ofstream entry_index_fout("entry.idx", ios_base::binary);
-    entry_index_fout << entryIdxOut.str();
     ostringstream tmp(ios_base::binary);
     entryIdxOut.swap(tmp);
   }
@@ -259,17 +217,11 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     header["key_fst"]["compress_level"] = compress_level;
     header["key_fst"]["original_size"] = oss_key_fst_out.str().size();
     header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
-    std::ofstream key_fst_fout("key_fst.fst", ios_base::binary);
-    key_fst_fout << oss_key_fst_out.str();
     ostringstream tmp(ios_base::binary);
     oss_key_fst_out.swap(tmp);
   }
 
   header["comp_blocks"]["compress_level"] = compress_level;
-  std::ofstream comp_fout("dict.zst", ios_base::binary);
-  comp_fout << compOut.str();
-  comp_fout.flush();
-  comp_fout.close();
 
   // fout << oss_key_fst_out.str();
   fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
@@ -320,9 +272,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     if (!comp_res) { return 4; }
   }
   fout.write(comp_header_dst.data(), comp_header_dst.size());
-
-  std::ofstream header_fout("header.zst", ios_base::binary);
-  header_fout << comp_header_dst.data();
 
   HeaderSizeRecord header_size_record(header_str.size(),
                                       comp_header_dst.size());
@@ -420,6 +369,17 @@ bool FstdxWriter::parse_raw_txt(std::vector<std::string> &raw_lines,
   keys.swap(keys_temp);
   values.swap(values_temp);
   return true;
+}
+
+bool FstdxWriter::load_file(const std::string &file_path,
+                            std::vector<std::string> &keys,
+                            std::vector<std::string> &values) {
+  ifstream fin(file_path, ios_base::in);
+  if (!fin) {
+    LOG_ERROR("Failed to open file {} for reading.", file_path);
+    return false;
+  }
+  return load_file(fin, keys, values);
 }
 
 bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,

@@ -34,7 +34,7 @@ write_hash_index(std::ostream &out,
     for (size_t i = 1; i < sorted_indices.size(); ++i) {
       if (hash_codes[dup_idx] == hash_codes[sorted_indices[i]]) {
         dup_hash_codes.insert(hash_codes[dup_idx]);
-        std::cout << "dup_hash_code: " << hash_codes[dup_idx] << std::endl;
+        LOG_INFO("dup_hash_code: {}", hash_codes[dup_idx]);
       }
       dup_idx = sorted_indices[i];
     }
@@ -63,12 +63,11 @@ write_hash_index(std::ostream &out,
     for (auto c : hash_bucket_count) {
       counts[c] += 1;
     }
-    std::cout << "buket size: " << bucket_size << "\n"
-              << "file num: " << key_value.size() << std::endl;
+    LOG_INFO("buket size: {}", bucket_size);
+    LOG_INFO("file num: {}", key_value.size());
     for (size_t i = 0; i < counts.size(); ++i) {
-      std::cout << i << " : " << counts[i] << "\n";
+      LOG_INFO("{}: {}", i, counts[i]);
     }
-    std::cout << std::endl;
   };
   statistic();
 
@@ -79,12 +78,10 @@ write_hash_index(std::ostream &out,
   std::vector<uint64_t> hash_bucket(bucket_size, 0);
   for (size_t i = 0; i < bucket_size; ++i) {
     b_size = 0;
-    // cout << "# " << i << " : \n";
     if (dup_bucket_idxes.find(i) == dup_bucket_idxes.end()) {
       for (size_t j = 0; j < hash_bucket_map[i].size(); ++j) {
         uint32_t key_index = hash_bucket_map[i][j];
         uint64_t hash_code = hash_codes[key_index];
-        // cout << hash_code << " ";
         oss.write(reinterpret_cast<const char *>(&hash_code),
                   sizeof(hash_code));
       }
@@ -93,7 +90,6 @@ write_hash_index(std::ostream &out,
         oss.write(reinterpret_cast<const char *>(&key_value[key_index].second),
                   sizeof(VT));
       }
-      // cout << endl;
       b_size = hash_bucket_map[i].size() * (sizeof(uint64_t) + sizeof(VT));
     } else {
       for (size_t j = 0; j < hash_bucket_map[i].size(); ++j) {
@@ -105,7 +101,7 @@ write_hash_index(std::ostream &out,
         b_size += key.size() + 1 + sizeof(VT);
       }
     }
-    // LOG_INFO("pos: {} offset: {}", pos, b_size);
+    LOG_DEBUG("pos: {} offset: {}", pos, b_size);
     hash_bucket[i] =
         (static_cast<uint64_t>(pos) << 24) | static_cast<uint64_t>(b_size);
     offset += b_size;
@@ -126,45 +122,43 @@ read_hash_index(std::ifstream &in, const std::string &key, VT &value,
                 const std::set<size_t> &dup_idxes, const size_t bucket_size,
                 const size_t bucket_offset, const size_t index_offset) {
   uint64_t hash_code = fst::MurmurHash64B(key.c_str(), key.size(), 0);
-  std::cout << "hash_code: " << hash_code << std::endl;
-  std::cout << "bucket_size: " << bucket_size << std::endl;
+  LOG_DEBUG("hash_code: {}", hash_code);
+  LOG_DEBUG("bucket_size: {}", bucket_size);
   size_t index = hash_code % bucket_size;
-  std::cout << "index: " << index << std::endl;
+  LOG_DEBUG("index: {}", index);
   uint64_t hash_bucket_index = 0;
   in.seekg(index * sizeof(uint64_t) + index_offset);
   in.read(reinterpret_cast<char *>(&hash_bucket_index),
           sizeof(hash_bucket_index));
   if (hash_bucket_index == 0) {
-    std::cout << "key not found" << std::endl;
+    LOG_DEBUG("key not found");
     return false;
   }
   uint64_t pos = hash_bucket_index >> 24;
   uint32_t offset = hash_bucket_index & 0xFFFFFF;
-  // std::cout << "pos: " << pos << std::endl;
-  // std::cout << "offset: " << offset << std::endl;
+  LOG_DEBUG("pos: {}", pos);
+  LOG_DEBUG("offset: {}", offset);
 
   in.seekg(pos + bucket_offset);
   if (dup_idxes.find(index) == dup_idxes.end()) {
     size_t size = offset / (sizeof(uint64_t) + sizeof(VT));
-    // LOG_INFO("size: {}", size);
+    LOG_DEBUG("size: {}", size);
     std::vector<uint64_t> hash_codes(size);
     std::vector<VT> values(size);
     in.read(reinterpret_cast<char *>(hash_codes.data()),
             size * sizeof(uint64_t));
     in.read(reinterpret_cast<char *>(values.data()), size * sizeof(VT));
     for (size_t i = 0; i < size; ++i) {
-      // std::cout << hash_codes[i] << " ";
+      LOG_DEBUG("hash_code: {}", hash_codes[i]);
       if (hash_code == hash_codes[i]) {
         value = values[i];
-        std::cout << "key found" << std::endl;
-        std::cout << hash_code << " : " << value << std::endl;
+        LOG_DEBUG("key found");
         return true;
       }
     }
-    std::cout << std::endl;
   } else {
     std::vector<char> buffer(offset);
-    std::cout << "buffer size: " << offset << std::endl;
+    LOG_DEBUG("buffer size: {}", offset);
     in.read(buffer.data(), offset);
     std::string k;
     uint32_t start_index = 0;
@@ -174,9 +168,9 @@ read_hash_index(std::ifstream &in, const std::string &key, VT &value,
       if (buffer[i] == '\0') {
         k = std::string(buffer.data() + start_index, k_size);
         value = *reinterpret_cast<VT *>(&buffer[i + 1]);
-        std::cout << k << " : " << value << std::endl;
+        LOG_DEBUG("{}: {}", k, value);
         if (k == key) {
-          std::cout << "key found" << std::endl;
+          LOG_DEBUG("key found");
           return true;
         }
         start_index = i + sizeof(VT) + 1;
@@ -188,7 +182,7 @@ read_hash_index(std::ifstream &in, const std::string &key, VT &value,
       }
     }
   }
-  std::cout << "key not found" << std::endl;
+  LOG_DEBUG("key not found");
   return false;
 }
 
