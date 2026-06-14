@@ -40,20 +40,19 @@ bool FstdxReader::exact_match_search(std::string_view word,
                                      std::vector<std::string> &result) const {
   uint64_t index_res = 0;
   string key(word);
-  if (!read_hash_index(fstdx_path_, key, index_res, dup_idxes_, bucket_size_,
-                       hash_bucket_offset_, hash_index_offset_)) {
-    return false;
-  }
-  // if (!fst_map_searcher_.exact_match_search(word, index_res)) { return false;
+  // if (!read_hash_index(fstdx_path_, key, index_res, dup_idxes_, bucket_size_,
+  //                      hash_bucket_offset_, hash_index_offset_)) {
+  //   return false;
   // }
+  if (!fst_map_searcher_.exact_match_search(word, index_res)) { return false; }
   auto [index, duplicate] = extract_index(index_res);
-  LOG_DEBUG("index: {}, duplicate: {}", index, duplicate);
+  // LOG_INFO("index: {}, duplicate: {}", index, duplicate);
   std::vector<std::string> tmp_result;
   for (uint32_t i = 0; i <= duplicate; ++i) {
-    LOG_DEBUG("index + i: {}, block_indexes_.size(): {}, entry_indexes_.size(): "
-             "{}, compstdx_path_: {}, comp_text_offset_: {}",
-             index + i, block_indexes_.size(), entry_indexes_.size(),
-             fstdx_path_, comp_text_offset_);
+    // LOG_INFO("index + i: {}, block_indexes_: {}, entry_indexes_: "
+    //          "{}, compstdx_path_: {}, comp_text_offset_: {}",
+    //          index + i, block_indexes_[index + i], entry_indexes_[index + i],
+    //          fstdx_path_, comp_text_offset_);
     std::string text = dx_compressor_.readTextByIndex(
         index + i, ddict_, block_indexes_, entry_indexes_, fstdx_path_,
         comp_text_offset_);
@@ -131,11 +130,11 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
     return false;
   }
 
-  // std::vector<char> key_fst_byte_code;
-  // if (!decompress(ins, "key_fst", mx_json_header_, key_fst_byte_code)) {
-  //   return false;
-  // }
-  // fst_map_searcher_ = FstMapSearcher<uint64_t>(std::move(key_fst_byte_code));
+  std::vector<char> key_fst_byte_code;
+  if (!decompress(ins, "key_fst", mx_json_header_, key_fst_byte_code)) {
+    return false;
+  }
+  fst_map_searcher_ = FstMapSearcher<uint64_t>(std::move(key_fst_byte_code));
 
   std::vector<char> dictBuffer;
   if (!decompress(ins, "comp_dict", mx_json_header_, dictBuffer)) {

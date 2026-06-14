@@ -88,7 +88,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
                                uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
                                bool opt_sorted, bool opt_verbose) {
-  MxJsonHeader header;
+  DxJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
   LOG_INFO("handle meta success.");
   header["meta"]["Record"] = keys.size();
@@ -111,7 +111,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   show_console_cursor(false);
   DynamicProgress<BlockProgressBar> bars;
   auto build_fst_bar_ptr = std::make_unique<BlockProgressBar>(
-      option::BarWidth{80}, option::Start{"["}, option::End{"]"},
+      option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
       option::PrefixText{"Compiling key FST:        "},
       option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
       option::ForegroundColor{Color::cyan}, option::ShowPercentage{true},
@@ -124,7 +124,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
 
   for (size_t i = 0; i < thread_num; ++i) {
     block_bars.emplace_back(std::make_shared<BlockProgressBar>(
-        option::BarWidth{80}, option::Start{"|"}, option::End{"}"},
+        option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
         option::PrefixText{"Compressing value blocks: "},
         option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
         option::ForegroundColor{Color::white}, option::ShowPercentage{true},
@@ -166,48 +166,35 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   FstdxCompressor compressor;
   bool comp_res = false;
 
-  std::ostringstream dictOut(ios_base::binary);
-  std::ostringstream blockIdxOut(ios_base::binary);
-  std::ostringstream entryIdxOut(ios_base::binary);
-  std::ostringstream compOut(ios_base::binary);
   LOG_INFO("Compressing values...");
-  if (!compressor.compressTextToStream(
-          values, dictOut, blockIdxOut, entryIdxOut, compOut,
-          zstd_dict_size_kb * 1024, block_size_kb * 1024, compress_level,
-          thread_pool, bars)) {
+  if (!compressor.compress_texts_to_stream(
+          fout, values, header, zstd_dict_size_kb * 1024, block_size_kb * 1024,
+          compress_level, thread_pool, bars)) {
     return 3;
   }
   // Show cursor
   show_console_cursor(true);
 
-  header["comp_dict"]["compress_level"] = 0;
-  header["comp_dict"]["original_size"] = dictOut.str().size();
-
-  std::vector<char> comp_block_index_dst;
-  {
-    comp_res = compress_to_buffer(blockIdxOut.str(), blockIdxOut.str().size(),
-                                  comp_block_index_dst, compress_level);
-    if (!comp_res) { return 4; }
-    header["block_indexes"]["compress_level"] = compress_level;
-    header["block_indexes"]["compressed_size"] = comp_block_index_dst.size();
-    header["block_indexes"]["original_size"] = blockIdxOut.str().size();
-    ostringstream tmp(ios_base::binary);
-    blockIdxOut.swap(tmp);
-  }
-
-  std::vector<char> comp_entry_index_dst;
-  {
-    comp_res = compress_to_buffer(entryIdxOut.str(), entryIdxOut.str().size(),
-                                  comp_entry_index_dst, compress_level);
-    if (!comp_res) { return 4; }
-    header["entry_indexes"]["compress_level"] = compress_level;
-    header["entry_indexes"]["original_size"] = entryIdxOut.str().size();
-    header["entry_indexes"]["compressed_size"] = comp_entry_index_dst.size();
-    ostringstream tmp(ios_base::binary);
-    entryIdxOut.swap(tmp);
-  }
+  auto write_hash_res = thread_pool.enqueue([&]() {
+    auto res_p = write_hash_index(oss_hash_index_out, input, dup_hash_idxes);
+    bucket_size = res_p.first;
+    bucket_data_size = res_p.second;
+  });
+  write_hash_res.get();
 
   if (!compile_res.get()) { return 2; }
+
+  const string hash_data(oss_hash_index_out.str());
+  fout << hash_data;
+  header["hash_buckets"]["offset"] =
+      static_cast<size_t>(header["entry_indexes"]["offset"]) +
+      input.size() * sizeof(EntryIndex);
+  header["hash_index"]["offset"] =
+      static_cast<size_t>(header["hash_buckets"]["offset"]) + bucket_data_size;
+  header["hash_index"]["dup_idxes"] =
+      vector<size_t>(dup_hash_idxes.begin(), dup_hash_idxes.end());
+  header["hash_index"]["bucket_size"] = bucket_size;
+
   std::vector<char> comp_key_fst_dst;
   {
     comp_res =
@@ -217,51 +204,11 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     header["key_fst"]["compress_level"] = compress_level;
     header["key_fst"]["original_size"] = oss_key_fst_out.str().size();
     header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
-    ostringstream tmp(ios_base::binary);
-    oss_key_fst_out.swap(tmp);
+    fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
+    header["key_fst"]["offset"] =
+        static_cast<size_t>(header["hash_buckets"]["offset"]) +
+        hash_data.size();
   }
-
-  header["comp_blocks"]["compress_level"] = compress_level;
-
-  // fout << oss_key_fst_out.str();
-  fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
-  header["key_fst"]["offset"] = 0;
-
-  auto write_hash_res = thread_pool.enqueue([&]() {
-    auto res_p = write_hash_index(oss_hash_index_out, input, dup_hash_idxes);
-    bucket_size = res_p.first;
-    bucket_data_size = res_p.second;
-  });
-  write_hash_res.get();
-  const string hash_data(oss_hash_index_out.str());
-  fout << hash_data;
-  header["hash_buckets"]["offset"] =
-      static_cast<size_t>(header["key_fst"]["offset"]) +
-      comp_key_fst_dst.size();
-  header["hash_index"]["offset"] =
-      static_cast<size_t>(header["hash_buckets"]["offset"]) + bucket_data_size;
-  header["hash_index"]["dup_idxes"] =
-      vector<size_t>(dup_hash_idxes.begin(), dup_hash_idxes.end());
-  header["hash_index"]["bucket_size"] = bucket_size;
-
-  fout << dictOut.str();
-  header["comp_dict"]["offset"] =
-      static_cast<size_t>(header["hash_buckets"]["offset"]) + hash_data.size();
-
-  // fout << blockIdxOut.str();
-  fout.write(comp_block_index_dst.data(), comp_block_index_dst.size());
-  header["block_indexes"]["offset"] =
-      static_cast<size_t>(header["comp_dict"]["offset"]) + dictOut.str().size();
-
-  fout.write(comp_entry_index_dst.data(), comp_entry_index_dst.size());
-  header["entry_indexes"]["offset"] =
-      static_cast<size_t>(header["block_indexes"]["offset"]) +
-      comp_block_index_dst.size();
-
-  fout << compOut.str();
-  header["comp_blocks"]["offset"] =
-      static_cast<size_t>(header["entry_indexes"]["offset"]) +
-      comp_entry_index_dst.size();
 
   header["meta"]["Creationdate"] = get_current_date();
   std::vector<char> comp_header_dst;

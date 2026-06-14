@@ -1,2 +1,2 @@
 # fstd
-A dictionary engine base on Finite State Transducers.
+A dictionary engine based on Finite State Transducers.

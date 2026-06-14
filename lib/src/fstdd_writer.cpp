@@ -15,7 +15,7 @@ int FstddWriter::compile_fstdd(const string &data_path,
     LOG_ERROR("Failed to open file {} for writing.", output_file);
     return 1;
   }
-  MdJsonHeader header;
+  DdJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
   FstddCompressor dd_compressor;
   if (!dd_compressor.compress(data_path, fout, header)) { return 2; }

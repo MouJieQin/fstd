@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 
+#include <fstd/common.h>
 #include <fstd/thread_pool.h>
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/dynamic_progress.hpp>
@@ -33,10 +34,9 @@ public:
   FstdxCompressor() = default;
   ~FstdxCompressor() = default;
 
-  bool compressTextToStream(
-      const std::vector<std::string> &texts, std::ostream &dictOut,
-      std::ostream &blockIdxOut, std::ostream &entryIdxOut,
-      std::ostream &compOut, size_t dictSize, size_t blockSize,
+  bool compress_texts_to_stream(
+      std::ostream &out, const std::vector<std::string> &texts,
+      DxJsonHeader &header, size_t dictSize, size_t blockSize,
       int compressionLevel, ThreadPool &thread_pool,
       indicators::DynamicProgress<indicators::BlockProgressBar> &bars);
 
@@ -54,20 +54,14 @@ public:
 private:
   int random_int(int max);
 
-  bool trainZstdDictionary(const std::vector<std::string> &texts,
-                           char *dictBuffer, size_t dictSize);
+  int trainZstdDictionary(const std::vector<std::string> &texts,
+                          char *dictBuffer, size_t dictSize);
 
-  bool saveDictionary(std::ostream &os, const char *dictBuffer,
-                      size_t dictSize);
-
-  std::vector<char> loadDictionary(const char *dictFile);
-
-  bool compressTextsToStreamImpl(
-      const std::vector<std::string> &texts, const char *dictBuffer,
-      size_t dictSize, std::ostream &blockIdxOut, std::ostream &entryIdxOut,
-      std::ostream &compOut, size_t blockSize, int compressionLevel,
-      ThreadPool &thread_pool,
-      indicators::DynamicProgress<indicators::BlockProgressBar> &bars) const;
+  bool compress_texts_to_stream(
+      std::ostream &out, const std::vector<std::string> &texts,
+      DxJsonHeader &header, const char *dictBuffer, size_t dictSize,
+      size_t blockSize, int compressionLevel, ThreadPool &thread_pool,
+      indicators::DynamicProgress<indicators::BlockProgressBar> &bars);
 
   size_t
   bin_search_block_index(uint32_t entry_index,
@@ -85,6 +79,20 @@ private:
                       const ZSTD_DDict *ddict,
                       const std::vector<BlockIndex> &block_indexes,
                       const std::vector<EntryIndex> &entry_indexes) const;
+
+private:
+  // 全局队列 & 同步
+  std::queue<CompressTask> task_queue_;
+  std::queue<CompressResult> result_queue_;
+  std::mutex task_mtx_;
+  std::mutex res_mtx_;
+  std::condition_variable task_cv_;
+  std::condition_variable res_cv_;
+
+  std::atomic<size_t> task_seq_{0}; // 分配任务的全局序号
+  std::atomic<bool> success_{true};
+  std::atomic<bool> generate_finished_{false};
+  std::atomic<bool> compress_finished_{false};
 };
 
 } // namespace fstd

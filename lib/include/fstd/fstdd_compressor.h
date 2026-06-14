@@ -23,7 +23,6 @@ namespace fstd {
 const size_t disk_read_size = 512 * 1024;  // 磁盘读取：512kb（最快）
 const size_t zstd_block_size = 128 * 1024; // zstd 压缩块：128kb（最优）
 const int zstd_level = 3;        // 压缩级别（3=速度优先，5=压缩率优先）
-const size_t max_queue_size = 8; // 队列缓冲（内存友好）
 // =========================================================================
 
 struct ValueBlockPosIndex {
@@ -42,20 +41,10 @@ struct ValueBlockPosIndex {
 
 std::ostream &operator<<(std::ostream &os, const ValueBlockPosIndex &vbp_idx);
 
-struct compresstask {
-  std::vector<char> src_data;
-  size_t index;
-};
-
-struct compressresult {
-  std::vector<char> dst_data;
-  size_t index;
-};
-
 class FstddCompressor {
 public:
   bool compress(const std::string &data_path, std::ofstream &out,
-                MdJsonHeader &header);
+                DdJsonHeader &header);
 
 private:
   // -------------------- 工具：zstd 单块压缩 --------------------
@@ -64,20 +53,20 @@ private:
 
   // -------------------- 线程1：单线程顺序读取 & 切块 --------------------
   void read_files(const std::vector<std::string> &data_paths,
-                  MdJsonHeader &header);
+                  DdJsonHeader &header);
 
   // -------------------- 线程池：多线程并行压缩 --------------------
   void compress_worker();
 
   // -------------------- 线程3：单线程严格顺序写入 --------------------
-  void write_output(std::ostream &out, MdJsonHeader &header);
+  void write_output(std::ostream &out, DdJsonHeader &header);
 
   // bool extract_impl(const string &key, const string &dst_dir);
 
 private:
   // 全局队列 & 同步
-  std::queue<compresstask> task_queue;
-  std::queue<compressresult> result_queue;
+  std::queue<CompressTask> task_queue;
+  std::queue<CompressResult> result_queue;
   std::mutex task_mtx;
   std::mutex res_mtx;
   std::condition_variable task_cv;

@@ -4,6 +4,7 @@
 #include <random>
 #include <zdict.h>
 
+#include <fstd/common.h>
 #include <fstd/fstdx_compressor.h>
 #include <fstd/logger.h>
 
@@ -19,27 +20,28 @@ BlockIndex::BlockIndex(uint32_t end_entry_index, uint64_t block_offset,
 EntryIndex::EntryIndex(uint32_t entry_offset, uint32_t entry_size)
     : entry_offset(entry_offset), entry_size(entry_size) {}
 
-bool FstdxCompressor::compressTextToStream(
-    const std::vector<std::string> &texts, std::ostream &dictOut,
-    std::ostream &blockIdxOut, std::ostream &entryIdxOut, std::ostream &compOut,
-    size_t dictSize, size_t blockSize, int compressionLevel,
-    ThreadPool &thread_pool, DynamicProgress<BlockProgressBar> &bars) {
+bool FstdxCompressor::compress_texts_to_stream(
+    std::ostream &out, const std::vector<std::string> &texts,
+    DxJsonHeader &header, size_t dictSize, size_t blockSize,
+    int compressionLevel, ThreadPool &thread_pool,
+    DynamicProgress<BlockProgressBar> &bars) {
   // 1. 训练并保存字典
   std::vector<char> dictBuffer(dictSize);
-  if (!trainZstdDictionary(texts, dictBuffer.data(), dictSize)) {
-    LOG_ERROR("字典训练失败！");
+  dictSize = trainZstdDictionary(texts, dictBuffer.data(), dictSize);
+  if (dictSize == -1) {
+    LOG_ERROR("Train Zstd dictionary failed!");
     return false;
   }
-  saveDictionary(dictOut, dictBuffer.data(), dictSize);
+  LOG_INFO("Train Zstd dictionary success!");
 
   // 2. 压缩
-  if (!compressTextsToStreamImpl(texts, dictBuffer.data(), dictSize,
-                                 blockIdxOut, entryIdxOut, compOut, blockSize,
-                                 compressionLevel, thread_pool, bars)) {
-    LOG_ERROR("压缩失败！");
+  if (!compress_texts_to_stream(out, texts, header, dictBuffer.data(), dictSize,
+                                blockSize, compressionLevel, thread_pool,
+                                bars)) {
+    LOG_ERROR("Compress texts to stream failed!");
     return false;
   }
-  LOG_INFO("压缩完成！");
+  LOG_INFO("Compress texts to stream success!");
   return true;
 }
 
@@ -78,17 +80,17 @@ int FstdxCompressor::random_int(int max) {
   return dist(gen);
 }
 
-bool FstdxCompressor::trainZstdDictionary(const std::vector<std::string> &texts,
-                                          char *dictBuffer, size_t dictSize) {
+int FstdxCompressor::trainZstdDictionary(const std::vector<std::string> &texts,
+                                         char *dictBuffer, size_t dictSize) {
   if (texts.empty()) {
-    LOG_ERROR("没有提供训练数据！");
-    return false;
+    LOG_ERROR("No training data provided!");
+    return -1;
   }
   const size_t total_sample_byte_size = dictSize * 100;
   std::vector<char> samplesBlob;
   std::vector<size_t> sampleSizes;
 
-  LOG_INFO("total_sample_byte_size:{}", total_sample_byte_size);
+  LOG_DEBUG("total_sample_byte_size:{}", total_sample_byte_size);
   while (samplesBlob.size() < total_sample_byte_size) {
     int random_index = random_int(texts.size());
     samplesBlob.insert(samplesBlob.end(), texts[random_index].begin(),
@@ -96,174 +98,266 @@ bool FstdxCompressor::trainZstdDictionary(const std::vector<std::string> &texts,
     sampleSizes.push_back(texts[random_index].size());
   }
 
-  LOG_INFO("字典训练 ...");
-  size_t ret = ZDICT_trainFromBuffer(dictBuffer, dictSize, samplesBlob.data(),
-                                     sampleSizes.data(), sampleSizes.size());
-  if (ZDICT_isError(ret)) {
-    LOG_ERROR("字典训练失败: {}", ZDICT_getErrorName(ret));
-    return false;
+  LOG_INFO("Train Zstd dictionary ...");
+  size_t ret_size =
+      ZDICT_trainFromBuffer(dictBuffer, dictSize, samplesBlob.data(),
+                            sampleSizes.data(), sampleSizes.size());
+  if (ZDICT_isError(ret_size)) {
+    LOG_ERROR("Train Zstd dictionary failed: {}", ZDICT_getErrorName(ret_size));
+    return -1;
   }
-  return true;
+  return ret_size;
 }
 
-bool FstdxCompressor::saveDictionary(std::ostream &os, const char *dictBuffer,
-                                     size_t dictSize) {
-  if (!os) return false;
-  os.write(dictBuffer, dictSize);
-  return true;
-}
-
-bool FstdxCompressor::compressTextsToStreamImpl(
-    const std::vector<std::string> &texts, const char *dictBuffer,
-    size_t dictSize, std::ostream &blockIdxOut, std::ostream &entryIdxOut,
-    std::ostream &compOut, size_t blockSize, int compressionLevel,
-    ThreadPool &thread_pool, DynamicProgress<BlockProgressBar> &bars) const {
-  if (!blockIdxOut || !entryIdxOut || !compOut) return false;
+bool FstdxCompressor::compress_texts_to_stream(
+    std::ostream &out, const std::vector<std::string> &texts,
+    DxJsonHeader &header, const char *dictBuffer, size_t dictSize,
+    size_t blockSize, int compressionLevel, ThreadPool &thread_pool,
+    DynamicProgress<BlockProgressBar> &bars) {
 
   ZSTD_CDict *cdict = ZSTD_createCDict(dictBuffer, dictSize, compressionLevel);
   if (!cdict) { return false; }
-  std::atomic<bool> success = true;
-  std::vector<BlockIndex> block_indexes;
   std::vector<EntryIndex> entry_indexes;
   entry_indexes.reserve(texts.size());
 
-  std::vector<std::tuple<size_t, size_t, size_t>> block_record;
-  size_t total_size = 0;
+  std::vector<std::pair<size_t, size_t>> block_record;
   size_t block_buf_size = 0;
-  size_t block_pos = 0;
-
   for (size_t i = 0; i < texts.size(); ++i) {
-    total_size += texts[i].size();
     uint32_t entry_size = (uint32_t)texts[i].size();
     uint32_t entry_offset = (uint32_t)block_buf_size;
     entry_indexes.emplace_back(entry_offset, entry_size);
     block_buf_size += texts[i].size();
     if (block_buf_size >= blockSize) {
-      block_record.emplace_back(block_pos, block_buf_size, i + 1);
-      block_pos += block_buf_size;
+      block_record.emplace_back(block_buf_size, i + 1);
       block_buf_size = 0;
     }
   }
   if (block_buf_size != 0) {
-    block_record.emplace_back(block_pos, block_buf_size, texts.size());
+    block_record.emplace_back(block_buf_size, texts.size());
   }
 
-  std::string texts_buff;
-  texts_buff.reserve(total_size);
-  for (uint32_t i = 0; i < texts.size(); ++i) {
-    texts_buff += texts[i];
-  }
+  auto block_generator = [&]() {
+    for (size_t i = 0, j = 0; i < block_record.size(); i++) {
+      CompressTask task;
+      task.src_data.resize(block_record[i].first);
+      size_t offset = 0;
+      for (; j < block_record[i].second; ++j) {
+        // LOG_INFO("j:{}", j);
+        memcpy(task.src_data.data() + offset, texts[j].data(), texts[j].size());
+        offset += texts[j].size();
+      }
+      // if(j!=texts.size()){
+      //   LOG_INFO("texts[j-1]:{}, texts[j]:{}", texts[j-1], texts[j]);
+      // }
+      task.index = i;
+      // 队列控流：防止内存无限上涨
+      unique_lock<mutex> lock(task_mtx_);
+      task_cv_.wait(lock, [&] { return task_queue_.size() < max_queue_size; });
+      LOG_INFO("[Block Generator] task_queue_.size():{}", task_queue_.size());
+      task_queue_.push(std::move(task));
+      task_cv_.notify_one();
+    }
+    // 标记读取流结束
+    unique_lock<mutex> lock(task_mtx_);
+    generate_finished_ = true;
+    task_cv_.notify_all();
+  };
 
   const bool show_progress = is_terminal();
-
-  size_t worker_size = thread_pool.worker_num();
-  std::vector<std::unique_ptr<std::ostringstream>> comp_os_buffs;
-  comp_os_buffs.reserve(worker_size); // 预分配
-
-  for (size_t i = 0; i < worker_size; ++i) {
-    // 关键：创建时指定 binary 模式
-    comp_os_buffs.emplace_back(
-        std::make_unique<std::ostringstream>(std::ios_base::binary));
-  }
-  vector<vector<BlockIndex>> block_index_buff(worker_size);
-
-  auto comp_worker = [&](size_t begin_idx, size_t end_idx, size_t bar_idx) {
-    // LOG_INFO("{}, {}, {}", begin_idx, end_idx, bar_idx);
-    uint64_t currentCompOffset = 0;
+  auto compress_worker = [&]() {
     ZSTD_CCtx *cctx = ZSTD_createCCtx();
     if (!cctx) { return false; }
     ZSTD_CCtx_setParameter(cctx, ZSTD_c_checksumFlag, ENABLE_CHECKSUM ? 1 : 0);
-    vector<char> compBuf;
-    size_t last_progress = 0;
+    while (true) {
+      CompressTask task;
+      {
+        unique_lock<mutex> lock(task_mtx_);
+        task_cv_.wait(
+            lock, [&] { return !task_queue_.empty() || generate_finished_; });
 
-    // progress bar
-    auto progress_comp_block = [&](const size_t index, const size_t block_size,
-                                   const size_t bar_idx) {
-      size_t count = index + 1;
-      if (show_progress) {
-        size_t progress = count * 100 / block_size;
-        if (progress > last_progress) {
-          bars[bar_idx].set_option(option::PostfixText{
-              std::to_string(count) + "/" + std::to_string(block_size)});
-          bars[bar_idx].set_progress(progress);
-          last_progress = progress;
+        if (task_queue_.empty() && generate_finished_) {
+          break; // 没有任务且读取完毕，退出线程
         }
-        if (count == block_size) { bars[bar_idx].mark_as_completed(); }
+        task = std::move(task_queue_.front());
+        task_queue_.pop();
+        task_cv_.notify_one(); // 通知读取线程队列有空位了
       }
+
+      // 执行 CPU 密集的压缩计算
+      CompressResult result;
+      result.index = task.index;
+      auto compress = [&]() {
+        size_t last_progress = 0;
+
+        // // progress bar
+        // auto progress_comp_block = [&](const size_t index,
+        //                                const size_t block_size,
+        //                                const size_t bar_idx) {
+        //   size_t count = index + 1;
+        //   if (show_progress) {
+        //     size_t progress = count * 100 / block_size;
+        //     if (progress > last_progress) {
+        //       bars[bar_idx].set_option(option::PostfixText{
+        //           std::to_string(count) + "/" + std::to_string(block_size)});
+        //       bars[bar_idx].set_progress(progress);
+        //       last_progress = progress;
+        //     }
+        //     if (count == block_size) { bars[bar_idx].mark_as_completed(); }
+        //   }
+        // };
+
+        if (!success_) {
+          // compression failed in other workers
+          ZSTD_freeCCtx(cctx);
+          return false;
+        }
+        size_t comp_dst_size = ZSTD_compressBound(task.src_data.size());
+        result.dst_data.resize(comp_dst_size);
+        size_t comp_size = ZSTD_compress_usingCDict(
+            cctx, result.dst_data.data(), result.dst_data.size(),
+            task.src_data.data(), task.src_data.size(), cdict);
+
+        if (ZSTD_isError(comp_size)) {
+          success_ = false;
+          ZSTD_freeCCtx(cctx);
+          LOG_ERROR("Compress blocks failed: {}", ZSTD_getErrorName(comp_size));
+          return false;
+        }
+        result.dst_data.resize(comp_size);
+        // progress_comp_block(i - begin_idx + 1, end_idx - begin_idx, bar_idx);
+        {
+          unique_lock<mutex> lock(res_mtx_);
+          result_queue_.push(std::move(result));
+          res_cv_.notify_one();
+        }
+      };
+      compress();
     };
-
-    for (size_t i = begin_idx; i < end_idx; ++i) {
-      if (!success) {
-        // compression failed in other workers
-        ZSTD_freeCCtx(cctx);
-        return false;
-      }
-      auto [block_pos, block_buf_size, end_entry_index] = block_record[i];
-      size_t compBufSize = ZSTD_compressBound(block_buf_size);
-      compBuf.resize(compBufSize);
-      size_t compSize = ZSTD_compress_usingCDict(
-          cctx, compBuf.data(), compBuf.size(), texts_buff.c_str() + block_pos,
-          block_buf_size, cdict);
-
-      if (ZSTD_isError(compSize)) {
-        success = false;
-        ZSTD_freeCCtx(cctx);
-        LOG_ERROR("Compress blocks failed: {}", ZSTD_getErrorName(compSize));
-        return false;
-      }
-
-      comp_os_buffs[bar_idx]->write(compBuf.data(), compSize);
-      block_index_buff[bar_idx].emplace_back(
-          (uint32_t)end_entry_index, (uint64_t)currentCompOffset,
-          (uint32_t)compSize, (uint32_t)block_buf_size);
-      currentCompOffset += compSize;
-
-      progress_comp_block(i - begin_idx + 1, end_idx - begin_idx, bar_idx);
-    }
     ZSTD_freeCCtx(cctx);
     return true;
   };
 
-  size_t task_num = block_record.size() / worker_size;
+  uint64_t total_block_size = 0;
+  std::vector<BlockIndex> block_indexes;
+  auto block_writer = [&]() {
+    size_t expected_index = 0;
+    // 使用缓存区存放乱序到达的压缩块 (Key: index, Value: Compressed Data)
+    unordered_map<size_t, vector<char>> fallback_buffer;
+    uint64_t block_offset = 0;
 
-  size_t start_index = 0;
-  size_t end_index = 0;
+    while (true) {
+      CompressResult result;
+      {
+        unique_lock<mutex> lock(res_mtx_);
+        res_cv_.wait(
+            lock, [&] { return !result_queue_.empty() || compress_finished_; });
+
+        if (result_queue_.empty() && compress_finished_ &&
+            fallback_buffer.empty()) {
+          break;
+        }
+
+        if (!result_queue_.empty()) {
+          result = std::move(result_queue_.front());
+          result_queue_.pop();
+        }
+      }
+
+      // 如果取到了新数据，放入缓存区
+      if (!result.dst_data.empty() || result.index == expected_index) {
+        fallback_buffer[result.index] = std::move(result.dst_data);
+      }
+
+      // 核心：严格按序号循环写入，直到缺憾后续块为止
+      while (fallback_buffer.count(expected_index)) {
+        auto &data = fallback_buffer[expected_index];
+
+        // 写入元数据头 (数据流块大小)，以便后续解压程序定位块边界
+        uint64_t block_size = static_cast<uint64_t>(data.size());
+
+        block_indexes.emplace_back(block_record[expected_index].second,
+                                   block_offset, block_size,
+                                   block_record[expected_index].first);
+        block_offset += block_size;
+
+        // 写入压缩数据主体
+        out.write(data.data(), block_size);
+        total_block_size += block_size;
+
+        fallback_buffer.erase(expected_index);
+        expected_index++;
+      }
+    }
+  };
+
+  thread generator(block_generator);
+
+  size_t worker_size = thread_pool.worker_num();
   vector<future<bool>> results;
   for (size_t i = 0; i < worker_size - 1; ++i) {
-    end_index = start_index + task_num;
-    results.emplace_back(
-        thread_pool.enqueue(comp_worker, start_index, end_index, i));
-    start_index = end_index;
+    results.emplace_back(thread_pool.enqueue(compress_worker));
   }
 
-  results.emplace_back(thread_pool.enqueue(
-      comp_worker, start_index, block_record.size(), worker_size - 1));
+  thread writer(block_writer);
 
-  for (auto &f : results) {
-    if (!f.get()) { success = false; }
+  generator.join();
+
+  for (auto &res : results) {
+    if (!res.get()) { success_ = false; }
   }
 
-  if (!success) {
+  if (!success_) {
     ZSTD_freeCDict(cdict);
     return false;
   }
+  LOG_INFO("Compress done.");
 
-  uint64_t currentCompOffset = 0;
-  for (size_t i = 0; i < block_index_buff.size(); ++i) {
-    for (auto &idx : block_index_buff[i]) {
-      idx.block_offset += currentCompOffset;
-      block_indexes.emplace_back(std::move(idx));
-    }
-    currentCompOffset += comp_os_buffs[i]->str().size();
+  // 5. 标记压缩完全结束，通知并回收写入线程
+  {
+    unique_lock<mutex> lock(res_mtx_);
+    compress_finished_ = true;
+    res_cv_.notify_all();
   }
-  for (auto &os_ptr : comp_os_buffs) {
-    // LOG_INFO("os.str().size(): {}", os_ptr->str().size());
-    compOut.write(os_ptr->str().c_str(), os_ptr->str().size());
+  writer.join();
+
+  header["comp_blocks"]["compress_level"] = compressionLevel;
+  header["comp_blocks"]["offset"] = 0;
+
+  out.write(dictBuffer, dictSize);
+  header["comp_dict"]["compress_level"] = 0;
+  header["comp_dict"]["original_size"] = dictSize;
+  header["comp_dict"]["offset"] =
+      static_cast<size_t>(header["comp_blocks"]["offset"]) + total_block_size;
+
+  bool comp_res = false;
+  size_t comp_block_index_size = 0;
+  {
+    std::vector<char> comp_block_index_dst;
+    comp_res =
+        compress_to_buffer(reinterpret_cast<const char *>(block_indexes.data()),
+                           block_indexes.size() * sizeof(BlockIndex),
+                           comp_block_index_dst, compressionLevel);
+    if (!comp_res) { return false; }
+    out.write(comp_block_index_dst.data(), comp_block_index_dst.size());
+    comp_block_index_size = comp_block_index_dst.size();
+    header["block_indexes"]["compress_level"] = compressionLevel;
+    header["block_indexes"]["compressed_size"] = comp_block_index_size;
+    header["block_indexes"]["original_size"] =
+        block_indexes.size() * sizeof(BlockIndex);
+    header["block_indexes"]["offset"] =
+        static_cast<size_t>(header["comp_dict"]["offset"]) + dictSize;
   }
-  blockIdxOut.write(reinterpret_cast<const char *>(block_indexes.data()),
-                    block_indexes.size() * sizeof(BlockIndex));
-  entryIdxOut.write(reinterpret_cast<const char *>(entry_indexes.data()),
-                    entry_indexes.size() * sizeof(EntryIndex));
+
+  {
+    out.write(reinterpret_cast<const char *>(entry_indexes.data()),
+              entry_indexes.size() * sizeof(EntryIndex));
+    header["entry_indexes"]["compress_level"] = 0;
+    header["entry_indexes"]["original_size"] =
+        entry_indexes.size() * sizeof(EntryIndex);
+    header["entry_indexes"]["offset"] =
+        static_cast<size_t>(header["block_indexes"]["offset"]) +
+        comp_block_index_size;
+  }
 
   ZSTD_freeCDict(cdict);
   return true;
@@ -307,6 +401,13 @@ std::string FstdxCompressor::getTextByIndex(
 
   size_t block_index_idx = bin_search_block_index(idx, block_indexes);
   const BlockIndex &block_index = block_indexes[block_index_idx];
+
+  // LOG_INFO("block_index.end_entry_index: {}, block_index.block_offset: {}, "
+  //          "block_index.block_size: {}, block_index.original_block_size: {}",
+  //          block_index.end_entry_index, block_index.block_offset,
+  //          block_index.block_size, block_index.original_block_size);
+  // LOG_INFO("entry_index.entry_offset: {}, entry_index.entry_size: {}",
+  //          entry_index.entry_offset, entry_index.entry_size);
 
   compIn.seekg(offset + block_index.block_offset);
   std::vector<char> compBuf(block_index.block_size);

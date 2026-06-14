@@ -8,14 +8,26 @@ namespace fstd {
 
 #define FSTD_VERSION "0.1.0"
 
-using MxJsonHeader = nlohmann::json;
-using MdJsonHeader = nlohmann::json;
+using DxJsonHeader = nlohmann::json;
+using DdJsonHeader = nlohmann::json;
 
 struct HeaderSizeRecord {
   HeaderSizeRecord() = default;
   HeaderSizeRecord(uint32_t original_size, uint32_t compressed_size);
   uint32_t original_size;
   uint32_t compressed_size;
+};
+
+const size_t max_queue_size = 8; // 队列缓冲（内存友好）
+
+struct CompressTask {
+  std::vector<char> src_data;
+  size_t index;
+};
+
+struct CompressResult {
+  std::vector<char> dst_data;
+  size_t index;
 };
 
 std::string get_current_date();
@@ -46,7 +58,8 @@ bool decompress(std::istream &ins, const std::string &block_name,
   tmp_con.resize(original_size / sizeof(T));
   if (compress_level == 0) {
     ins.seekg(offset);
-    ins.read(reinterpret_cast<char *>(tmp_con.data()), tmp_con.size());
+    ins.read(reinterpret_cast<char *>(tmp_con.data()),
+             tmp_con.size() * sizeof(T));
   } else {
     uint64_t compressed_size = json_block["compressed_size"];
     std::vector<char> compressed_block(compressed_size);
@@ -56,7 +69,10 @@ bool decompress(std::istream &ins, const std::string &block_name,
     bool res =
         decompress_to_buffer(compressed_block.data(), compressed_block.size(),
                              original_size, dst_buff);
-    if (!res) { return false; }
+    if (!res) {
+      LOG_ERROR("Decompression failed for block: {}", block_name);
+      return false;
+    }
     memcpy(tmp_con.data(), dst_buff.data(), dst_buff.size());
   }
   con.swap(tmp_con);

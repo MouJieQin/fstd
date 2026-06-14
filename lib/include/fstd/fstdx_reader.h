@@ -57,7 +57,7 @@ private:
 
 private:
   const std::string fstdx_path_;
-  MxJsonHeader mx_json_header_;
+  DxJsonHeader mx_json_header_;
   size_t key_size_;
   size_t fst_key_size_;
   FstMapSearcher<uint64_t> fst_map_searcher_;
