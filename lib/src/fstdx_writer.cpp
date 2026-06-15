@@ -8,7 +8,6 @@
 #include <fstd/thread_pool.h>
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
-#include <indicators/dynamic_progress.hpp>
 
 using namespace fst;
 using namespace std;
@@ -45,10 +44,10 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
   try {
     meta_json = json::parse(meta_json_str);
   } catch (const json::exception &e) {
-    LOG_ERROR("JSON string {} 格式错误：{}", meta_json_str, e.what());
+    LOG_ERROR("JSON string {} format error：{}", meta_json_str, e.what());
     return 1;
   } catch (const std::exception &e) {
-    LOG_ERROR("JSON string {} 读取错误：{}", meta_json_str, e.what());
+    LOG_ERROR("JSON string {} read error：{}", meta_json_str, e.what());
     return 1;
   }
   return compile_fstdx(output_file, keys, values, meta_json, block_size_kb,
@@ -75,7 +74,9 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
 
   vector<string> keys;
   vector<string> values;
+  LOG_INFO("Loading file {}...", input_file);
   if (!load_file(fin, keys, values)) { return 1; }
+  LOG_INFO("Loaded {} keys and values.", keys.size());
   fin.close();
   return compile_fstdx(fout, keys, values, meta, block_size_kb, compress_level,
                        zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
@@ -90,73 +91,57 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
                                bool opt_sorted, bool opt_verbose) {
   DxJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
-  LOG_INFO("handle meta success.");
   header["meta"]["Record"] = keys.size();
   header["meta"]["Stripkey"] = true;
   header["meta"]["Compressionlevel"] = compress_level;
-  LOG_INFO("Loaded {} keys and {} values.", keys.size(), values.size());
-  if (!opt_sorted) { sort_keys_values(keys, values); }
-  LOG_INFO("Sorted {} keys and {} values.", keys.size(), values.size());
-
+  if (!opt_sorted) {
+    sort_keys_values(keys, values);
+  }
   vector<pair<string, uint64_t>> input;
-  make_output(keys, input);
+  make_output(std::move(keys), input);
   header["key_fst"]["keys_size"] = input.size();
   {
-    // 释放keys内存
+    // release keys memory
     vector<string> tmp;
     keys.swap(tmp);
   }
 
-  // Hide cursor
   show_console_cursor(false);
-  DynamicProgress<BlockProgressBar> bars;
+  DyProgBars<BlockProgressBar> dynamic_bars;
+  dynamic_bars.bars.set_option(option::HideBarWhenComplete{false});
   auto build_fst_bar_ptr = std::make_unique<BlockProgressBar>(
       option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
       option::PrefixText{"Compiling key FST:        "},
       option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
       option::ForegroundColor{Color::cyan}, option::ShowPercentage{true},
       option::FontStyles{std::vector<FontStyle>{FontStyle::bold}});
-  bars.set_option(option::HideBarWhenComplete{false});
+
   size_t thread_num = worker_num;
   if (worker_num == 0) { thread_num = get_cpu_core_count(); }
   ThreadPool thread_pool(thread_num);
-  vector<shared_ptr<BlockProgressBar>> block_bars;
-
-  for (size_t i = 0; i < thread_num; ++i) {
-    block_bars.emplace_back(std::make_shared<BlockProgressBar>(
-        option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
-        option::PrefixText{"Compressing value blocks: "},
-        option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
-        option::ForegroundColor{Color::white}, option::ShowPercentage{true},
-        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}));
-    bars.push_back(*block_bars.back());
-  }
 
   ostringstream oss_key_fst_out(ios_base::binary);
-  ostringstream oss_hash_index_out(ios_base::binary);
-  std::set<size_t> dup_hash_idxes;
-  size_t bucket_size, bucket_data_size;
   const bool show_progress = is_terminal();
   auto compile_res = thread_pool.enqueue([&]() {
-    size_t i = bars.push_back(*build_fst_bar_ptr);
+    size_t i = dynamic_bars.push_back(std::move(build_fst_bar_ptr));
     size_t last_progress = 0;
     auto progress_build_fst = [&](const size_t index) {
       if (show_progress) {
         size_t progress = index * 100 / input.size();
         if (progress > last_progress) {
-          bars[i].set_option(option::PostfixText{std::to_string(index) + "/" +
-                                                 std::to_string(input.size())});
-          bars[i].set_progress(progress);
+          dynamic_bars.bars[i].set_option(option::PostfixText{
+              std::to_string(index) + "/" + std::to_string(input.size())});
+          dynamic_bars.bars[i].set_progress(progress);
           last_progress = progress;
         }
-        if (index == input.size()) { bars[i].mark_as_completed(); }
+        if (index == input.size()) { dynamic_bars.bars[i].mark_as_completed(); }
       }
     };
 
     bool res = compile_fst(input, oss_key_fst_out, true, opt_verbose,
                            progress_build_fst);
     if (res) {
-      LOG_INFO("FST compiled.");
+      LOG_DEBUG("FST compiled.");
     } else {
       LOG_ERROR("Compile FST failed.");
     }
@@ -164,17 +149,18 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   });
 
   FstdxCompressor compressor;
-  bool comp_res = false;
-
   LOG_INFO("Compressing values...");
   if (!compressor.compress_texts_to_stream(
           fout, values, header, zstd_dict_size_kb * 1024, block_size_kb * 1024,
-          compress_level, thread_pool, bars)) {
+          compress_level, thread_pool, dynamic_bars)) {
     return 3;
   }
-  // Show cursor
   show_console_cursor(true);
 
+  LOG_INFO("Hash index computing...");
+  ostringstream oss_hash_index_out(ios_base::binary);
+  std::set<size_t> dup_hash_idxes;
+  size_t bucket_size, bucket_data_size;
   auto write_hash_res = thread_pool.enqueue([&]() {
     auto res_p = write_hash_index(oss_hash_index_out, input, dup_hash_idxes);
     bucket_size = res_p.first;
@@ -184,17 +170,23 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
 
   if (!compile_res.get()) { return 2; }
 
-  const string hash_data(oss_hash_index_out.str());
-  fout << hash_data;
-  header["hash_buckets"]["offset"] =
-      static_cast<size_t>(header["entry_indexes"]["offset"]) +
-      input.size() * sizeof(EntryIndex);
-  header["hash_index"]["offset"] =
-      static_cast<size_t>(header["hash_buckets"]["offset"]) + bucket_data_size;
-  header["hash_index"]["dup_idxes"] =
-      vector<size_t>(dup_hash_idxes.begin(), dup_hash_idxes.end());
-  header["hash_index"]["bucket_size"] = bucket_size;
+  size_t hash_data_size = 0;
+  {
+    const string hash_data(oss_hash_index_out.str());
+    hash_data_size = hash_data.size();
+    fout << hash_data;
+    header["hash_buckets"]["offset"] =
+        static_cast<size_t>(header["entry_indexes"]["offset"]) +
+        input.size() * sizeof(EntryIndex);
+    header["hash_index"]["offset"] =
+        static_cast<size_t>(header["hash_buckets"]["offset"]) +
+        bucket_data_size;
+    header["hash_index"]["dup_idxes"] =
+        vector<size_t>(dup_hash_idxes.begin(), dup_hash_idxes.end());
+    header["hash_index"]["bucket_size"] = bucket_size;
+  }
 
+  bool comp_res = false;
   std::vector<char> comp_key_fst_dst;
   {
     comp_res =
@@ -206,27 +198,26 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
     fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
     header["key_fst"]["offset"] =
-        static_cast<size_t>(header["hash_buckets"]["offset"]) +
-        hash_data.size();
+        static_cast<size_t>(header["hash_buckets"]["offset"]) + hash_data_size;
   }
 
-  header["meta"]["Creationdate"] = get_current_date();
-  std::vector<char> comp_header_dst;
-  std::string header_str = header.dump();
   {
+    header["meta"]["Creationdate"] = get_current_date();
+    std::vector<char> comp_header_dst;
+    std::string header_str = header.dump();
     comp_res = compress_to_buffer(header_str.c_str(), header_str.size(),
                                   comp_header_dst, compress_level);
     if (!comp_res) { return 4; }
-  }
-  fout.write(comp_header_dst.data(), comp_header_dst.size());
+    fout.write(comp_header_dst.data(), comp_header_dst.size());
 
-  HeaderSizeRecord header_size_record(header_str.size(),
-                                      comp_header_dst.size());
-  LOG_INFO("{}", header_str);
-  LOG_INFO("{},{}", header_size_record.original_size,
-           header_size_record.compressed_size);
-  fout.write(reinterpret_cast<const char *>(&header_size_record),
-             sizeof(HeaderSizeRecord));
+    HeaderSizeRecord header_size_record(header_str.size(),
+                                        comp_header_dst.size());
+    LOG_DEBUG("{},{}", header_size_record.original_size,
+              header_size_record.compressed_size);
+    LOG_INFO("{}", header.dump(2));
+    fout.write(reinterpret_cast<const char *>(&header_size_record),
+               sizeof(HeaderSizeRecord));
+  }
   return 0;
 }
 
@@ -256,7 +247,7 @@ std::string FstdxWriter::trim_whitespace(const std::string &s) {
   return s.substr(start, end - start + 1);
 }
 
-bool FstdxWriter::parse_raw_txt(std::vector<std::string> &raw_lines,
+bool FstdxWriter::parse_raw_txt(std::vector<unique_ptr<string>> &raw_lines,
                                 std::vector<size_t> &delimiter_indices,
                                 std::vector<std::string> &keys,
                                 std::vector<std::string> &values) {
@@ -288,10 +279,10 @@ bool FstdxWriter::parse_raw_txt(std::vector<std::string> &raw_lines,
   vector<string> keys_temp;
   keys_temp.reserve(delimiter_indices.size());
   // handle the first key
-  keys_temp.emplace_back(trim_whitespace(raw_lines[0]));
+  keys_temp.emplace_back(trim_whitespace(*raw_lines[0]));
   for (size_t i = 0; i < delimiter_indices.size() - 1; i++) {
     keys_temp.emplace_back(
-        trim_whitespace(raw_lines[delimiter_indices[i] + 1]));
+        trim_whitespace(*raw_lines[delimiter_indices[i] + 1]));
   }
 
   vector<string> values_temp;
@@ -299,7 +290,7 @@ bool FstdxWriter::parse_raw_txt(std::vector<std::string> &raw_lines,
   string cur_value("");
   // handle the first value
   for (size_t i = 1; i < delimiter_indices.front(); i++) {
-    cur_value += raw_lines[i] + "\n";
+    cur_value += *raw_lines[i] + "\n";
   }
   // remove the last '\n'
   cur_value.pop_back();
@@ -308,7 +299,7 @@ bool FstdxWriter::parse_raw_txt(std::vector<std::string> &raw_lines,
     cur_value = "";
     for (size_t j = delimiter_indices[i] + 2; j < delimiter_indices[i + 1];
          j++) {
-      cur_value += std::move(raw_lines[j]) + "\n";
+      cur_value += *raw_lines[j] + "\n";
     }
     cur_value.pop_back();
     values_temp.emplace_back(std::move(cur_value));
@@ -332,8 +323,8 @@ bool FstdxWriter::load_file(const std::string &file_path,
 bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,
                             std::vector<std::string> &values) {
   LOG_INFO("Loading and parsing raw text file...");
-  std::string line;
-  vector<string> raw_lines;
+  string line;
+  vector<unique_ptr<string>> raw_lines;
   raw_lines.reserve(100000);
   vector<size_t> delimiter_indices;
   size_t index_count = 0;
@@ -343,7 +334,7 @@ bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,
     if (trimmed_line == delimiter) {
       delimiter_indices.emplace_back(index_count);
     }
-    raw_lines.emplace_back(std::move(line));
+    raw_lines.emplace_back(make_unique<string>(std::move(line)));
     index_count += 1;
   }
 
@@ -353,15 +344,12 @@ bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,
 void FstdxWriter::sort_keys_values(std::vector<std::string> &keys,
                                    std::vector<std::string> &values) {
   LOG_INFO("Sorting {} keys and values...", keys.size());
-  vector<size_t> indices(keys.size());
-  iota(indices.begin(), indices.end(), 0);
-  sort(indices.begin(), indices.end(),
-       [&](size_t i, size_t j) { return keys[i] < keys[j]; });
+  vector<size_t> sorted_indices = sort_indexes(keys);
   vector<string> temp_keys;
   temp_keys.reserve(keys.size());
   vector<string> temp_values;
   temp_values.reserve(values.size());
-  for (size_t i : indices) {
+  for (size_t i : sorted_indices) {
     temp_keys.emplace_back(std::move(keys[i]));
     temp_values.emplace_back(std::move(values[i]));
   }
@@ -371,12 +359,11 @@ void FstdxWriter::sort_keys_values(std::vector<std::string> &keys,
 
 uint64_t FstdxWriter::get_output(uint32_t index, uint32_t duplicate_count) {
   uint64_t duplicate_mask = static_cast<uint64_t>(duplicate_count) << 32;
-
   return duplicate_mask | static_cast<uint64_t>(index);
 }
 
 void FstdxWriter::make_output(
-    std::vector<std::string> &sorted_keys,
+    std::vector<std::string> &&sorted_keys,
     std::vector<std::pair<std::string, uint64_t>> &input) {
   if (sorted_keys.empty()) { return; }
   LOG_INFO("Encoding duplicate keys for compiling FST...");
@@ -397,7 +384,7 @@ void FstdxWriter::make_output(
       index = i;
     }
   }
-  // 处理最后一个key
+  // handle the last key
   if (duplicate_count > 0) { total_duplicate_count += 1; }
   LOG_INFO("Total duplicate keys: {}", total_duplicate_count);
   uint64_t output = get_output(index, duplicate_count);

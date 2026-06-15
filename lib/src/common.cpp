@@ -10,6 +10,14 @@ HeaderSizeRecord::HeaderSizeRecord(uint32_t original_size,
                                    uint32_t compressed_size)
     : original_size(original_size), compressed_size(compressed_size) {}
 
+BlockIndex::BlockIndex(uint32_t end_entry_index, uint64_t block_offset,
+                       uint32_t block_size, uint32_t original_block_size)
+    : end_entry_index(end_entry_index), block_offset(block_offset),
+      block_size(block_size), original_block_size(original_block_size) {}
+
+EntryIndex::EntryIndex(uint32_t entry_offset, uint32_t entry_size)
+    : entry_offset(entry_offset), entry_size(entry_size) {}
+
 std::string get_current_date() {
   std::time_t now = std::time(nullptr);
   std::tm local_tm = *std::localtime(&now);
@@ -94,7 +102,8 @@ bool decompress_to_buffer(const void *src, size_t compressed_size,
   size_t actual_decomp_size =
       ZSTD_decompress(decomp_buf.data(), original_size, src, compressed_size);
   if (ZSTD_isError(actual_decomp_size)) {
-    LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(actual_decomp_size));
+    LOG_ERROR("Decompression failed: {}",
+              ZSTD_getErrorName(actual_decomp_size));
     return false;
   }
   dst.swap(decomp_buf);

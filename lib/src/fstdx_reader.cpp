@@ -46,16 +46,12 @@ bool FstdxReader::exact_match_search(std::string_view word,
   // }
   if (!fst_map_searcher_.exact_match_search(word, index_res)) { return false; }
   auto [index, duplicate] = extract_index(index_res);
-  // LOG_INFO("index: {}, duplicate: {}", index, duplicate);
+  LOG_DEBUG("index: {}, duplicate: {}", index, duplicate);
   std::vector<std::string> tmp_result;
   for (uint32_t i = 0; i <= duplicate; ++i) {
-    // LOG_INFO("index + i: {}, block_indexes_: {}, entry_indexes_: "
-    //          "{}, compstdx_path_: {}, comp_text_offset_: {}",
-    //          index + i, block_indexes_[index + i], entry_indexes_[index + i],
-    //          fstdx_path_, comp_text_offset_);
-    std::string text = dx_compressor_.readTextByIndex(
-        index + i, ddict_, block_indexes_, entry_indexes_, fstdx_path_,
-        comp_text_offset_);
+    std::string text =
+        read_text_by_index(index + i, block_indexes_, entry_indexes_, ddict_,
+                           fstdx_path_, comp_text_offset_);
     tmp_result.emplace_back(std::move(text));
   }
   result.swap(tmp_result);
@@ -98,8 +94,8 @@ std::vector<std::pair<std::string, uint64_t>> FstdxReader::enumerate() const {
 }
 
 std::vector<std::string> FstdxReader::extract_values() const {
-  return dx_compressor_.extract(fstdx_path_, comp_text_offset_, ddict_,
-                                block_indexes_, entry_indexes_);
+  return extract_comp_blocks(fstdx_path_, comp_text_offset_, ddict_,
+                             block_indexes_, entry_indexes_);
 }
 
 std::vector<std::string> FstdxReader::extract_keys() const {
@@ -162,6 +158,127 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
     dup_idxes_.insert(static_cast<size_t>(idx));
   }
   return true;
+}
+
+size_t FstdxReader::bin_search_block_index(
+    uint32_t entry_index, const std::vector<BlockIndex> &block_indexes) const {
+  size_t first = 0;
+  size_t last = block_indexes.size();
+  size_t len = last - first;
+  while (len > 1) {
+    size_t half = len >> 1;
+    size_t middle = first + half - 1;
+    uint32_t middle_end_index = block_indexes[middle].end_entry_index;
+    if (entry_index == middle_end_index) {
+      return middle + 1;
+    } else if (entry_index < middle_end_index) {
+      last = middle + 1;
+    } else {
+      first = middle + 1;
+    }
+    len = last - first;
+  }
+  return first;
+}
+
+std::string FstdxReader::read_text_by_index(
+    const size_t idx, const std::vector<BlockIndex> &block_indexes,
+    const std::vector<EntryIndex> &entry_indexes, const ZSTD_DDict *ddict,
+    const std::string &comp_file, const size_t offset) const {
+  std::ifstream comp_in(comp_file, std::ios::binary);
+  if (!comp_in) {
+    LOG_ERROR("Couldn't open file: {}", comp_file);
+    return "";
+  }
+  if (idx >= entry_indexes.size()) {
+    LOG_ERROR("Entry index is out of range({}): {}", entry_indexes.size(), idx);
+    return "";
+  }
+  const EntryIndex &entry_index = entry_indexes[idx];
+
+  size_t block_index_idx = bin_search_block_index(idx, block_indexes);
+  const BlockIndex &block_index = block_indexes[block_index_idx];
+
+  LOG_DEBUG("block_index.end_entry_index: {}, block_index.block_offset: {}, "
+            "block_index.block_size: {}, block_index.original_block_size: {}",
+            block_index.end_entry_index, block_index.block_offset,
+            block_index.block_size, block_index.original_block_size);
+  LOG_DEBUG("entry_index.entry_offset: {}, entry_index.entry_size: {}",
+            entry_index.entry_offset, entry_index.entry_size);
+
+  comp_in.seekg(offset + block_index.block_offset);
+  std::vector<char> comp_buf(block_index.block_size);
+  comp_in.read(comp_buf.data(), comp_buf.size());
+
+  unsigned long long decomp_buf_size = block_index.original_block_size;
+
+  std::vector<char> decomp_buf(decomp_buf_size);
+  ZSTD_DCtx *dctx = ZSTD_createDCtx();
+  if (!dctx) {
+    LOG_ERROR("Create Decompression context failed.");
+    return "";
+  }
+
+  size_t decomp_size =
+      ZSTD_decompress_usingDDict(dctx, decomp_buf.data(), decomp_buf.size(),
+                                 comp_buf.data(), comp_buf.size(), ddict);
+
+  ZSTD_freeDCtx(dctx);
+
+  if (ZSTD_isError(decomp_size)) {
+    LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decomp_size));
+    return "";
+  }
+
+  return std::string(decomp_buf.data() + entry_index.entry_offset,
+                     entry_index.entry_size);
+}
+
+std::vector<std::string> FstdxReader::extract_comp_blocks(
+    const std::string &comp_file, const size_t offset, const ZSTD_DDict *ddict,
+    const std::vector<BlockIndex> &block_indexes,
+    const std::vector<EntryIndex> &entry_indexes) const {
+  std::vector<std::string> result;
+  std::ifstream comp_in(comp_file, std::ios::binary);
+  if (!comp_in) {
+    LOG_ERROR("Couldn't open file: {}", comp_file);
+    return result;
+  }
+
+  ZSTD_DCtx *dctx = ZSTD_createDCtx();
+  if (!dctx) {
+    LOG_ERROR("Create Decompression context failed.");
+    return result;
+  }
+
+  size_t idx = 0;
+  std::vector<char> comp_buf;
+  std::vector<char> decomp_buf;
+  result.reserve(entry_indexes.size());
+  for (const BlockIndex &block_index : block_indexes) {
+    comp_in.seekg(offset + block_index.block_offset);
+    comp_buf.resize(block_index.block_size);
+    comp_in.read(comp_buf.data(), comp_buf.size());
+
+    decomp_buf.resize(block_index.original_block_size);
+    size_t decomp_size =
+        ZSTD_decompress_usingDDict(dctx, decomp_buf.data(), decomp_buf.size(),
+                                   comp_buf.data(), comp_buf.size(), ddict);
+    if (ZSTD_isError(decomp_size)) {
+      ZSTD_freeDCtx(dctx);
+      LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decomp_size));
+      return {};
+    }
+
+    for (; idx < block_index.end_entry_index; ++idx) {
+      const char *data_ptr = decomp_buf.data();
+      const EntryIndex &entry_index = entry_indexes[idx];
+      result.emplace_back(std::string(data_ptr + entry_index.entry_offset,
+                                      entry_index.entry_size));
+    }
+  }
+  ZSTD_freeDCtx(dctx);
+  return result;
 }
 
 } // namespace fstd

@@ -4,7 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include <fstd/common.h>
-#include <fstd/fstdx_compressor.h>
+#include <zstd.h>
 #include <fstd/fstlib_wrapper.h>
 
 namespace fstd {
@@ -55,13 +55,29 @@ public:
 private:
   bool parse_fstdx(const std::string &fstdx_path);
 
+  size_t
+  bin_search_block_index(uint32_t entry_index,
+                         const std::vector<BlockIndex> &block_indexes) const;
+
+  std::string read_text_by_index(const size_t idx,
+                                 const std::vector<BlockIndex> &block_indexes,
+                                 const std::vector<EntryIndex> &entry_indexes,
+                                 const ZSTD_DDict *ddict,
+                                 const std::string &comp_file,
+                                 const size_t offset) const;
+
+  std::vector<std::string>
+  extract_comp_blocks(const std::string &comp_file, const size_t offset,
+                      const ZSTD_DDict *ddict,
+                      const std::vector<BlockIndex> &block_indexes,
+                      const std::vector<EntryIndex> &entry_indexes) const;
+
 private:
   const std::string fstdx_path_;
   DxJsonHeader mx_json_header_;
   size_t key_size_;
   size_t fst_key_size_;
   FstMapSearcher<uint64_t> fst_map_searcher_;
-  FstdxCompressor dx_compressor_;
   ZSTD_DDict *ddict_;
   std::vector<BlockIndex> block_indexes_;
   std::vector<EntryIndex> entry_indexes_;

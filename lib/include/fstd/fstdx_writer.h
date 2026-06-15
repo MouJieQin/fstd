@@ -46,7 +46,7 @@ public:
 private:
   std::string trim_whitespace(const std::string &s);
 
-  bool parse_raw_txt(std::vector<std::string> &raw_lines,
+  bool parse_raw_txt(std::vector<std::unique_ptr<std::string>> &raw_lines,
                      std::vector<size_t> &delimiter_indices,
                      std::vector<std::string> &keys,
                      std::vector<std::string> &values);
@@ -59,7 +59,7 @@ private:
 
   uint64_t get_output(uint32_t index, uint32_t duplicate_count);
 
-  void make_output(std::vector<std::string> &sorted_keys,
+  void make_output(std::vector<std::string> &&sorted_keys,
                    std::vector<std::pair<std::string, uint64_t>> &input);
 
   bool compile_fst(std::vector<std::pair<std::string, uint64_t>> &input,

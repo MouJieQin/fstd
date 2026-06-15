@@ -2,6 +2,7 @@
 #include <fstream>
 
 #include <fstd/logger.h>
+#include <indicators/dynamic_progress.hpp>
 #include <nlohmann/json.hpp>
 
 namespace fstd {
@@ -16,6 +17,33 @@ struct HeaderSizeRecord {
   HeaderSizeRecord(uint32_t original_size, uint32_t compressed_size);
   uint32_t original_size;
   uint32_t compressed_size;
+};
+
+struct BlockIndex {
+  BlockIndex() = default;
+  BlockIndex(uint32_t end_entry_index, uint64_t block_offset,
+             uint32_t block_size, uint32_t original_block_size);
+  uint32_t end_entry_index;
+  uint64_t block_offset;
+  uint32_t block_size;
+  uint32_t original_block_size;
+};
+
+struct EntryIndex {
+  EntryIndex() = default;
+  EntryIndex(uint32_t entry_offset, uint32_t entry_size);
+  uint32_t entry_offset;
+  uint32_t entry_size;
+};
+
+template <typename Bar> struct DyProgBars {
+  DyProgBars() = default;
+  size_t push_back(std::unique_ptr<Bar> bar) {
+    bar_instances.push_back(std::move(bar));
+    return bars.push_back(*bar_instances.back());
+  }
+  std::vector<std::unique_ptr<Bar>> bar_instances;
+  indicators::DynamicProgress<Bar> bars;
 };
 
 const size_t max_queue_size = 8; // 队列缓冲（内存友好）
