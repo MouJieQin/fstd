@@ -313,9 +313,9 @@ int main(int argc, char **argv) {
     if (std::filesystem::is_directory(write_input_file)) {
       if (output_file.empty()) { output_file = "output.fstdd"; }
       fstd::FstddWriter fstdd_writer;
-      int ret = fstdd_writer.compile_fstdd(
-          write_input_file, output_file, meta_json, block_size, compress_level,
-          write_worker_num, verbose);
+      int ret =
+          fstdd_writer.compile_fstdd(write_input_file, output_file, meta_json,
+                                     compress_level, write_worker_num, verbose);
       if (ret != 0) {
         LOG_ERROR("编译失败，返回码：{}", ret);
         return ret;
@@ -338,9 +338,11 @@ int main(int argc, char **argv) {
   } else if (*extract_cmd) {
 
     if (ends_with(extract_input_file, ".fstdx")) {
-      fstd::FstdxWriter fstdx_writer;
+      bool is_valid = true;
+      fstd::FstdxReader fstdx_reader(extract_input_file, is_valid);
+      if (!is_valid) { return 1; }
       bool ret =
-          fstdx_writer.extract_fstdx(extract_input_file, extract_output_file);
+          fstdx_reader.extract_fstdx(extract_input_file, extract_output_file);
       if (!ret) { return 3; }
     } else if (ends_with(extract_input_file, ".fstdd")) {
       bool is_valid = true;

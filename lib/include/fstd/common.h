@@ -8,6 +8,7 @@
 namespace fstd {
 
 #define FSTD_VERSION "0.1.0"
+constexpr auto DELIMITER = "</>";
 
 using DxJsonHeader = nlohmann::json;
 using DdJsonHeader = nlohmann::json;

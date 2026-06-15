@@ -5,7 +5,6 @@
 #include <fstd/fstdx_reader.h>
 
 namespace fstd {
-constexpr auto DELIMITER = "</>";
 
 class FstdxWriter {
 public:

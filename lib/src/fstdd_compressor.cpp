@@ -14,6 +14,7 @@
 #include <fstd/fstdd_compressor.h>
 #include <fstd/hash_index.h>
 #include <fstd/logger.h>
+#include <fstd/thread_pool.h>
 #include <nlohmann/json.hpp>
 
 namespace fs = std::filesystem;
@@ -29,18 +30,18 @@ std::ostream &operator<<(std::ostream &os, const ValueBlockPosIndex &vbp_idx) {
   return os;
 }
 
-bool FstddCompressor::compress(const string &data_path, std::ofstream &out,
-                               DdJsonHeader &header) {
+bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
+                               std::ofstream &out, DdJsonHeader &header,
+                               size_t worker_num, bool opt_verbose) {
 
-  vector<string> data_paths{data_path};
   // 1. 启动读取线程
   thread reader([&]() { read_files(data_paths, header); });
 
-  // 2. 启动 CPU 核心数匹配的压缩线程池
-  unsigned int cpu_threads = thread::hardware_concurrency();
-  if (cpu_threads == 0) cpu_threads = 4;
+  if (worker_num == 0) {
+    worker_num = get_optimal_thread_num(TaskType::CPU_INTENSIVE);
+  }
   vector<thread> workers;
-  for (unsigned int i = 0; i < cpu_threads; ++i) {
+  for (unsigned int i = 0; i < worker_num; ++i) {
     workers.emplace_back([&]() { compress_worker(); });
   }
 
@@ -80,26 +81,29 @@ vector<char> FstddCompressor::zstd_compress_block(const char *data, size_t size,
   return dst;
 }
 
+std::vector<std::pair<std::string, size_t>>
+FstddCompressor::recursive_directory(
+    const std::vector<std::string> &data_paths) {
+  std::vector<std::pair<std::string, size_t>> files_paths;
+  for (size_t i = 0; i < data_paths.size(); ++i) {
+    const string &data_path = data_paths[i];
+    for (const auto &entry : fs::recursive_directory_iterator(data_path)) {
+      if (!entry.is_regular_file()) { continue; }
+      std::string file =
+          std::filesystem::relative(entry.path(), data_path).generic_string();
+      files_paths.emplace_back(std::move(file), i);
+    }
+  }
+  return files_paths;
+}
+
 // -------------------- 线程1：单线程顺序读取 & 切块 --------------------
 void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
                                  DdJsonHeader &header) {
   vector<char> disk_buf(disk_read_size);
   size_t buf_size = 0;
   uint64_t block_index = 0;
-  vector<pair<string, size_t>> files_paths;
-  for (size_t i = 0; i < data_paths.size(); ++i) {
-    const string &data_path = data_paths[i];
-    for (const auto &entry : fs::recursive_directory_iterator(data_path)) {
-      if (!entry.is_regular_file()) { continue; }
-      // string file = entry.path().string();
-      std::string file =
-          std::filesystem::relative(entry.path(), data_path).string();
-      // 统一路径分隔符为 '/'，避免跨平台解压问题
-      std::replace(file.begin(), file.end(), '\\', '/');
-      files_paths.emplace_back(std::move(file), i);
-    }
-  }
-
+  vector<pair<string, size_t>> files_paths = recursive_directory(data_paths);
   size_t record = 0;
   for (size_t i = 0; i < files_paths.size(); ++i) {
     string key = files_paths[i].first;
@@ -124,7 +128,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
         uint64_t end_offset = buf_size % zstd_block_size;
         uint64_t end_block_index = block_index + end_count;
         LOG_DEBUG("{} : {}, {}, {}, {}", key, start_block_index, start_offset,
-                 end_block_index, end_offset);
+                  end_block_index, end_offset);
         index_record.emplace_back(
             std::move(key), ValueBlockPosIndex(start_block_index, start_offset,
                                                end_block_index, end_offset));

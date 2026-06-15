@@ -93,6 +93,20 @@ std::vector<std::pair<std::string, uint64_t>> FstdxReader::enumerate() const {
   return fst_map_searcher_.enumerate(fst_key_size_);
 }
 
+bool FstdxReader::extract(const std::string &output_file) {
+  ofstream fout(output_file, ios_base::out);
+  if (!fout) {
+    LOG_ERROR("Failed to open file {} for writing.", output_file);
+    return 1;
+  }
+  const std::vector<std::string> keys = extract_keys();
+  const std::vector<std::string> values = extract_values();
+  for (size_t i = 0; i < keys.size(); ++i) {
+    fout << keys[i] << "\n" << values[i] << "\n" << DELIMITER << "\n";
+  }
+  return true;
+}
+
 std::vector<std::string> FstdxReader::extract_values() const {
   return extract_comp_blocks(fstdx_path_, comp_text_offset_, ddict_,
                              block_indexes_, entry_indexes_);

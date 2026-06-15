@@ -4,8 +4,8 @@
 #include <nlohmann/json.hpp>
 
 #include <fstd/common.h>
-#include <zstd.h>
 #include <fstd/fstlib_wrapper.h>
+#include <zstd.h>
 
 namespace fstd {
 
@@ -47,6 +47,8 @@ public:
   spellcheck_word(std::string_view word, const size_t n = 10) const;
 
   std::vector<std::pair<std::string, uint64_t>> enumerate() const;
+
+  bool extract(const std::string &output_file);
 
   std::vector<std::string> extract_values() const;
 

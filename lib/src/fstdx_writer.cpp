@@ -221,24 +221,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   return 0;
 }
 
-bool FstdxWriter::extract_fstdx(const std::string &input_file,
-                                const std::string &output_file) {
-  bool is_valid = false;
-  FstdxReader reader(input_file, is_valid);
-  if (!is_valid) { return false; }
-  ofstream fout(output_file, ios_base::out);
-  if (!fout) {
-    LOG_ERROR("Failed to open file {} for writing.", output_file);
-    return 1;
-  }
-  const std::vector<std::string> keys = reader.extract_keys();
-  const std::vector<std::string> values = reader.extract_values();
-  for (size_t i = 0; i < keys.size(); ++i) {
-    fout << keys[i] << "\r\n" << values[i] << "\r\n" << DELIMITER << "\r\n";
-  }
-  return true;
-}
-
 std::string FstdxWriter::trim_whitespace(const std::string &s) {
   size_t start = s.find_first_not_of(" \t\n\r");
   if (start == std::string::npos) return "";
