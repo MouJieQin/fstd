@@ -150,7 +150,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     fout << hash_data;
     header["hash_buckets"]["offset"] =
         static_cast<size_t>(header["entry_indexes"]["offset"]) +
-        input.size() * sizeof(EntryIndex);
+        static_cast<size_t>(header["meta"]["Record"]) * sizeof(EntryIndex);
     header["hash_index"]["offset"] =
         static_cast<size_t>(header["hash_buckets"]["offset"]) +
         bucket_data_size;

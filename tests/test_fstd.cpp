@@ -40,11 +40,18 @@ TEST(FstdxReadTest, SearchTest) {
   bool is_valid = false;
   FstdxReader reader(fstdx_out_path, is_valid);
   ASSERT_TRUE(is_valid);
+  size_t idx=0;
+  string key="";
   for (size_t i = 0; i < keys.size(); i++) {
+    if(keys[i]!=key){
+      // different key
+      idx=i;
+      key=keys[idx];
+    }
     vector<string> result;
-    ASSERT_TRUE(reader.exact_match_search(keys[i], result));
+    ASSERT_TRUE(reader.exact_match_search(key, result));
     for (size_t j = 0; j < result.size(); j++) {
-      ASSERT_EQ(result[j], values[i + j]);
+      ASSERT_EQ(result[j], values[idx + j]);
     }
   }
 }
