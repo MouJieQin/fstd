@@ -70,23 +70,17 @@ private:
   std::vector<std::string>
   extract_values(DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const;
 
+  bool read_entry_index(std::ifstream &in, const size_t idx,
+                        EntryIndex &entry_index) const;
+
   size_t
   bin_search_block_index(uint32_t entry_index,
                          const std::vector<BlockIndex> &block_indexes) const;
 
-  std::string read_text_by_index(const size_t idx,
-                                 const std::vector<BlockIndex> &block_indexes,
-                                 const std::vector<EntryIndex> &entry_indexes,
-                                 const ZSTD_DDict *ddict,
-                                 const std::string &comp_file,
-                                 const size_t offset) const;
+  std::string read_text_by_index(const size_t idx) const;
 
   std::vector<std::string>
-  extract_comp_blocks(const std::string &comp_file, const size_t offset,
-                      const ZSTD_DDict *ddict,
-                      const std::vector<BlockIndex> &block_indexes,
-                      const std::vector<EntryIndex> &entry_indexes,
-                      std::function<void(size_t)> refresh_bar = nullptr) const;
+  extract_comp_blocks(std::function<void(size_t)> refresh_bar = nullptr) const;
 
 private:
   const std::string fstdx_path_;
@@ -96,11 +90,11 @@ private:
   FstMapSearcher<uint64_t> fst_map_searcher_;
   ZSTD_DDict *ddict_;
   std::vector<BlockIndex> block_indexes_;
-  std::vector<EntryIndex> entry_indexes_;
   uint64_t comp_text_offset_;
   std::set<size_t> dup_idxes_;
   size_t bucket_size_;
   uint64_t hash_bucket_offset_;
   uint64_t hash_index_offset_;
+  uint64_t entry_indexes_offset_;
 };
 } // namespace fstd

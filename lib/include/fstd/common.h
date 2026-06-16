@@ -181,7 +181,7 @@ bool decompress(const std::string &file_path, const std::string &block_name,
 }
 
 // ------------------------------
-// 通用：根据元素大小排序索引
+// Sort container by element value
 // ------------------------------
 template <typename Cont_p>
 inline std::vector<size_t> sort_indexes(const Cont_p &input) {
@@ -193,7 +193,7 @@ inline std::vector<size_t> sort_indexes(const Cont_p &input) {
 }
 
 // ------------------------------
-// 特化：针对 vector<pair<...>> 按 first 排序
+// Specialization: sort vector<pair<...>> by first element
 // ------------------------------
 template <typename T1, typename T2>
 inline std::vector<size_t>
@@ -207,7 +207,7 @@ sort_indexes(const std::vector<std::pair<T1, T2>> &input) {
 }
 
 // ------------------------------
-// 通用版本：支持 pair 等结构
+// Sort container by first pair element
 // ------------------------------
 template <typename T1, typename T2>
 inline std::vector<std::string>

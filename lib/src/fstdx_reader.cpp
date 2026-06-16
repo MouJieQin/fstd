@@ -49,9 +49,7 @@ bool FstdxReader::exact_match_search(std::string_view word,
   LOG_DEBUG("index: {}, duplicate: {}", index, duplicate);
   std::vector<std::string> tmp_result;
   for (uint32_t i = 0; i <= duplicate; ++i) {
-    std::string text =
-        read_text_by_index(index + i, block_indexes_, entry_indexes_, ddict_,
-                           fstdx_path_, comp_text_offset_);
+    std::string text = read_text_by_index(index + i);
     tmp_result.emplace_back(std::move(text));
   }
   result.swap(tmp_result);
@@ -124,13 +122,11 @@ std::vector<std::string> FstdxReader::extract_values(
   auto refresh_bar = dynamic_bars.push_back(
       key_size_, "Decompressing value blocks:", Color::white);
 
-  return extract_comp_blocks(fstdx_path_, comp_text_offset_, ddict_,
-                             block_indexes_, entry_indexes_, refresh_bar);
+  return extract_comp_blocks(refresh_bar);
 }
 
 std::vector<std::string> FstdxReader::extract_values() const {
-  return extract_comp_blocks(fstdx_path_, comp_text_offset_, ddict_,
-                             block_indexes_, entry_indexes_);
+  return extract_comp_blocks();
 }
 
 std::vector<std::string> FstdxReader::extract_keys(
@@ -187,9 +183,6 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
   if (!decompress(ins, "block_indexes", mx_json_header_, block_indexes_)) {
     return false;
   }
-  if (!decompress(ins, "entry_indexes", mx_json_header_, entry_indexes_)) {
-    return false;
-  }
   ins.close();
 
   key_size_ = mx_json_header_["meta"]["Record"];
@@ -198,6 +191,7 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
   bucket_size_ = mx_json_header_["hash_index"]["bucket_size"];
   hash_bucket_offset_ = mx_json_header_["hash_buckets"]["offset"];
   hash_index_offset_ = mx_json_header_["hash_index"]["offset"];
+  entry_indexes_offset_ = mx_json_header_["entry_indexes"]["offset"];
   for (auto idx : mx_json_header_["hash_index"]["dup_idxes"]) {
     dup_idxes_.insert(static_cast<size_t>(idx));
   }
@@ -225,23 +219,25 @@ size_t FstdxReader::bin_search_block_index(
   return first;
 }
 
-std::string FstdxReader::read_text_by_index(
-    const size_t idx, const std::vector<BlockIndex> &block_indexes,
-    const std::vector<EntryIndex> &entry_indexes, const ZSTD_DDict *ddict,
-    const std::string &comp_file, const size_t offset) const {
-  std::ifstream comp_in(comp_file, std::ios::binary);
-  if (!comp_in) {
-    LOG_ERROR("Couldn't open file: {}", comp_file);
-    return "";
-  }
-  if (idx >= entry_indexes.size()) {
-    LOG_ERROR("Entry index is out of range({}): {}", entry_indexes.size(), idx);
-    return "";
-  }
-  const EntryIndex &entry_index = entry_indexes[idx];
+bool FstdxReader::read_entry_index(std::ifstream &in, const size_t idx,
+                                   EntryIndex &entry_index) const {
 
-  size_t block_index_idx = bin_search_block_index(idx, block_indexes);
-  const BlockIndex &block_index = block_indexes[block_index_idx];
+  in.seekg(entry_indexes_offset_ + idx * sizeof(EntryIndex));
+  in.read(reinterpret_cast<char *>(&entry_index), sizeof(EntryIndex));
+  return true;
+}
+
+std::string FstdxReader::read_text_by_index(const size_t idx) const {
+  std::ifstream comp_in(fstdx_path_, std::ios::binary);
+  if (!comp_in) {
+    LOG_ERROR("Couldn't open the file: {}", fstdx_path_);
+    return "";
+  }
+  EntryIndex entry_index;
+  if (!read_entry_index(comp_in, idx, entry_index)) { return ""; }
+
+  size_t block_index_idx = bin_search_block_index(idx, block_indexes_);
+  const BlockIndex &block_index = block_indexes_[block_index_idx];
 
   LOG_DEBUG("block_index.end_entry_index: {}, block_index.block_offset: {}, "
             "block_index.block_size: {}, block_index.original_block_size: {}",
@@ -250,7 +246,7 @@ std::string FstdxReader::read_text_by_index(
   LOG_DEBUG("entry_index.entry_offset: {}, entry_index.entry_size: {}",
             entry_index.entry_offset, entry_index.entry_size);
 
-  comp_in.seekg(offset + block_index.block_offset);
+  comp_in.seekg(comp_text_offset_ + block_index.block_offset);
   std::vector<char> comp_buf(block_index.block_size);
   comp_in.read(comp_buf.data(), comp_buf.size());
 
@@ -263,7 +259,7 @@ std::string FstdxReader::read_text_by_index(
   }
   size_t decomp_size =
       ZSTD_decompress_usingDDict(dctx, decomp_buf.data(), decomp_buf.size(),
-                                 comp_buf.data(), comp_buf.size(), ddict);
+                                 comp_buf.data(), comp_buf.size(), ddict_);
   ZSTD_freeDCtx(dctx);
   if (ZSTD_isError(decomp_size)) {
     LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decomp_size));
@@ -275,14 +271,11 @@ std::string FstdxReader::read_text_by_index(
 }
 
 std::vector<std::string> FstdxReader::extract_comp_blocks(
-    const std::string &comp_file, const size_t offset, const ZSTD_DDict *ddict,
-    const std::vector<BlockIndex> &block_indexes,
-    const std::vector<EntryIndex> &entry_indexes,
     std::function<void(size_t)> refresh_bar) const {
   std::vector<std::string> result;
-  std::ifstream comp_in(comp_file, std::ios::binary);
+  std::ifstream comp_in(fstdx_path_, std::ios::binary);
   if (!comp_in) {
-    LOG_ERROR("Couldn't open file: {}", comp_file);
+    LOG_ERROR("Couldn't open file: {}", fstdx_path_);
     return result;
   }
 
@@ -295,16 +288,20 @@ std::vector<std::string> FstdxReader::extract_comp_blocks(
   size_t idx = 0;
   std::vector<char> comp_buf;
   std::vector<char> decomp_buf;
+  std::vector<EntryIndex> entry_indexes;
+  if (!decompress(comp_in, "entry_indexes", mx_json_header_, entry_indexes)) {
+    return result;
+  }
   result.reserve(entry_indexes.size());
-  for (const BlockIndex &block_index : block_indexes) {
-    comp_in.seekg(offset + block_index.block_offset);
+  for (const BlockIndex &block_index : block_indexes_) {
+    comp_in.seekg(comp_text_offset_ + block_index.block_offset);
     comp_buf.resize(block_index.block_size);
     comp_in.read(comp_buf.data(), comp_buf.size());
 
     decomp_buf.resize(block_index.original_block_size);
     size_t decomp_size =
         ZSTD_decompress_usingDDict(dctx, decomp_buf.data(), decomp_buf.size(),
-                                   comp_buf.data(), comp_buf.size(), ddict);
+                                   comp_buf.data(), comp_buf.size(), ddict_);
     if (ZSTD_isError(decomp_size)) {
       ZSTD_freeDCtx(dctx);
       LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decomp_size));
