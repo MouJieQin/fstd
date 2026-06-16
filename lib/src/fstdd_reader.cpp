@@ -31,6 +31,7 @@ bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
   if (!parse_header(ins, fstdd_size, md_json_header_)) { return false; }
   ins.close();
 
+  key_size_ = md_json_header_["meta"]["Record"];
   bucket_size_ = md_json_header_["hash_index"]["bucket_size"];
   comp_blocks_offset_ = md_json_header_["comp_blocks"]["offset"];
   block_index_offset_ = md_json_header_["block_index"]["offset"];
@@ -49,12 +50,15 @@ bool FstddReader::extract_all(const std::string &dst_dir_str) {
   if (!decompress(fstdd_path_, "keys", md_json_header_, keys_buff)) {
     return false;
   }
-
-  size_t start_idx = 0;
+  DyBlockProgBars dynamic_bars;
+  auto refresh_bar = dynamic_bars.push_back(key_size_, "Decompressing files:");
+  size_t start_idx = 0, file_idx = 0;
   for (size_t i = 0; i < keys_buff.size(); ++i) {
     if (keys_buff[i] == '\0') {
       string key(keys_buff.data() + start_idx, i - start_idx);
       if (!extract(key, dst_dir_str)) { return false; }
+      refresh_bar(file_idx);
+      file_idx += 1;
       start_idx = i + 1;
     }
   }

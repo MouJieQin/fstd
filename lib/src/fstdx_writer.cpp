@@ -6,7 +6,6 @@
 #include <fstd/hash_index.h>
 #include <fstd/logger.h>
 #include <fstd/thread_pool.h>
-#include <indicators/block_progress_bar.hpp>
 
 using namespace fst;
 using namespace std;
@@ -106,7 +105,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   size_t thread_num = worker_num;
   if (worker_num == 0) { thread_num = get_cpu_core_count(); }
   ThreadPool thread_pool(thread_num);
-  DyProgBars<BlockProgressBar> dynamic_bars;
+  DyBlockProgBars dynamic_bars;
 
   ostringstream oss_key_fst_out(ios_base::binary);
   auto compile_res = thread_pool.enqueue([&]() {

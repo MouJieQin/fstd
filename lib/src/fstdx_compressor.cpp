@@ -15,8 +15,7 @@ bool FstdxCompressor::compress_texts_to_stream(
     std::ostream &out, const std::vector<std::string> &texts,
     DxJsonHeader &header, size_t dict_size, size_t block_size,
     int compression_level, ThreadPool &thread_pool,
-    DyProgBars<BlockProgressBar> &dy_bars) {
-  // 1. 训练并保存字典
+    DyBlockProgBars &dy_bars) {
   std::vector<char> dict_buffer(dict_size);
   int res = train_zstd_dictionary(texts, dict_buffer.data(), dict_size);
   if (res == -1) {
@@ -32,12 +31,6 @@ bool FstdxCompressor::compress_texts_to_stream(
     return false;
   }
   return true;
-}
-
-void FstdxCompressor::init() {
-  success_ = true;
-  generate_finished_ = false;
-  compress_finished_ = false;
 }
 
 int FstdxCompressor::random_int(int max) {
@@ -165,7 +158,7 @@ bool FstdxCompressor::compress_worker(const ZSTD_CDict *cdict) {
 bool FstdxCompressor::block_writer(
     std::ostream &out,
     const std::vector<std::pair<size_t, size_t>> &block_record,
-    DyProgBars<BlockProgressBar> &dy_bars,
+    DyBlockProgBars &dy_bars,
     std::vector<BlockIndex> &block_indexes, uint64_t &total_block_size) {
   block_indexes.clear();
   size_t expected_index = 0;
@@ -232,8 +225,7 @@ bool FstdxCompressor::compress_texts_to_stream(
     std::ostream &out, const std::vector<std::string> &texts,
     DxJsonHeader &header, const char *dict_buffer, size_t dict_size,
     size_t block_size, int compression_level, ThreadPool &thread_pool,
-    DyProgBars<BlockProgressBar> &dy_bars) {
-  init();
+    DyBlockProgBars &dy_bars) {
   ZSTD_CDict *cdict =
       ZSTD_createCDict(dict_buffer, dict_size, compression_level);
   if (!cdict) { return false; }
@@ -277,12 +269,6 @@ bool FstdxCompressor::compress_texts_to_stream(
     if (!res.get()) { success_ = false; }
   }
 
-  if (!success_) {
-    ZSTD_freeCDict(cdict);
-    return false;
-  }
-  LOG_DEBUG("Compress done.");
-
   // notify writer to finish
   {
     unique_lock<mutex> lock(res_mtx_);
@@ -290,6 +276,12 @@ bool FstdxCompressor::compress_texts_to_stream(
     res_cv_.notify_all();
   }
   writer.join();
+
+  if (!success_) {
+    ZSTD_freeCDict(cdict);
+    return false;
+  }
+  LOG_DEBUG("Compress done.");
 
   header["comp_blocks"]["compress_level"] = compression_level;
   header["comp_blocks"]["offset"] = 0;

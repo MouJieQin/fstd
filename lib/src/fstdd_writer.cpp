@@ -49,7 +49,9 @@ int FstddWriter::compile_fstdd(const string &data_path,
                                const nlohmann::json &meta,
                                uint8_t compress_level, size_t worker_num,
                                bool opt_verbose) {
-  return compile_fstdd({data_path}, output_file, meta, compress_level,
+
+  const std::vector<std::string> data_paths{data_path};
+  return compile_fstdd(data_paths, output_file, meta, compress_level,
                        worker_num, opt_verbose);
 }
 

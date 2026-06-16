@@ -60,6 +60,7 @@ private:
 
   void write_output(std::ostream &out, DdJsonHeader &header);
 
+
 private:
   std::queue<CompressTask> task_queue;
   std::queue<CompressResult> result_queue;

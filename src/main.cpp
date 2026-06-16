@@ -332,8 +332,9 @@ int main(int argc, char **argv) {
         return ret;
       }
     } else {
+      LOG_ERROR("Only support directory/file");
+      return 1;
     }
-
     LOG_INFO("编译成功");
   } else if (*extract_cmd) {
 

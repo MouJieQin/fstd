@@ -4,7 +4,6 @@
 
 #include <fstd/common.h>
 #include <fstd/thread_pool.h>
-#include <indicators/block_progress_bar.hpp>
 #include <zstd.h>
 
 constexpr bool ENABLE_CHECKSUM = true;
@@ -19,7 +18,7 @@ public:
       std::ostream &out, const std::vector<std::string> &texts,
       DxJsonHeader &header, size_t dict_size, size_t block_size,
       int compression_level, ThreadPool &thread_pool,
-      DyProgBars<indicators::BlockProgressBar> &dy_bars);
+      DyBlockProgBars &dy_bars);
 
 private:
   int random_int(int max);
@@ -31,9 +30,8 @@ private:
       std::ostream &out, const std::vector<std::string> &texts,
       DxJsonHeader &header, const char *dict_buffer, size_t dict_size,
       size_t block_size, int compression_level, ThreadPool &thread_pool,
-      DyProgBars<indicators::BlockProgressBar> &dy_bars);
+      DyBlockProgBars &dy_bars);
 
-  void init();
 
   bool
   block_generator(const std::vector<std::string> &texts,
@@ -46,7 +44,7 @@ private:
 
   bool block_writer(std::ostream &out,
                     const std::vector<std::pair<size_t, size_t>> &block_record,
-                    DyProgBars<indicators::BlockProgressBar> &dy_bars,
+                    DyBlockProgBars &dy_bars,
                     std::vector<BlockIndex> &block_indexes,
                     uint64_t &total_block_size);
 

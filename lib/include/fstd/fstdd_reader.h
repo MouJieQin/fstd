@@ -28,6 +28,7 @@ private:
 private:
   const std::string fstdd_path_;
   DdJsonHeader md_json_header_;
+  size_t key_size_;
   std::set<size_t> dup_idxes_;
   size_t bucket_size_;
   uint64_t comp_blocks_offset_;

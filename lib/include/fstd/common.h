@@ -3,6 +3,7 @@
 
 #include <fstd/logger.h>
 #include <indicators/cursor_control.hpp>
+#include <indicators/block_progress_bar.hpp>
 #include <indicators/dynamic_progress.hpp>
 #include <nlohmann/json.hpp>
 
@@ -10,6 +11,7 @@ namespace fstd {
 
 #define FSTD_VERSION "0.1.0"
 constexpr auto DELIMITER = "</>";
+const size_t max_queue_size = 8;
 
 using DxJsonHeader = nlohmann::json;
 using DdJsonHeader = nlohmann::json;
@@ -106,7 +108,7 @@ private:
   std::vector<size_t> total_sizes;
 };
 
-const size_t max_queue_size = 8; // 队列缓冲（内存友好）
+using DyBlockProgBars = DyProgBars<indicators::BlockProgressBar>;
 
 struct CompressTask {
   std::vector<char> src_data;

@@ -33,8 +33,6 @@ std::ostream &operator<<(std::ostream &os, const ValueBlockPosIndex &vbp_idx) {
 bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
                                std::ofstream &out, DdJsonHeader &header,
                                size_t worker_num, bool opt_verbose) {
-
-  // 1. 启动读取线程
   thread reader([&]() { read_files(data_paths, header); });
 
   if (worker_num == 0) {
@@ -45,17 +43,15 @@ bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
     workers.emplace_back([&]() { compress_worker(); });
   }
 
-  // 3. 启动落盘写入线程
   thread writer([&]() { write_output(out, header); });
 
-  // 4. 等待读取完毕，回收工作线程
   reader.join();
 
   for (auto &worker : workers) {
     worker.join();
   }
 
-  // 5. 标记压缩完全结束，通知并回收写入线程
+  // mark compress finished
   {
     unique_lock<mutex> lock(res_mtx);
     compress_finished = true;
@@ -63,17 +59,22 @@ bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
   }
   writer.join();
 
-  LOG_INFO("Compress done.");
+  if (!success) {
+    LOG_ERROR("Compress failed.");
+    return false;
+  }
+
+  LOG_DEBUG("Compress done.");
   return success;
 }
 
-// -------------------- 工具：zstd 单块压缩 --------------------
 vector<char> FstddCompressor::zstd_compress_block(const char *data, size_t size,
                                                   int level) {
   size_t dst_cap = ZSTD_compressBound(size);
   vector<char> dst(dst_cap);
   size_t dst_size = ZSTD_compress(dst.data(), dst_cap, data, size, level);
   if (ZSTD_isError(dst_size)) {
+    success = false;
     LOG_ERROR("zstd compress error: {}", ZSTD_getErrorName(dst_size));
     return {};
   }
@@ -97,7 +98,7 @@ FstddCompressor::recursive_directory(
   return files_paths;
 }
 
-// -------------------- 线程1：单线程顺序读取 & 切块 --------------------
+// -------------------- read files with single thread --------------------
 void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
                                  DdJsonHeader &header) {
   vector<char> disk_buf(disk_read_size);
@@ -105,6 +106,9 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
   uint64_t block_index = 0;
   vector<pair<string, size_t>> files_paths = recursive_directory(data_paths);
   size_t record = 0;
+  DyBlockProgBars dy_bars;
+  auto refresh_bar =
+      dy_bars.push_back(files_paths.size(), "Compressing files:");
   for (size_t i = 0; i < files_paths.size(); ++i) {
     string key = files_paths[i].first;
     fs::path file_path =
@@ -114,10 +118,12 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
       LOG_ERROR("Failed to open file: {}", file_path.string());
       continue;
     }
+    if (!success) { return; }
     size_t start_count = buf_size / zstd_block_size;
     uint64_t start_offset = buf_size % zstd_block_size;
     uint64_t start_block_index = block_index + start_count;
     while (true) {
+      if (!success) { return; }
       size_t expect_read_size = disk_read_size - buf_size;
       ifs.read(disk_buf.data() + buf_size, expect_read_size);
       streamsize bytes_read = ifs.gcount();
@@ -135,7 +141,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
         break;
       }
 
-      // 将 512KB 的磁盘数据切碎为 128KB 的 ZSTD 最优块提交
+      // split disk_buf into blocks
       size_t offset = 0;
       while (offset < buf_size) {
         size_t current_block_size = zstd_block_size;
@@ -145,7 +151,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
                              disk_buf.begin() + offset + current_block_size);
         task.index = task_seq.fetch_add(1);
 
-        // 队列控流：防止内存无限上涨
+        // wait for task queue to reduce memory usage
         unique_lock<mutex> lock(task_mtx);
         task_cv.wait(lock, [&] { return task_queue.size() < max_queue_size; });
 
@@ -157,8 +163,10 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
       buf_size = 0;
     }
     record += 1;
+    refresh_bar(i);
   }
 
+  // last block
   size_t offset = 0;
   while (offset < buf_size) {
     size_t current_block_size = min(zstd_block_size, buf_size - offset);
@@ -168,7 +176,6 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
                          disk_buf.begin() + offset + current_block_size);
     task.index = task_seq.fetch_add(1);
 
-    // 队列控流：防止内存无限上涨
     unique_lock<mutex> lock(task_mtx);
     task_cv.wait(lock, [&] { return task_queue.size() < max_queue_size; });
 
@@ -178,14 +185,14 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
     offset += current_block_size;
   }
 
-  // 标记读取流结束
+  // mark read finished
   unique_lock<mutex> lock(task_mtx);
   header["meta"]["Record"] = record;
   read_finished = true;
   task_cv.notify_all();
 }
 
-// -------------------- 线程池：多线程并行压缩 --------------------
+// -------------------- compress files with multiple threads -----------------
 void FstddCompressor::compress_worker() {
   while (true) {
     CompressTask task;
@@ -193,19 +200,17 @@ void FstddCompressor::compress_worker() {
       unique_lock<mutex> lock(task_mtx);
       task_cv.wait(lock, [&] { return !task_queue.empty() || read_finished; });
 
-      if (task_queue.empty() && read_finished) {
-        break; // 没有任务且读取完毕，退出线程
-      }
+      if (task_queue.empty() && read_finished) { break; }
 
       task = std::move(task_queue.front());
       task_queue.pop();
-      task_cv.notify_one(); // 通知读取线程队列有空位了
+      task_cv.notify_one(); // notify read thread to continue
     }
 
-    // 执行 CPU 密集的压缩计算
     CompressResult result;
     result.dst_data = zstd_compress_block(task.src_data.data(),
                                           task.src_data.size(), zstd_level);
+    if (!success) { return; }
     result.index = task.index;
 
     {
@@ -216,16 +221,17 @@ void FstddCompressor::compress_worker() {
   }
 }
 
-// -------------------- 线程3：单线程严格顺序写入 --------------------
+// -------------------- write output with single thread --------------------
 void FstddCompressor::write_output(std::ostream &out, DdJsonHeader &header) {
   size_t expected_index = 0;
-  // 使用缓存区存放乱序到达的压缩块 (Key: index, Value: Compressed Data)
+  // (Key: index, Value: Compressed Data)
   unordered_map<size_t, vector<char>> fallback_buffer;
   vector<uint64_t> block_indexes;
   uint64_t block_offset = 0;
   uint64_t total_block_size = 0;
 
   while (true) {
+    if (!success) { return; }
     CompressResult result;
     {
       unique_lock<mutex> lock(res_mtx);
@@ -243,22 +249,21 @@ void FstddCompressor::write_output(std::ostream &out, DdJsonHeader &header) {
       }
     }
 
-    // 如果取到了新数据，放入缓存区
+    // if new data is received, put it into fallback buffer
     if (!result.dst_data.empty() || result.index == expected_index) {
       fallback_buffer[result.index] = std::move(result.dst_data);
     }
 
-    // 核心：严格按序号循环写入，直到缺憾后续块为止
+    // write compressed data to output with strict order
     while (fallback_buffer.count(expected_index)) {
+      if (!success) { return; }
+
       auto &data = fallback_buffer[expected_index];
 
-      // 写入元数据头 (数据流块大小)，以便后续解压程序定位块边界
       uint64_t block_size = static_cast<uint64_t>(data.size());
-
       block_indexes.push_back((block_offset << 24) | block_size);
       block_offset += block_size;
 
-      // 写入压缩数据主体
       out.write(data.data(), data.size());
       total_block_size += data.size();
 
