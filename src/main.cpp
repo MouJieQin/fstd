@@ -342,7 +342,7 @@ int main(int argc, char **argv) {
       fstd::FstdxReader fstdx_reader(extract_input_file, is_valid);
       if (!is_valid) { return 1; }
       bool ret =
-          fstdx_reader.extract_fstdx(extract_input_file, extract_output_file);
+          fstdx_reader.extract(extract_output_file);
       if (!ret) { return 3; }
     } else if (ends_with(extract_input_file, ".fstdd")) {
       bool is_valid = true;

@@ -2,6 +2,7 @@
 #include <fstream>
 
 #include <fstd/logger.h>
+#include <indicators/cursor_control.hpp>
 #include <indicators/dynamic_progress.hpp>
 #include <nlohmann/json.hpp>
 
@@ -37,14 +38,72 @@ struct EntryIndex {
   uint32_t entry_size;
 };
 
-template <typename Bar> struct DyProgBars {
-  DyProgBars() = default;
-  size_t push_back(std::unique_ptr<Bar> bar) {
-    bar_instances.push_back(std::move(bar));
-    return bars.push_back(*bar_instances.back());
+template <typename Bar> class DyProgBars {
+public:
+  DyProgBars() {
+    show_progress = is_terminal();
+    if (show_progress) { indicators::show_console_cursor(false); }
+    bars.set_option(indicators::option::HideBarWhenComplete{false});
   }
+  ~DyProgBars() {
+    if (show_progress) { indicators::show_console_cursor(true); }
+  }
+
+  std::function<void(const size_t)>
+  push_back(const size_t total_size, std::string_view prefix_text,
+            indicators::Color color = indicators::Color::white) {
+    using namespace indicators;
+    std::lock_guard<std::mutex> lock(mtx);
+    max_prefix_len = std::max(max_prefix_len, prefix_text.size());
+    total_sizes.push_back(total_size);
+    last_progresses.push_back(0);
+    prefix_texts.push_back(std::string(prefix_text));
+    bar_instances.push_back(std::make_unique<Bar>(
+        option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
+        option::PrefixText{prefix_text}, option::ShowElapsedTime{true},
+        option::ShowRemainingTime{true}, option::ForegroundColor{color},
+        option::ShowPercentage{true},
+        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}));
+    size_t bar_idx = bars.push_back(*bar_instances.back());
+    renew_prefix_text();
+    return [this, bar_idx](const size_t index) { refresh_bar(bar_idx, index); };
+  }
+
+private:
+  void refresh_bar(size_t bar_idx, size_t index) {
+    if (show_progress) {
+      size_t count = index + 1;
+      size_t last_progress = last_progresses[bar_idx];
+      size_t progress = count * 100 / total_sizes[bar_idx];
+      if (progress > last_progress) {
+        bars[bar_idx].set_option(indicators::option::PostfixText{
+            std::to_string(count) + "/" +
+            std::to_string(total_sizes[bar_idx])});
+        bars[bar_idx].set_progress(progress);
+        last_progresses[bar_idx] = progress;
+      }
+      if (count == total_sizes[bar_idx]) { bars[bar_idx].mark_as_completed(); }
+    }
+  }
+
+  void renew_prefix_text() {
+    for (size_t i = 0; i < bar_instances.size(); i++) {
+      if (prefix_texts[i].size() < max_prefix_len) {
+        prefix_texts[i] += std::string(max_prefix_len - prefix_texts[i].size(), ' ');
+        bars[i].set_option(indicators::option::PrefixText{prefix_texts[i]});
+      }
+    }
+  }
+
+private:
+  bool show_progress = true;
+  size_t max_prefix_len = 0;
+  std::mutex mtx;
   std::vector<std::unique_ptr<Bar>> bar_instances;
   indicators::DynamicProgress<Bar> bars;
+  std::vector<std::string> prefix_texts;
+  std::vector<size_t> last_progresses;
+  std::vector<size_t> total_sizes;
 };
 
 const size_t max_queue_size = 8; // 队列缓冲（内存友好）

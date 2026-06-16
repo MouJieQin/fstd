@@ -939,8 +939,8 @@ inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
             const auto &word = item.first;
             const auto &output = item.second;
             if (!feeder(word, output, input_index)) { break; }
-            input_index++;
             if (progress) { progress(input_index); }
+            input_index++;
           }
         } else {
           std::vector<size_t> sorted_indexes(input.size());
@@ -951,12 +951,12 @@ inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
                         return input[a].first < input[b].first;
                       });
           }
-          size_t count = 0;
+          size_t index = 0;
           for (auto input_index : sorted_indexes) {
             const auto &[word, output] = input[input_index];
             if (!feeder(word, output, input_index)) { break; }
-            count += 1;
-            if (progress) { progress(count); }
+            if (progress) { progress(index); }
+            index += 1;
           }
         }
       },

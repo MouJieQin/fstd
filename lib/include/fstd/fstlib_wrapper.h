@@ -137,12 +137,14 @@ public:
   }
 
   std::vector<std::pair<std::string, output_t>>
-  enumerate(const size_t predictive_fst_key_size = 0) const {
+  enumerate(const size_t predictive_fst_key_size = 0,
+            std::function<void(size_t)> progress = nullptr) const {
     std::vector<std::pair<std::string, output_t>> result;
     result.reserve(predictive_fst_key_size);
     matcher_ptr_->enumerate(
         [&](const std::string &word, const output_t output) {
           result.emplace_back(std::move(word), output);
+          if (progress) { progress(result.size()); }
         });
     return result;
   }

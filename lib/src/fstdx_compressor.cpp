@@ -168,36 +168,13 @@ bool FstdxCompressor::block_writer(
     DyProgBars<BlockProgressBar> &dy_bars,
     std::vector<BlockIndex> &block_indexes, uint64_t &total_block_size) {
   block_indexes.clear();
-  const bool show_progress = is_terminal();
   size_t expected_index = 0;
   // (Key: index, Value: Compressed Data)
   unordered_map<size_t, vector<char>> fallback_buffer;
   uint64_t block_offset = 0;
 
-  size_t bar_idx = dy_bars.push_back(std::make_unique<BlockProgressBar>(
-      option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
-      option::PrefixText{"Compressing value blocks: "},
-      option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
-      option::ForegroundColor{Color::white}, option::ShowPercentage{true},
-      option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}));
-
-  // progress bar
-  size_t last_progress = 0;
-  auto progress_comp_block = [&](const size_t index) {
-    size_t count = index + 1;
-    if (show_progress) {
-      size_t progress = count * 100 / block_record.size();
-      if (progress > last_progress) {
-        dy_bars.bars[bar_idx].set_option(option::PostfixText{
-            std::to_string(count) + "/" + std::to_string(block_record.size())});
-        dy_bars.bars[bar_idx].set_progress(progress);
-        last_progress = progress;
-      }
-      if (count == block_record.size()) {
-        dy_bars.bars[bar_idx].mark_as_completed();
-      }
-    }
-  };
+  auto refresh_bar = dy_bars.push_back(
+      block_record.size(), "Compressing value blocks:", Color::white);
 
   while (true) {
     CompressResult result;
@@ -242,7 +219,7 @@ bool FstdxCompressor::block_writer(
 
       out.write(data.data(), block_size);
       total_block_size += block_size;
-      progress_comp_block(expected_index);
+      refresh_bar(expected_index);
 
       fallback_buffer.erase(expected_index);
       expected_index++;
@@ -304,7 +281,7 @@ bool FstdxCompressor::compress_texts_to_stream(
     ZSTD_freeCDict(cdict);
     return false;
   }
-  LOG_INFO("Compress done.");
+  LOG_DEBUG("Compress done.");
 
   // notify writer to finish
   {

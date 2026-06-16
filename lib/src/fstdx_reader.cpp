@@ -1,10 +1,10 @@
 #include <fstd/fstdx_reader.h>
 #include <fstd/hash_index.h>
 #include <fstd/logger.h>
-
 namespace fstd {
 
 using namespace std;
+using namespace indicators;
 using json = nlohmann::json;
 
 FstdxReader::FstdxReader(const std::string &fstdx_path, bool &is_valid)
@@ -93,18 +93,39 @@ std::vector<std::pair<std::string, uint64_t>> FstdxReader::enumerate() const {
   return fst_map_searcher_.enumerate(fst_key_size_);
 }
 
+std::vector<std::pair<std::string, uint64_t>>
+FstdxReader::enumerate(std::function<void(const size_t)> refresh_bar) const {
+  return fst_map_searcher_.enumerate(fst_key_size_, refresh_bar);
+}
+
 bool FstdxReader::extract(const std::string &output_file) {
   ofstream fout(output_file, ios_base::out);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
     return 1;
   }
-  const std::vector<std::string> keys = extract_keys();
-  const std::vector<std::string> values = extract_values();
+
+  DyProgBars<BlockProgressBar> dynamic_bars;
+  const std::vector<std::string> keys = extract_keys(dynamic_bars);
+  const std::vector<std::string> values = extract_values(dynamic_bars);
+
+  auto refresh_bar =
+      dynamic_bars.push_back(key_size_, "Writing:", Color::green);
+
   for (size_t i = 0; i < keys.size(); ++i) {
     fout << keys[i] << "\n" << values[i] << "\n" << DELIMITER << "\n";
+    refresh_bar(i);
   }
   return true;
+}
+
+std::vector<std::string> FstdxReader::extract_values(
+    DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const {
+  auto refresh_bar = dynamic_bars.push_back(
+      key_size_, "Decompressing value blocks:", Color::white);
+
+  return extract_comp_blocks(fstdx_path_, comp_text_offset_, ddict_,
+                             block_indexes_, entry_indexes_, refresh_bar);
 }
 
 std::vector<std::string> FstdxReader::extract_values() const {
@@ -112,8 +133,20 @@ std::vector<std::string> FstdxReader::extract_values() const {
                              block_indexes_, entry_indexes_);
 }
 
+std::vector<std::string> FstdxReader::extract_keys(
+    DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const {
+  auto refresh_bar = dynamic_bars.push_back(
+      fst_key_size_, "Decompiling key FST:", Color::cyan);
+
+  return extract_keys(enumerate(refresh_bar));
+}
+
 std::vector<std::string> FstdxReader::extract_keys() const {
-  std::vector<std::pair<std::string, uint64_t>> key_output = enumerate();
+  return extract_keys(enumerate());
+}
+
+std::vector<std::string> FstdxReader::extract_keys(
+    std::vector<std::pair<std::string, uint64_t>> &&key_output) const {
   std::vector<std::string> result;
   result.resize(key_size_);
   for (size_t i = 0; i < key_output.size(); ++i) {
@@ -145,7 +178,6 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
     return false;
   }
   fst_map_searcher_ = FstMapSearcher<uint64_t>(std::move(key_fst_byte_code));
-
   std::vector<char> dictBuffer;
   if (!decompress(ins, "comp_dict", mx_json_header_, dictBuffer)) {
     return false;
@@ -155,11 +187,9 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
   if (!decompress(ins, "block_indexes", mx_json_header_, block_indexes_)) {
     return false;
   }
-
   if (!decompress(ins, "entry_indexes", mx_json_header_, entry_indexes_)) {
     return false;
   }
-
   ins.close();
 
   key_size_ = mx_json_header_["meta"]["Record"];
@@ -225,20 +255,16 @@ std::string FstdxReader::read_text_by_index(
   comp_in.read(comp_buf.data(), comp_buf.size());
 
   unsigned long long decomp_buf_size = block_index.original_block_size;
-
   std::vector<char> decomp_buf(decomp_buf_size);
   ZSTD_DCtx *dctx = ZSTD_createDCtx();
   if (!dctx) {
     LOG_ERROR("Create Decompression context failed.");
     return "";
   }
-
   size_t decomp_size =
       ZSTD_decompress_usingDDict(dctx, decomp_buf.data(), decomp_buf.size(),
                                  comp_buf.data(), comp_buf.size(), ddict);
-
   ZSTD_freeDCtx(dctx);
-
   if (ZSTD_isError(decomp_size)) {
     LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decomp_size));
     return "";
@@ -251,7 +277,8 @@ std::string FstdxReader::read_text_by_index(
 std::vector<std::string> FstdxReader::extract_comp_blocks(
     const std::string &comp_file, const size_t offset, const ZSTD_DDict *ddict,
     const std::vector<BlockIndex> &block_indexes,
-    const std::vector<EntryIndex> &entry_indexes) const {
+    const std::vector<EntryIndex> &entry_indexes,
+    std::function<void(size_t)> refresh_bar) const {
   std::vector<std::string> result;
   std::ifstream comp_in(comp_file, std::ios::binary);
   if (!comp_in) {
@@ -289,6 +316,7 @@ std::vector<std::string> FstdxReader::extract_comp_blocks(
       const EntryIndex &entry_index = entry_indexes[idx];
       result.emplace_back(std::string(data_ptr + entry_index.entry_offset,
                                       entry_index.entry_size));
+      if (refresh_bar) { refresh_bar(idx); }
     }
   }
   ZSTD_freeDCtx(dctx);

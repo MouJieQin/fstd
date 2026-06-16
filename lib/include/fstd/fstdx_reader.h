@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <indicators/block_progress_bar.hpp>
 #include <nlohmann/json.hpp>
 
 #include <fstd/common.h>
@@ -57,6 +58,18 @@ public:
 private:
   bool parse_fstdx(const std::string &fstdx_path);
 
+  std::vector<std::pair<std::string, uint64_t>>
+  enumerate(std::function<void(const size_t)> refresh_bar) const;
+
+  std::vector<std::string>
+  extract_keys(DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const;
+
+  std::vector<std::string> extract_keys(
+      std::vector<std::pair<std::string, uint64_t>> &&key_output) const;
+
+  std::vector<std::string>
+  extract_values(DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const;
+
   size_t
   bin_search_block_index(uint32_t entry_index,
                          const std::vector<BlockIndex> &block_indexes) const;
@@ -72,7 +85,8 @@ private:
   extract_comp_blocks(const std::string &comp_file, const size_t offset,
                       const ZSTD_DDict *ddict,
                       const std::vector<BlockIndex> &block_indexes,
-                      const std::vector<EntryIndex> &entry_indexes) const;
+                      const std::vector<EntryIndex> &entry_indexes,
+                      std::function<void(size_t)> refresh_bar = nullptr) const;
 
 private:
   const std::string fstdx_path_;

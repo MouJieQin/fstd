@@ -7,7 +7,6 @@
 #include <fstd/logger.h>
 #include <fstd/thread_pool.h>
 #include <indicators/block_progress_bar.hpp>
-#include <indicators/cursor_control.hpp>
 
 using namespace fst;
 using namespace std;
@@ -94,9 +93,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   header["meta"]["Record"] = keys.size();
   header["meta"]["Stripkey"] = true;
   header["meta"]["Compressionlevel"] = compress_level;
-  if (!opt_sorted) {
-    sort_keys_values(keys, values);
-  }
+  if (!opt_sorted) { sort_keys_values(keys, values); }
   vector<pair<string, uint64_t>> input;
   make_output(std::move(keys), input);
   header["key_fst"]["keys_size"] = input.size();
@@ -106,40 +103,17 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     keys.swap(tmp);
   }
 
-  show_console_cursor(false);
-  DyProgBars<BlockProgressBar> dynamic_bars;
-  dynamic_bars.bars.set_option(option::HideBarWhenComplete{false});
-  auto build_fst_bar_ptr = std::make_unique<BlockProgressBar>(
-      option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
-      option::PrefixText{"Compiling key FST:        "},
-      option::ShowElapsedTime{true}, option::ShowRemainingTime{true},
-      option::ForegroundColor{Color::cyan}, option::ShowPercentage{true},
-      option::FontStyles{std::vector<FontStyle>{FontStyle::bold}});
-
   size_t thread_num = worker_num;
   if (worker_num == 0) { thread_num = get_cpu_core_count(); }
   ThreadPool thread_pool(thread_num);
+  DyProgBars<BlockProgressBar> dynamic_bars;
 
   ostringstream oss_key_fst_out(ios_base::binary);
-  const bool show_progress = is_terminal();
   auto compile_res = thread_pool.enqueue([&]() {
-    size_t i = dynamic_bars.push_back(std::move(build_fst_bar_ptr));
-    size_t last_progress = 0;
-    auto progress_build_fst = [&](const size_t index) {
-      if (show_progress) {
-        size_t progress = index * 100 / input.size();
-        if (progress > last_progress) {
-          dynamic_bars.bars[i].set_option(option::PostfixText{
-              std::to_string(index) + "/" + std::to_string(input.size())});
-          dynamic_bars.bars[i].set_progress(progress);
-          last_progress = progress;
-        }
-        if (index == input.size()) { dynamic_bars.bars[i].mark_as_completed(); }
-      }
-    };
-
-    bool res = compile_fst(input, oss_key_fst_out, true, opt_verbose,
-                           progress_build_fst);
+    auto refresh_bar =
+        dynamic_bars.push_back(input.size(), "Compiling key FST:", Color::cyan);
+    bool res =
+        compile_fst(input, oss_key_fst_out, true, opt_verbose, refresh_bar);
     if (res) {
       LOG_DEBUG("FST compiled.");
     } else {
@@ -155,7 +129,6 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
           compress_level, thread_pool, dynamic_bars)) {
     return 3;
   }
-  show_console_cursor(true);
 
   LOG_INFO("Hash index computing...");
   ostringstream oss_hash_index_out(ios_base::binary);
