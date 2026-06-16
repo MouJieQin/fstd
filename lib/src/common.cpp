@@ -71,9 +71,9 @@ bool handle_meta(const nlohmann::json &meta, const nlohmann::json &meta_default,
     return false;
   }
 
-  LOG_INFO("meta: {}", meta.dump(2));
-  LOG_INFO("meta_default: {}", meta_default.dump(2));
-  LOG_INFO("header: {}", header.dump(2));
+  // LOG_INFO("meta: {}", meta.dump(2));
+  // LOG_INFO("meta_default: {}", meta_default.dump(2));
+  // LOG_INFO("header: {}", header.dump(2));
 
   json &h_meta = header["meta"];
   // write meta_default to header["meta"]
@@ -111,7 +111,7 @@ bool handle_meta(const nlohmann::json &meta, const nlohmann::json &meta_default,
       }
     }
   }
-  LOG_INFO("final header: {}", header.dump(2));
+  // LOG_INFO("final header: {}", header.dump(2));
 
   return true;
 }

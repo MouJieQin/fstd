@@ -18,7 +18,10 @@ const string lib_dir = string(TEST_DATA_DIR) + "/../lib";
 const string cache_dir = string(TEST_DATA_DIR) + "/cache";
 const string dict_dir = string(TEST_DATA_DIR) + "/dict";
 const string fstdx_out_path = string(TEST_DATA_DIR) + "/dict/dict.fstdx";
-const string fstdx2_out_path = string(TEST_DATA_DIR) + "/dict/dict.2.fstdx";
+const string no_fstdx_out_path =
+    string(TEST_DATA_DIR) + "/dict/dict.no_recomp.fstdx";
+const string re_fstdx_out_path =
+    string(TEST_DATA_DIR) + "/dict/dict.recomp.fstdx";
 const string fstdd_out_path = string(TEST_DATA_DIR) + "/dict.fstdd";
 const string raw_file_path = string(TEST_DATA_DIR) + "/dict/dict.txt";
 const string extract_file_path = cache_dir + "/extract_dict.txt";
@@ -57,18 +60,47 @@ TEST(FstdxReadTest, SearchTest) {
   }
 }
 
-TEST(FstdxWriteTest, CompileTestByFstdx) {
+TEST(FstdxWriteTest, ReCompileTestByFstdxNoRecompress) {
   spdlog::cfg::load_env_levels();
   FstdxWriter writer;
-  json meta = {{"Title", "dict2"}};
-  ASSERT_EQ(0, writer.compile_fstdx(fstdx_out_path, fstdx2_out_path, meta, 4,
+  json meta = {{"Title", "dict-no-recompress"}};
+  ASSERT_EQ(0, writer.compile_fstdx(fstdx_out_path, no_fstdx_out_path, meta, 8,
+                                    5, 4, 0, false, true));
+
+  vector<string> keys, values;
+  ASSERT_TRUE(writer.load_file(raw_file_path, keys, values));
+  ASSERT_EQ(keys.size(), values.size());
+  bool is_valid = false;
+  FstdxReader reader(no_fstdx_out_path, is_valid);
+  ASSERT_TRUE(is_valid);
+  size_t idx = 0;
+  string key = "";
+  for (size_t i = 0; i < keys.size(); i++) {
+    if (keys[i] != key) {
+      // different key
+      idx = i;
+      key = keys[idx];
+    }
+    vector<string> result;
+    ASSERT_TRUE(reader.exact_match_search(key, result));
+    for (size_t j = 0; j < result.size(); j++) {
+      ASSERT_EQ(result[j], values[idx + j]);
+    }
+  }
+}
+
+TEST(FstdxWriteTest, ReCompileTestByFstdxWithRecompress) {
+  spdlog::cfg::load_env_levels();
+  FstdxWriter writer;
+  json meta = {{"Title", "dict-recompress"}};
+  ASSERT_EQ(0, writer.compile_fstdx(fstdx_out_path, re_fstdx_out_path, meta, 4,
                                     22, 4, 0, false, true));
 
   vector<string> keys, values;
   ASSERT_TRUE(writer.load_file(raw_file_path, keys, values));
   ASSERT_EQ(keys.size(), values.size());
   bool is_valid = false;
-  FstdxReader reader(fstdx2_out_path, is_valid);
+  FstdxReader reader(re_fstdx_out_path, is_valid);
   ASSERT_TRUE(is_valid);
   size_t idx = 0;
   string key = "";
