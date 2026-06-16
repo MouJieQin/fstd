@@ -2,8 +2,8 @@
 #include <fstream>
 
 #include <fstd/logger.h>
-#include <indicators/cursor_control.hpp>
 #include <indicators/block_progress_bar.hpp>
+#include <indicators/cursor_control.hpp>
 #include <indicators/dynamic_progress.hpp>
 #include <nlohmann/json.hpp>
 
@@ -11,7 +11,9 @@ namespace fstd {
 
 #define FSTD_VERSION "0.1.0"
 constexpr auto DELIMITER = "</>";
-const size_t max_queue_size = 8;
+constexpr size_t max_queue_size = 8;
+constexpr size_t disk_read_size =
+    512 * 1024; // disk read size: 512kb（default）
 
 using DxJsonHeader = nlohmann::json;
 using DdJsonHeader = nlohmann::json;
@@ -56,7 +58,7 @@ public:
             indicators::Color color = indicators::Color::white) {
     using namespace indicators;
     std::lock_guard<std::mutex> lock(mtx);
-    max_prefix_len = std::max(max_prefix_len, prefix_text.size());
+    max_prefix_len = std::max(max_prefix_len, prefix_text.size() + 1);
     total_sizes.push_back(total_size);
     last_progresses.push_back(0);
     prefix_texts.push_back(std::string(prefix_text));
@@ -91,7 +93,8 @@ private:
   void renew_prefix_text() {
     for (size_t i = 0; i < bar_instances.size(); i++) {
       if (prefix_texts[i].size() < max_prefix_len) {
-        prefix_texts[i] += std::string(max_prefix_len - prefix_texts[i].size(), ' ');
+        prefix_texts[i] +=
+            std::string(max_prefix_len - prefix_texts[i].size(), ' ');
         bars[i].set_option(indicators::option::PrefixText{prefix_texts[i]});
       }
     }
@@ -121,6 +124,13 @@ struct CompressResult {
 };
 
 std::string get_current_date();
+
+bool ends_with(std::string const &value, std::string const &ending);
+
+std::string change_ext(const std::string &file_path, const std::string &ext);
+
+bool copy_file(std::istream &ins, const size_t offset, size_t size,
+               std::ostream &out);
 
 bool handle_meta(const nlohmann::json &meta, const nlohmann::json &meta_default,
                  nlohmann::json &header);

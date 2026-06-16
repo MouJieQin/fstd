@@ -18,6 +18,8 @@ public:
 
   bool extract_all(const std::string &dst_dir = "data");
 
+  const DdJsonHeader &get_header() const;
+
   const nlohmann::json &get_meta() const;
 
 private:

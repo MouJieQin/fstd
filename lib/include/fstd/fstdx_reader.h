@@ -19,6 +19,8 @@ public:
 
   const nlohmann::json &get_meta() const;
 
+  const DxJsonHeader &get_header() const;
+
   size_t get_key_size() const;
 
   size_t get_fst_key_size() const;

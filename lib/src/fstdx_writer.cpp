@@ -2,6 +2,7 @@
 
 #include <fstd/common.h>
 #include <fstd/fstdx_compressor.h>
+#include <fstd/fstdx_reader.h>
 #include <fstd/fstdx_writer.h>
 #include <fstd/hash_index.h>
 #include <fstd/logger.h>
@@ -42,10 +43,10 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
   try {
     meta_json = json::parse(meta_json_str);
   } catch (const json::exception &e) {
-    LOG_ERROR("JSON string {} format error：{}", meta_json_str, e.what());
+    LOG_ERROR("JSON string {} format error: {}", meta_json_str, e.what());
     return 1;
   } catch (const std::exception &e) {
-    LOG_ERROR("JSON string {} read error：{}", meta_json_str, e.what());
+    LOG_ERROR("JSON string {} read error: {}", meta_json_str, e.what());
     return 1;
   }
   return compile_fstdx(output_file, keys, values, meta_json, block_size_kb,
@@ -58,11 +59,6 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
                                uint16_t block_size_kb, uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
                                bool opt_sorted, bool opt_verbose) {
-  ifstream fin(input_file);
-  if (!fin) {
-    LOG_ERROR("Failed to open file {} for reading.", input_file);
-    return 1;
-  }
 
   ofstream fout(output_file, ios_base::binary);
   if (!fout) {
@@ -70,14 +66,82 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
     return 1;
   }
 
-  vector<string> keys;
-  vector<string> values;
-  LOG_INFO("Loading file {}...", input_file);
-  if (!load_file(fin, keys, values)) { return 1; }
-  LOG_INFO("Loaded {} keys and values.", keys.size());
-  fin.close();
-  return compile_fstdx(fout, keys, values, meta, block_size_kb, compress_level,
-                       zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
+  ifstream fin(input_file, ios_base::binary);
+  if (!fin) {
+    LOG_ERROR("Failed to open file {} for reading.", input_file);
+    return 1;
+  }
+
+  if (!ends_with(input_file, ".fstdx")) {
+    // Load file as text
+    vector<string> keys;
+    vector<string> values;
+    LOG_INFO("Loading file {}...", input_file);
+    if (!load_file(fin, keys, values)) { return 1; }
+    LOG_INFO("Loaded {} keys and values.", keys.size());
+    fin.close();
+    return compile_fstdx(fout, keys, values, meta, block_size_kb,
+                         compress_level, zstd_dict_size_kb, worker_num,
+                         opt_sorted, opt_verbose);
+  } else {
+    // Load fstdx file
+    bool is_valid = true;
+    FstdxReader reader(input_file, is_valid);
+    if (!is_valid) {
+      LOG_ERROR("Invalid fstdx file {}.", input_file);
+      return 2;
+    }
+    DxJsonHeader header(reader.get_header());
+    nlohmann::json meta_default = nlohmann::json::array();
+    for (auto &[key, val] : reader.get_header()["meta"].items()) {
+      nlohmann::json single_obj;
+      single_obj[key] = val;
+      meta_default.push_back(single_obj);
+    }
+    if (!handle_meta(meta, meta_default, header)) { return 5; }
+    size_t hash_offset = header["hash_buckets"]["offset"].get<size_t>();
+    size_t hash_size = header["key_fst"]["offset"].get<size_t>() - hash_offset;
+    size_t bucket_data_size =
+        header["hash_index"]["offset"].get<size_t>() - hash_offset;
+    if (compress_level == header["meta"]["Compressionlevel"].get<size_t>() &&
+        zstd_dict_size_kb * 1024 ==
+            header["info"]["comp_dict_size"].get<size_t>() &&
+        block_size_kb * 1024 == header["info"]["block_size"].get<size_t>()) {
+      size_t copy_size = header["key_fst"]["offset"].get<size_t>() +
+                         header["key_fst"]["compressed_size"].get<size_t>();
+      if (!copy_file(fin, 0, copy_size, fout)) { return 6; }
+    } else {
+      vector<string> values = reader.extract_values();
+      FstdxCompressor compressor;
+      LOG_INFO("Compressing values...");
+      if (worker_num == 0) { worker_num = get_cpu_core_count(); }
+      ThreadPool thread_pool(worker_num);
+      DyBlockProgBars dynamic_bars;
+      if (!compressor.compress_texts_to_stream(
+              fout, values, header, zstd_dict_size_kb * 1024,
+              block_size_kb * 1024, compress_level, thread_pool,
+              dynamic_bars)) {
+        return 3;
+      }
+      if (!copy_file(fin, hash_offset, hash_size, fout)) { return 6; }
+      header["hash_buckets"]["offset"] =
+          header["entry_indexes"]["offset"].get<size_t>() +
+          header["meta"]["Record"].get<size_t>() * sizeof(EntryIndex);
+      header["hash_index"]["offset"] =
+          header["hash_buckets"]["offset"].get<size_t>() + bucket_data_size;
+    }
+    std::vector<char> key_fst_byte_code;
+    if (!decompress(fin, "key_fst", reader.get_header(), key_fst_byte_code)) {
+      return 7;
+    }
+    header["info"]["comp_dict_size"] = zstd_dict_size_kb * 1024;
+    header["info"]["block_size"] = block_size_kb * 1024;
+    header["meta"]["Compressionlevel"] = compress_level;
+    ostringstream oss_key_fst_out(ios_base::binary);
+    oss_key_fst_out.write(key_fst_byte_code.data(), key_fst_byte_code.size());
+    return write_fst_header(fout, hash_size, oss_key_fst_out, header,
+                            compress_level);
+  }
 }
 
 int FstdxWriter::compile_fstdx(std::ostream &fout,
@@ -89,6 +153,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
                                bool opt_sorted, bool opt_verbose) {
   DxJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
+  header["info"]["comp_dict_size"] = zstd_dict_size_kb * 1024;
+  header["info"]["block_size"] = block_size_kb * 1024;
   header["meta"]["Record"] = keys.size();
   header["meta"]["Stripkey"] = true;
   header["meta"]["Compressionlevel"] = compress_level;
@@ -101,10 +167,19 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     vector<string> tmp;
     keys.swap(tmp);
   }
+  return compile_fstdx_impl(fout, input, values, header, block_size_kb,
+                            compress_level, zstd_dict_size_kb, worker_num,
+                            opt_sorted, opt_verbose);
+}
 
-  size_t thread_num = worker_num;
-  if (worker_num == 0) { thread_num = get_cpu_core_count(); }
-  ThreadPool thread_pool(thread_num);
+int FstdxWriter::compile_fstdx_impl(
+    std::ostream &fout, std::vector<std::pair<std::string, uint64_t>> &input,
+    std::vector<std::string> &values, DxJsonHeader &header,
+    uint16_t block_size_kb, uint8_t compress_level, uint16_t zstd_dict_size_kb,
+    size_t worker_num, bool opt_sorted, bool opt_verbose) {
+
+  if (worker_num == 0) { worker_num = get_cpu_core_count(); }
+  ThreadPool thread_pool(worker_num);
   DyBlockProgBars dynamic_bars;
 
   ostringstream oss_key_fst_out(ios_base::binary);
@@ -148,16 +223,23 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     hash_data_size = hash_data.size();
     fout << hash_data;
     header["hash_buckets"]["offset"] =
-        static_cast<size_t>(header["entry_indexes"]["offset"]) +
-        static_cast<size_t>(header["meta"]["Record"]) * sizeof(EntryIndex);
+        header["entry_indexes"]["offset"].get<size_t>() +
+        header["meta"]["Record"].get<size_t>() * sizeof(EntryIndex);
     header["hash_index"]["offset"] =
-        static_cast<size_t>(header["hash_buckets"]["offset"]) +
-        bucket_data_size;
+        header["hash_buckets"]["offset"].get<size_t>() + bucket_data_size;
     header["hash_index"]["dup_idxes"] =
         vector<size_t>(dup_hash_idxes.begin(), dup_hash_idxes.end());
     header["hash_index"]["bucket_size"] = bucket_size;
   }
 
+  return write_fst_header(fout, hash_data_size, oss_key_fst_out, header,
+                          compress_level);
+}
+
+int FstdxWriter::write_fst_header(std::ostream &fout, size_t hash_data_size,
+                                  std::ostringstream &oss_key_fst_out,
+                                  DxJsonHeader &header,
+                                  uint8_t compress_level) {
   bool comp_res = false;
   std::vector<char> comp_key_fst_dst;
   {
@@ -170,7 +252,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
     fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
     header["key_fst"]["offset"] =
-        static_cast<size_t>(header["hash_buckets"]["offset"]) + hash_data_size;
+        header["hash_buckets"]["offset"].get<size_t>() + hash_data_size;
   }
 
   {
@@ -291,7 +373,6 @@ bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,
     raw_lines.emplace_back(make_unique<string>(std::move(line)));
     index_count += 1;
   }
-
   return parse_raw_txt(raw_lines, delimiter_indices, keys, values);
 }
 

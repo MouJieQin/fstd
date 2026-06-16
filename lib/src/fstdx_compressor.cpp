@@ -98,6 +98,7 @@ bool FstdxCompressor::block_generator(
   unique_lock<mutex> lock(task_mtx_);
   generate_finished_ = true;
   task_cv_.notify_all();
+  return true;
 }
 
 bool FstdxCompressor::compress_imple(ZSTD_CCtx *cctx, const ZSTD_CDict *cdict,

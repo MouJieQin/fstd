@@ -1,8 +1,6 @@
 #pragma once
-#include <nlohmann/json.hpp>
+#include <fstd/common.h>
 #include <sstream>
-
-#include <fstd/fstdx_reader.h>
 
 namespace fstd {
 
@@ -64,6 +62,17 @@ private:
   bool compile_fst(std::vector<std::pair<std::string, uint64_t>> &input,
                    std::ostringstream &oss_out, bool opt_sorted,
                    bool opt_verbose, std::function<void(size_t)> progress);
+
+  int compile_fstdx_impl(std::ostream &fout,
+                         std::vector<std::pair<std::string, uint64_t>> &input,
+                         std::vector<std::string> &values, DxJsonHeader &header,
+                         uint16_t block_size_kb, uint8_t compress_level,
+                         uint16_t zstd_dict_size_kb, size_t worker_num,
+                         bool opt_sorted, bool opt_verbose);
+
+  int write_fst_header(std::ostream &fout, size_t hash_data_size,
+                       std::ostringstream &oss_key_fst_out,
+                       DxJsonHeader &header, uint8_t compress_level);
 
 private:
   static const nlohmann::json meta_default;

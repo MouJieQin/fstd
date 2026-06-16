@@ -19,6 +19,8 @@ FstddReader::FstddReader(const std::string &fstdd_path, bool &is_valid)
   is_valid = true;
 }
 
+const DdJsonHeader &FstddReader::get_header() const { return md_json_header_; }
+
 const json &FstddReader::get_meta() const { return md_json_header_["meta"]; }
 
 bool FstddReader::parse_fstdd(const std::string &fstdd_path) {

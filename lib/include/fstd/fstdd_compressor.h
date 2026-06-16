@@ -20,7 +20,6 @@
 namespace fstd {
 
 // ===================== config =====================
-const size_t disk_read_size = 512 * 1024;  // disk read size: 512kb（default）
 const size_t zstd_block_size = 128 * 1024; // zstd block size: 128kb（default）
 const int zstd_level = 3;                  // zstd level: 3（default）
 // =========================================================================

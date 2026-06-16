@@ -1,11 +1,67 @@
 #pragma once
 #include <fstream>
 #include <iostream>
+#include <set>
 
-#include <fstd/fstlib.h>
 #include <fstd/logger.h>
 
 namespace fstd {
+inline uint64_t MurmurHash64B(const void *key, size_t len, uint64_t seed) {
+  const auto m = uint32_t(0x5bd1e995);
+  const auto r = 24u;
+
+  auto h1 = static_cast<uint32_t>(seed) ^ static_cast<uint32_t>(len);
+  auto h2 = static_cast<uint32_t>(seed >> 32);
+
+  auto data = reinterpret_cast<const uint32_t *>(key);
+
+  while (len >= 8) {
+    auto k1 = *data++;
+    k1 *= m;
+    k1 ^= k1 >> r;
+    k1 *= m;
+    h1 *= m;
+    h1 ^= k1;
+    len -= 4;
+
+    auto k2 = *data++;
+    k2 *= m;
+    k2 ^= k2 >> r;
+    k2 *= m;
+    h2 *= m;
+    h2 ^= k2;
+    len -= 4;
+  }
+
+  if (len >= 4) {
+    auto k1 = *data++;
+    k1 *= m;
+    k1 ^= k1 >> r;
+    k1 *= m;
+    h1 *= m;
+    h1 ^= k1;
+    len -= 4;
+  }
+
+  switch (len) {
+  case 3: h2 ^= reinterpret_cast<const unsigned char *>(data)[2] << 16;
+  case 2: h2 ^= reinterpret_cast<const unsigned char *>(data)[1] << 8;
+  case 1: h2 ^= reinterpret_cast<const unsigned char *>(data)[0]; h2 *= m;
+  };
+
+  h1 ^= h2 >> 18;
+  h1 *= m;
+  h2 ^= h1 >> 22;
+  h2 *= m;
+  h1 ^= h2 >> 17;
+  h1 *= m;
+  h2 ^= h1 >> 19;
+  h2 *= m;
+
+  auto h = static_cast<uint64_t>(h1);
+  h = (h << 32) | h2;
+  return h;
+}
 
 template <typename VT>
 inline std::pair<size_t, size_t>
@@ -18,8 +74,8 @@ write_hash_index(std::ostream &out,
   std::vector<uint64_t> hash_codes;
   hash_codes.reserve(key_value.size());
   for (size_t i = 0; i < key_value.size(); ++i) {
-    uint64_t hash_code = fst::MurmurHash64B(key_value[i].first.c_str(),
-                                            key_value[i].first.size(), 0);
+    uint64_t hash_code =
+        MurmurHash64B(key_value[i].first.c_str(), key_value[i].first.size(), 0);
     hash_codes.push_back(hash_code);
   }
 
@@ -121,7 +177,7 @@ inline bool
 read_hash_index(std::ifstream &in, const std::string &key, VT &value,
                 const std::set<size_t> &dup_idxes, const size_t bucket_size,
                 const size_t bucket_offset, const size_t index_offset) {
-  uint64_t hash_code = fst::MurmurHash64B(key.c_str(), key.size(), 0);
+  uint64_t hash_code = MurmurHash64B(key.c_str(), key.size(), 0);
   LOG_DEBUG("hash_code: {}", hash_code);
   LOG_DEBUG("bucket_size: {}", bucket_size);
   size_t index = hash_code % bucket_size;

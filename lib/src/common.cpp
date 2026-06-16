@@ -27,6 +27,43 @@ std::string get_current_date() {
   return std::string(buf);
 }
 
+bool ends_with(std::string const &value, std::string const &ending) {
+  if (ending.size() > value.size()) return false;
+  return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
+
+std::string change_ext(const std::string &file_path, const std::string &ext) {
+  size_t pos = file_path.find_last_of('.');
+  if (pos == file_path.npos) {
+    return file_path + "." + ext;
+  } else {
+    return file_path.substr(0, pos + 1) + ext;
+  }
+}
+
+bool copy_file(std::istream &ins, const size_t offset, size_t size,
+               std::ostream &out) {
+  ins.seekg(offset, ios::beg);
+  char buff[disk_read_size];
+  while (ins && size > 0) {
+    LOG_INFO("size: {}", size);
+    if (size >= disk_read_size) {
+      ins.read(buff, disk_read_size);
+    } else {
+      ins.read(buff, size);
+    }
+    size_t read_size = ins.gcount();
+    LOG_INFO("read_size: {}", read_size);
+    out.write(buff, read_size);
+    size -= read_size;
+  }
+  if (size > 0) {
+    LOG_ERROR("Copy file to file failed");
+    return false;
+  }
+  return true;
+}
+
 bool handle_meta(const nlohmann::json &meta, const nlohmann::json &meta_default,
                  nlohmann::json &header) {
   if (!meta.is_object()) {
@@ -34,12 +71,14 @@ bool handle_meta(const nlohmann::json &meta, const nlohmann::json &meta_default,
     return false;
   }
 
-  json &h_meta = header["meta"];
-  // 遍历 meta_default
-  for (const auto &item : meta_default) {
-    // item 是数组里的每个小对象，比如 {"Version":""}
+  LOG_INFO("meta: {}", meta.dump(2));
+  LOG_INFO("meta_default: {}", meta_default.dump(2));
+  LOG_INFO("header: {}", header.dump(2));
 
-    // 遍历这个小对象里的 唯一一个 键值对
+  json &h_meta = header["meta"];
+  // write meta_default to header["meta"]
+  for (const auto &item : meta_default) {
+
     for (const auto &[key, value] : item.items()) {
       if (!meta.contains(key)) {
         h_meta[key] = value;
@@ -72,6 +111,7 @@ bool handle_meta(const nlohmann::json &meta, const nlohmann::json &meta_default,
       }
     }
   }
+  LOG_INFO("final header: {}", header.dump(2));
 
   return true;
 }

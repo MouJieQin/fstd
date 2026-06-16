@@ -9,7 +9,6 @@ target_include_directories(run_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/lib/include
 )
 
-# 只链接 gmock 目标，它会自动带上 gtest，避免重复
 target_link_libraries(run_tests
     PRIVATE
     fstd_static
@@ -32,7 +31,7 @@ add_custom_target(check
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/run_tests
     DEPENDS run_tests
     COMMENT "Build test code and run tests"
-    USES_TERMINAL  # 关键：分配终端，保证彩色正常
+    USES_TERMINAL  # To ensure color output in the terminal
 )
 
 add_custom_target(ctest

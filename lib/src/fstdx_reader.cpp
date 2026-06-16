@@ -20,6 +20,8 @@ FstdxReader::~FstdxReader() { ZSTD_freeDDict(ddict_); }
 
 const json &FstdxReader::get_meta() const { return mx_json_header_["meta"]; }
 
+const DxJsonHeader &FstdxReader::get_header() const { return mx_json_header_; }
+
 size_t FstdxReader::get_key_size() const { return key_size_; }
 
 size_t FstdxReader::get_fst_key_size() const { return fst_key_size_; }
