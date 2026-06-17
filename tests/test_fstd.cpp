@@ -17,17 +17,78 @@ namespace fs = std::filesystem;
 const string lib_dir = string(TEST_DATA_DIR) + "/../lib";
 const string cache_dir = string(TEST_DATA_DIR) + "/cache";
 const string dict_dir = string(TEST_DATA_DIR) + "/dict";
-const string fstdx_out_path = string(TEST_DATA_DIR) + "/dict/dict.fstdx";
-const string no_fstdx_out_path =
-    string(TEST_DATA_DIR) + "/dict/dict.no_recomp.fstdx";
-const string re_fstdx_out_path =
-    string(TEST_DATA_DIR) + "/dict/dict.recomp.fstdx";
-const string fstdd_out_path = string(TEST_DATA_DIR) + "/dict.fstdd";
-const string raw_file_path = string(TEST_DATA_DIR) + "/dict/dict.txt";
+const string raw_file_path = dict_dir + "/dict.txt";
+const string fstdx_out_path = cache_dir + "/dict.fstdx";
+const string no_fstdx_out_path = cache_dir + "/dict.no_recomp.fstdx";
+const string re_fstdx_out_path = cache_dir + "/dict.recomp.fstdx";
+const string fstdd_out_path = cache_dir + "/dict.fstdd";
 const string extract_file_path = cache_dir + "/extract_dict.txt";
 const vector<string> data_paths{lib_dir, dict_dir};
 
-TEST(FstdxWriteTest, CompileTest) {
+class TestFstdx : public ::testing::Test {
+protected:
+  void exact_match_search(const string &fstdx_path) {
+    FstdxWriter writer;
+    vector<string> keys, values;
+    ASSERT_TRUE(writer.load_file(raw_file_path, keys, values));
+    ASSERT_EQ(keys.size(), values.size());
+    bool is_valid = false;
+    FstdxReader reader(fstdx_path, is_valid);
+    ASSERT_TRUE(is_valid);
+    size_t idx = 0;
+    string key = "";
+    for (size_t i = 0; i < keys.size(); i++) {
+      if (keys[i] != key) {
+        // different key
+        idx = i;
+        key = keys[idx];
+      }
+      vector<string> result;
+      ASSERT_TRUE(reader.exact_match_search(key, result));
+      for (size_t j = 0; j < result.size(); j++) {
+        ASSERT_EQ(result[j], values[idx + j]);
+      }
+    }
+  }
+
+  static void SetUpTestSuite() {
+    if (!fs::exists(cache_dir)) { fs::create_directories(cache_dir); }
+  }
+};
+
+class TestFstdd : public ::testing::Test {
+protected:
+  bool are_files_equal_fast(const std::string &file1,
+                            const std::string &file2) {
+    std::ifstream f1(file1, std::ios::binary | std::ios::ate);
+    std::ifstream f2(file2, std::ios::binary | std::ios::ate);
+
+    if (!f1 || !f2) {
+      LOG_ERROR("Failed to open file {} or {}", file1, file2);
+      return false;
+    }
+    if (f1.tellg() != f2.tellg()) {
+      LOG_ERROR("File {} and {} have different sizes", file1, file2);
+      return false;
+    }
+
+    f1.seekg(0);
+    f2.seekg(0);
+
+    const int BUF_SIZE = 4096;
+    char buf1[BUF_SIZE], buf2[BUF_SIZE];
+
+    while (f1.read(buf1, BUF_SIZE) && f2.read(buf2, BUF_SIZE)) {
+      if (std::memcmp(buf1, buf2, BUF_SIZE) != 0) {
+        LOG_ERROR("File {} and {} have different content", file1, file2);
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
+TEST_F(TestFstdx, CompileTest) {
   LOG_INFO("Init logger for loading environment variables ...");
   spdlog::cfg::load_env_levels();
   FstdxWriter writer;
@@ -36,89 +97,25 @@ TEST(FstdxWriteTest, CompileTest) {
                                     4, 0, false, true));
 }
 
-TEST(FstdxReadTest, SearchTest) {
-  FstdxWriter writer;
-  vector<string> keys, values;
-  ASSERT_TRUE(writer.load_file(raw_file_path, keys, values));
-  ASSERT_EQ(keys.size(), values.size());
-  bool is_valid = false;
-  FstdxReader reader(fstdx_out_path, is_valid);
-  ASSERT_TRUE(is_valid);
-  size_t idx = 0;
-  string key = "";
-  for (size_t i = 0; i < keys.size(); i++) {
-    if (keys[i] != key) {
-      // different key
-      idx = i;
-      key = keys[idx];
-    }
-    vector<string> result;
-    ASSERT_TRUE(reader.exact_match_search(key, result));
-    for (size_t j = 0; j < result.size(); j++) {
-      ASSERT_EQ(result[j], values[idx + j]);
-    }
-  }
-}
+TEST_F(TestFstdx, SearchTest) { exact_match_search(fstdx_out_path); }
 
-TEST(FstdxWriteTest, ReCompileTestByFstdxNoRecompress) {
-  spdlog::cfg::load_env_levels();
+TEST_F(TestFstdx, ReCompileTestByFstdxNoRecompress) {
   FstdxWriter writer;
   json meta = {{"Title", "dict-no-recompress"}};
   ASSERT_EQ(0, writer.compile_fstdx(fstdx_out_path, no_fstdx_out_path, meta, 8,
                                     5, 4, 0, false, true));
-
-  vector<string> keys, values;
-  ASSERT_TRUE(writer.load_file(raw_file_path, keys, values));
-  ASSERT_EQ(keys.size(), values.size());
-  bool is_valid = false;
-  FstdxReader reader(no_fstdx_out_path, is_valid);
-  ASSERT_TRUE(is_valid);
-  size_t idx = 0;
-  string key = "";
-  for (size_t i = 0; i < keys.size(); i++) {
-    if (keys[i] != key) {
-      // different key
-      idx = i;
-      key = keys[idx];
-    }
-    vector<string> result;
-    ASSERT_TRUE(reader.exact_match_search(key, result));
-    for (size_t j = 0; j < result.size(); j++) {
-      ASSERT_EQ(result[j], values[idx + j]);
-    }
-  }
+  exact_match_search(no_fstdx_out_path);
 }
 
-TEST(FstdxWriteTest, ReCompileTestByFstdxWithRecompress) {
-  spdlog::cfg::load_env_levels();
+TEST_F(TestFstdx, ReCompileTestByFstdxWithRecompress) {
   FstdxWriter writer;
   json meta = {{"Title", "dict-recompress"}};
   ASSERT_EQ(0, writer.compile_fstdx(fstdx_out_path, re_fstdx_out_path, meta, 4,
                                     22, 4, 0, false, true));
-
-  vector<string> keys, values;
-  ASSERT_TRUE(writer.load_file(raw_file_path, keys, values));
-  ASSERT_EQ(keys.size(), values.size());
-  bool is_valid = false;
-  FstdxReader reader(re_fstdx_out_path, is_valid);
-  ASSERT_TRUE(is_valid);
-  size_t idx = 0;
-  string key = "";
-  for (size_t i = 0; i < keys.size(); i++) {
-    if (keys[i] != key) {
-      // different key
-      idx = i;
-      key = keys[idx];
-    }
-    vector<string> result;
-    ASSERT_TRUE(reader.exact_match_search(key, result));
-    for (size_t j = 0; j < result.size(); j++) {
-      ASSERT_EQ(result[j], values[idx + j]);
-    }
-  }
+  exact_match_search(re_fstdx_out_path);
 }
 
-TEST(FstdxReadTest, ExtractTest) {
+TEST_F(TestFstdx, ExtractTest) {
   bool is_valid = false;
   FstdxReader reader(fstdx_out_path, is_valid);
   ASSERT_TRUE(is_valid);
@@ -138,42 +135,14 @@ TEST(FstdxReadTest, ExtractTest) {
   }
 }
 
-TEST(FstddWriteTest, CompileTest) {
+TEST_F(TestFstdd, CompileTest) {
   json meta = {{"Title", "dict"}};
   FstddWriter writer;
-  ASSERT_EQ(
-      0, writer.compile_fstdd(data_paths, fstdd_out_path, meta, 10, 0, true));
+  ASSERT_EQ(0, writer.compile_fstdd(data_paths, fstdd_out_path, meta, 8, 10, 0,
+                                    true));
 }
 
-bool are_files_equal_fast(const std::string &file1, const std::string &file2) {
-  std::ifstream f1(file1, std::ios::binary | std::ios::ate);
-  std::ifstream f2(file2, std::ios::binary | std::ios::ate);
-
-  if (!f1 || !f2) {
-    LOG_ERROR("Failed to open file {} or {}", file1, file2);
-    return false;
-  }
-  if (f1.tellg() != f2.tellg()) {
-    LOG_ERROR("File {} and {} have different sizes", file1, file2);
-    return false;
-  }
-
-  f1.seekg(0);
-  f2.seekg(0);
-
-  const int BUF_SIZE = 4096;
-  char buf1[BUF_SIZE], buf2[BUF_SIZE];
-
-  while (f1.read(buf1, BUF_SIZE) && f2.read(buf2, BUF_SIZE)) {
-    if (std::memcmp(buf1, buf2, BUF_SIZE) != 0) {
-      LOG_ERROR("File {} and {} have different content", file1, file2);
-      return false;
-    }
-  }
-  return true;
-}
-
-TEST(FstddWriteTest, ReadTest) {
+TEST_F(TestFstdd, ReadTest) {
   bool is_valid = false;
   FstddReader reader(fstdd_out_path, is_valid);
   ASSERT_TRUE(is_valid);
@@ -191,7 +160,7 @@ TEST(FstddWriteTest, ReadTest) {
   }
 }
 
-TEST(FstddWriteTest, ExtractAllTest) {
+TEST_F(TestFstdd, ExtractAllTest) {
   bool is_valid = false;
   FstddReader reader(fstdd_out_path, is_valid);
   ASSERT_TRUE(is_valid);

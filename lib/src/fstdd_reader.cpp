@@ -34,6 +34,7 @@ bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
   ins.close();
 
   key_size_ = md_json_header_["meta"]["Record"];
+  block_size_ = md_json_header_["comp_blocks"]["block_size"];
   bucket_size_ = md_json_header_["hash_index"]["bucket_size"];
   comp_blocks_offset_ = md_json_header_["comp_blocks"]["offset"];
   block_index_offset_ = md_json_header_["block_index"]["offset"];
@@ -41,8 +42,8 @@ bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
   hash_index_offset_ = md_json_header_["hash_index"]["offset"];
   keys_offset_ = md_json_header_["keys"]["offset"];
 
-  for (auto idx : md_json_header_["hash_index"]["dup_idxes"]) {
-    dup_idxes_.insert(static_cast<size_t>(idx));
+  for (auto &idx : md_json_header_["hash_index"]["dup_idxes"]) {
+    dup_idxes_.insert(idx.get<size_t>());
   }
   return true;
 }
@@ -123,7 +124,7 @@ bool FstddReader::extract_impl(const string &key, const string &output_path) {
     return false;
   }
 
-  std::vector<char> decomp_buf(zstd_block_size);
+  std::vector<char> decomp_buf(block_size_);
   for (size_t block_idx = 0; block_idx < block_indexes.size(); ++block_idx) {
     size_t idx = block_idx;
     uint64_t start_block_offset = block_indexes[block_idx] >> 24;
@@ -140,10 +141,10 @@ bool FstddReader::extract_impl(const string &key, const string &output_path) {
     ins.read(comp_blocks.data(), comp_blocks.size());
     size_t buf_offset = 0;
     for (; idx <= block_idx; ++idx) {
-      size_t block_size = block_indexes[idx] & 0xFFFFFF;
+      size_t comp_block_size = block_indexes[idx] & 0xFFFFFF;
       size_t decomp_size =
-          ZSTD_decompress(decomp_buf.data(), zstd_block_size,
-                          comp_blocks.data() + buf_offset, block_size);
+          ZSTD_decompress(decomp_buf.data(), block_size_,
+                          comp_blocks.data() + buf_offset, comp_block_size);
       if (ZSTD_isError(decomp_size)) {
         cerr << "解压失败: " << ZSTD_getErrorName(decomp_size) << endl;
         return false;
@@ -156,7 +157,7 @@ bool FstddReader::extract_impl(const string &key, const string &output_path) {
       }
       if (idx == block_indexes.size() - 1) { size = end_offset - offset; }
       out.write(decomp_buf.data() + offset, size);
-      buf_offset += block_size;
+      buf_offset += comp_block_size;
     }
   }
   return true;

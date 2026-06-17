@@ -32,25 +32,21 @@ std::ostream &operator<<(std::ostream &os, const ValueBlockPosIndex &vbp_idx) {
 
 bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
                                std::ofstream &out, DdJsonHeader &header,
+                               size_t block_size, size_t compress_level,
                                size_t worker_num, bool opt_verbose) {
-  thread reader([&]() { read_files(data_paths, header); });
-
+  thread reader([&]() { read_files(data_paths, header, block_size); });
   if (worker_num == 0) {
     worker_num = get_optimal_thread_num(TaskType::CPU_INTENSIVE);
   }
   vector<thread> workers;
   for (unsigned int i = 0; i < worker_num; ++i) {
-    workers.emplace_back([&]() { compress_worker(); });
+    workers.emplace_back([&]() { compress_worker(compress_level); });
   }
-
-  thread writer([&]() { write_output(out, header); });
-
+  thread writer([&]() { write_output(out, header, compress_level); });
   reader.join();
-
   for (auto &worker : workers) {
     worker.join();
   }
-
   // mark compress finished
   {
     unique_lock<mutex> lock(res_mtx);
@@ -63,7 +59,6 @@ bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
     LOG_ERROR("Compress failed.");
     return false;
   }
-
   LOG_DEBUG("Compress done.");
   return success;
 }
@@ -100,7 +95,7 @@ FstddCompressor::recursive_directory(
 
 // -------------------- read files with single thread --------------------
 void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
-                                 DdJsonHeader &header) {
+                                 DdJsonHeader &header, size_t block_size) {
   vector<char> disk_buf(disk_read_size);
   size_t buf_size = 0;
   uint64_t block_index = 0;
@@ -119,8 +114,8 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
       continue;
     }
     if (!success) { return; }
-    size_t start_count = buf_size / zstd_block_size;
-    uint64_t start_offset = buf_size % zstd_block_size;
+    size_t start_count = buf_size / block_size;
+    uint64_t start_offset = buf_size % block_size;
     uint64_t start_block_index = block_index + start_count;
     while (true) {
       if (!success) { return; }
@@ -129,9 +124,8 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
       streamsize bytes_read = ifs.gcount();
       buf_size += bytes_read;
       if (static_cast<size_t>(bytes_read) < expect_read_size) {
-
-        size_t end_count = buf_size / zstd_block_size;
-        uint64_t end_offset = buf_size % zstd_block_size;
+        size_t end_count = buf_size / block_size;
+        uint64_t end_offset = buf_size % block_size;
         uint64_t end_block_index = block_index + end_count;
         LOG_DEBUG("{} : {}, {}, {}, {}", key, start_block_index, start_offset,
                   end_block_index, end_offset);
@@ -144,7 +138,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
       // split disk_buf into blocks
       size_t offset = 0;
       while (offset < buf_size) {
-        size_t current_block_size = zstd_block_size;
+        size_t current_block_size = block_size;
 
         CompressTask task;
         task.src_data.assign(disk_buf.begin() + offset,
@@ -169,7 +163,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
   // last block
   size_t offset = 0;
   while (offset < buf_size) {
-    size_t current_block_size = min(zstd_block_size, buf_size - offset);
+    size_t current_block_size = min(block_size, buf_size - offset);
 
     CompressTask task;
     task.src_data.assign(disk_buf.begin() + offset,
@@ -188,12 +182,13 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
   // mark read finished
   unique_lock<mutex> lock(task_mtx);
   header["meta"]["Record"] = record;
+  header["comp_blocks"]["block_size"] = block_size;
   read_finished = true;
   task_cv.notify_all();
 }
 
 // -------------------- compress files with multiple threads -----------------
-void FstddCompressor::compress_worker() {
+void FstddCompressor::compress_worker(size_t compress_level) {
   while (true) {
     CompressTask task;
     {
@@ -209,10 +204,9 @@ void FstddCompressor::compress_worker() {
 
     CompressResult result;
     result.dst_data = zstd_compress_block(task.src_data.data(),
-                                          task.src_data.size(), zstd_level);
+                                          task.src_data.size(), compress_level);
     if (!success) { return; }
     result.index = task.index;
-
     {
       unique_lock<mutex> lock(res_mtx);
       result_queue.push(std::move(result));
@@ -222,7 +216,8 @@ void FstddCompressor::compress_worker() {
 }
 
 // -------------------- write output with single thread --------------------
-void FstddCompressor::write_output(std::ostream &out, DdJsonHeader &header) {
+void FstddCompressor::write_output(std::ostream &out, DdJsonHeader &header,
+                                   size_t compress_level) {
   size_t expected_index = 0;
   // (Key: index, Value: Compressed Data)
   unordered_map<size_t, vector<char>> fallback_buffer;
@@ -237,32 +232,26 @@ void FstddCompressor::write_output(std::ostream &out, DdJsonHeader &header) {
       unique_lock<mutex> lock(res_mtx);
       res_cv.wait(lock,
                   [&] { return !result_queue.empty() || compress_finished; });
-
       if (result_queue.empty() && compress_finished &&
           fallback_buffer.empty()) {
         break;
       }
-
       if (!result_queue.empty()) {
         result = std::move(result_queue.front());
         result_queue.pop();
       }
     }
-
     // if new data is received, put it into fallback buffer
     if (!result.dst_data.empty() || result.index == expected_index) {
       fallback_buffer[result.index] = std::move(result.dst_data);
     }
-
     // write compressed data to output with strict order
     while (fallback_buffer.count(expected_index)) {
       if (!success) { return; }
-
       auto &data = fallback_buffer[expected_index];
-
-      uint64_t block_size = static_cast<uint64_t>(data.size());
-      block_indexes.push_back((block_offset << 24) | block_size);
-      block_offset += block_size;
+      uint64_t comp_block_size = static_cast<uint64_t>(data.size());
+      block_indexes.push_back((block_offset << 24) | comp_block_size);
+      block_offset += comp_block_size;
 
       out.write(data.data(), data.size());
       total_block_size += data.size();
@@ -285,7 +274,7 @@ void FstddCompressor::write_output(std::ostream &out, DdJsonHeader &header) {
       vector<size_t>(dup_bucket_idxes.begin(), dup_bucket_idxes.end());
   header["hash_index"]["bucket_size"] = bucket_size;
   header["hash_index"]["offset"] =
-      static_cast<size_t>(header["hash_buckets"]["offset"]) + bucket_data_size;
+      header["hash_buckets"]["offset"].get<size_t>() + bucket_data_size;
 
   vector<size_t> sorted_idxes = sort_indexes(index_record);
   size_t keys_size = 0;
@@ -302,15 +291,15 @@ void FstddCompressor::write_output(std::ostream &out, DdJsonHeader &header) {
   }
 
   std::vector<char> dst;
-  if (!compress_to_buffer(keys_buf.data(), keys_buf.size(), dst, zstd_level)) {
+  if (!compress_to_buffer(keys_buf.data(), keys_buf.size(), dst,
+                          compress_level)) {
     success = false;
     return;
   }
   out.write(dst.data(), dst.size());
-  header["keys"]["offset"] =
-      static_cast<size_t>(header["hash_index"]["offset"]) +
-      bucket_size * sizeof(uint64_t);
-  header["keys"]["compress_level"] = zstd_level;
+  header["keys"]["offset"] = header["hash_index"]["offset"].get<size_t>() +
+                             bucket_size * sizeof(uint64_t);
+  header["keys"]["compress_level"] = compress_level;
   header["keys"]["original_size"] = keys_size;
   header["keys"]["compressed_size"] = dst.size();
 }

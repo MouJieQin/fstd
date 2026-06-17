@@ -19,11 +19,6 @@
 
 namespace fstd {
 
-// ===================== config =====================
-const size_t zstd_block_size = 128 * 1024; // zstd block size: 128kb（default）
-const int zstd_level = 3;                  // zstd level: 3（default）
-// =========================================================================
-
 struct ValueBlockPosIndex {
   ValueBlockPosIndex() = default;
   ValueBlockPosIndex(uint64_t start_index, uint64_t start_offset,
@@ -43,7 +38,8 @@ std::ostream &operator<<(std::ostream &os, const ValueBlockPosIndex &vbp_idx);
 class FstddCompressor {
 public:
   bool compress(const std::vector<std::string> &data_paths, std::ofstream &out,
-                DdJsonHeader &header, size_t worker_num, bool opt_verbose);
+                DdJsonHeader &header, size_t block_size_kb,
+                size_t compress_level, size_t worker_num, bool opt_verbose);
 
   static std::vector<std::pair<std::string, size_t>>
   recursive_directory(const std::vector<std::string> &data_paths);
@@ -53,12 +49,12 @@ private:
                                         int level);
 
   void read_files(const std::vector<std::string> &data_paths,
-                  DdJsonHeader &header);
+                  DdJsonHeader &header, size_t block_size_kb);
 
-  void compress_worker();
+  void compress_worker(size_t compress_level);
 
-  void write_output(std::ostream &out, DdJsonHeader &header);
-
+  void write_output(std::ostream &out, DdJsonHeader &header,
+                    size_t compress_level);
 
 private:
   std::queue<CompressTask> task_queue;

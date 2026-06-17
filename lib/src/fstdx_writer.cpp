@@ -105,8 +105,8 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
         header["hash_index"]["offset"].get<size_t>() - hash_offset;
     if (compress_level == header["meta"]["Compressionlevel"].get<size_t>() &&
         zstd_dict_size_kb * 1024 ==
-            header["info"]["comp_dict_size"].get<size_t>() &&
-        block_size_kb * 1024 == header["info"]["block_size"].get<size_t>()) {
+            header["comp_dict"]["original_size"].get<size_t>() &&
+        block_size_kb * 1024 == header["comp_blocks"]["block_size"].get<size_t>()) {
       size_t copy_size = header["key_fst"]["offset"].get<size_t>() +
                          header["key_fst"]["compressed_size"].get<size_t>();
       if (!copy_file(fin, 0, copy_size, fout)) { return 6; }
@@ -134,8 +134,8 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
     if (!decompress(fin, "key_fst", reader.get_header(), key_fst_byte_code)) {
       return 7;
     }
-    header["info"]["comp_dict_size"] = zstd_dict_size_kb * 1024;
-    header["info"]["block_size"] = block_size_kb * 1024;
+    header["comp_dict"]["original_size"] = zstd_dict_size_kb * 1024;
+    header["comp_blocks"]["block_size"] = block_size_kb * 1024;
     header["meta"]["Compressionlevel"] = compress_level;
     ostringstream oss_key_fst_out(ios_base::binary);
     oss_key_fst_out.write(key_fst_byte_code.data(), key_fst_byte_code.size());
@@ -153,8 +153,8 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
                                bool opt_sorted, bool opt_verbose) {
   DxJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
-  header["info"]["comp_dict_size"] = zstd_dict_size_kb * 1024;
-  header["info"]["block_size"] = block_size_kb * 1024;
+  header["comp_dict"]["original_size"] = zstd_dict_size_kb * 1024;
+  header["comp_blocks"]["block_size"] = block_size_kb * 1024;
   header["meta"]["Record"] = keys.size();
   header["meta"]["Stripkey"] = true;
   header["meta"]["Compressionlevel"] = compress_level;

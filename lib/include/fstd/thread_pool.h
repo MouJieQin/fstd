@@ -17,7 +17,6 @@ inline unsigned int get_cpu_core_count() {
   return core_num;
 }
 
-// 计算 最优线程数
 enum class TaskType { CPU_INTENSIVE, IO_INTENSIVE };
 
 inline unsigned int get_optimal_thread_num(TaskType type) {
@@ -40,12 +39,12 @@ public:
   size_t worker_num() const;
 
 private:
-  // 需要保留线程对象，让它们保持运行
+  // keep threads alive to reduce thread creation cost
   std::vector<std::thread> workers;
-  // 任务队列
+  // task queue
   std::queue<std::function<void()>> tasks;
 
-  // 同步变量
+  // synchronization variables
   std::mutex queue_mutex;
   std::condition_variable condition;
   bool stop;
@@ -56,7 +55,6 @@ inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
     workers.emplace_back([this] {
       for (;;) {
         std::function<void()> task;
-
         {
           std::unique_lock<std::mutex> lock(this->queue_mutex);
           this->condition.wait(
@@ -65,7 +63,6 @@ inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
           task = std::move(this->tasks.front());
           this->tasks.pop();
         }
-
         task();
       }
     });
@@ -85,7 +82,7 @@ auto ThreadPool::enqueue(F &&f, Args &&...args)
   {
     std::unique_lock<std::mutex> lock(queue_mutex);
 
-    // 不允许在停止后加入任务
+    // allow enqueueing only when not stopped
     if (stop) throw std::runtime_error("enqueue on stopped ThreadPool");
 
     tasks.emplace([task]() { (*task)(); });
@@ -94,7 +91,6 @@ auto ThreadPool::enqueue(F &&f, Args &&...args)
   return res;
 }
 
-// 析构函数
 inline ThreadPool::~ThreadPool() {
   {
     std::unique_lock<std::mutex> lock(queue_mutex);

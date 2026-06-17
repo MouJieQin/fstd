@@ -8,8 +8,8 @@ using namespace std;
 
 int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
                                const std::string &output_file,
-                               const nlohmann::json &meta,
-                               uint8_t compress_level, size_t worker_num,
+                               const nlohmann::json &meta, size_t block_size_kb,
+                               size_t compress_level, size_t worker_num,
                                bool opt_verbose) {
   ofstream fout(output_file, ios_base::binary);
   if (!fout) {
@@ -19,12 +19,12 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
   DdJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
   FstddCompressor dd_compressor;
-  if (!dd_compressor.compress(data_paths, fout, header, worker_num,
-                              opt_verbose)) {
+  if (!dd_compressor.compress(data_paths, fout, header, block_size_kb * 1024,
+                              compress_level, worker_num, opt_verbose)) {
     return 2;
   }
-
   header["meta"]["Creationdate"] = get_current_date();
+  header["meta"]["Compressionlevel"] = compress_level;
   std::vector<char> comp_header_dst;
   std::string header_str = header.dump();
   {
@@ -33,7 +33,6 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
     if (!comp_res) { return 4; }
   }
   fout.write(comp_header_dst.data(), comp_header_dst.size());
-
   HeaderSizeRecord header_size_record(header_str.size(),
                                       comp_header_dst.size());
   LOG_INFO("{}", header.dump(2));
@@ -46,13 +45,13 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
 
 int FstddWriter::compile_fstdd(const string &data_path,
                                const string &output_file,
-                               const nlohmann::json &meta,
-                               uint8_t compress_level, size_t worker_num,
+                               const nlohmann::json &meta, size_t block_size_kb,
+                               size_t compress_level, size_t worker_num,
                                bool opt_verbose) {
 
   const std::vector<std::string> data_paths{data_path};
-  return compile_fstdd(data_paths, output_file, meta, compress_level,
-                       worker_num, opt_verbose);
+  return compile_fstdd(data_paths, output_file, meta, block_size_kb,
+                       compress_level, worker_num, opt_verbose);
 }
 
 const nlohmann::json FstddWriter::meta_default =

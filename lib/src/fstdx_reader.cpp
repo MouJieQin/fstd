@@ -102,7 +102,7 @@ bool FstdxReader::extract(const std::string &output_file) {
   ofstream fout(output_file, ios_base::out);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
-    return 1;
+    return false;
   }
 
   DyProgBars<BlockProgressBar> dynamic_bars;
@@ -194,8 +194,8 @@ bool FstdxReader::parse_fstdx(const std::string &fstdx_path) {
   hash_bucket_offset_ = mx_json_header_["hash_buckets"]["offset"];
   hash_index_offset_ = mx_json_header_["hash_index"]["offset"];
   entry_indexes_offset_ = mx_json_header_["entry_indexes"]["offset"];
-  for (auto idx : mx_json_header_["hash_index"]["dup_idxes"]) {
-    dup_idxes_.insert(static_cast<size_t>(idx));
+  for (auto &idx : mx_json_header_["hash_index"]["dup_idxes"]) {
+    dup_idxes_.insert(idx.get<size_t>());
   }
   return true;
 }

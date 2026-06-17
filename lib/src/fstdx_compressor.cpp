@@ -14,8 +14,7 @@ namespace fstd {
 bool FstdxCompressor::compress_texts_to_stream(
     std::ostream &out, const std::vector<std::string> &texts,
     DxJsonHeader &header, size_t dict_size, size_t block_size,
-    int compression_level, ThreadPool &thread_pool,
-    DyBlockProgBars &dy_bars) {
+    int compression_level, ThreadPool &thread_pool, DyBlockProgBars &dy_bars) {
   std::vector<char> dict_buffer(dict_size);
   int res = train_zstd_dictionary(texts, dict_buffer.data(), dict_size);
   if (res == -1) {
@@ -159,8 +158,8 @@ bool FstdxCompressor::compress_worker(const ZSTD_CDict *cdict) {
 bool FstdxCompressor::block_writer(
     std::ostream &out,
     const std::vector<std::pair<size_t, size_t>> &block_record,
-    DyBlockProgBars &dy_bars,
-    std::vector<BlockIndex> &block_indexes, uint64_t &total_block_size) {
+    DyBlockProgBars &dy_bars, std::vector<BlockIndex> &block_indexes,
+    uint64_t &total_block_size) {
   block_indexes.clear();
   size_t expected_index = 0;
   // (Key: index, Value: Compressed Data)
@@ -291,7 +290,7 @@ bool FstdxCompressor::compress_texts_to_stream(
   header["comp_dict"]["compress_level"] = 0;
   header["comp_dict"]["original_size"] = dict_size;
   header["comp_dict"]["offset"] =
-      static_cast<size_t>(header["comp_blocks"]["offset"]) + total_block_size;
+      header["comp_blocks"]["offset"].get<size_t>() + total_block_size;
 
   bool comp_res = false;
   size_t comp_block_index_size = 0;
@@ -309,7 +308,7 @@ bool FstdxCompressor::compress_texts_to_stream(
     header["block_indexes"]["original_size"] =
         block_indexes.size() * sizeof(BlockIndex);
     header["block_indexes"]["offset"] =
-        static_cast<size_t>(header["comp_dict"]["offset"]) + dict_size;
+        header["comp_dict"]["offset"].get<size_t>() + dict_size;
   }
 
   {
@@ -319,8 +318,7 @@ bool FstdxCompressor::compress_texts_to_stream(
     header["entry_indexes"]["original_size"] =
         entry_indexes.size() * sizeof(EntryIndex);
     header["entry_indexes"]["offset"] =
-        static_cast<size_t>(header["block_indexes"]["offset"]) +
-        comp_block_index_size;
+        header["block_indexes"]["offset"].get<size_t>() + comp_block_index_size;
   }
 
   ZSTD_freeCDict(cdict);

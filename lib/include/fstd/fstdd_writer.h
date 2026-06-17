@@ -8,13 +8,13 @@ class FstddWriter {
 public:
   int compile_fstdd(const std::string &data_path,
                     const std::string &output_file, const nlohmann::json &meta,
-                    uint8_t compress_level, size_t worker_num,
-                    bool opt_verbose);
+                    size_t block_size_kb, size_t compress_level,
+                    size_t worker_num, bool opt_verbose);
 
   int compile_fstdd(const std::vector<std::string> &data_paths,
                     const std::string &output_file, const nlohmann::json &meta,
-                    uint8_t compress_level, size_t worker_num,
-                    bool opt_verbose);
+                    size_t block_size_kb, size_t compress_level,
+                    size_t worker_num, bool opt_verbose);
 
 private:
   static const nlohmann::json meta_default;
