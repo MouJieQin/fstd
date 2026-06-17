@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <any>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iomanip>
@@ -205,8 +206,8 @@ inline std::string char_to_string(char arc) {
 // get_common_prefix_length
 //-----------------------------------------------------------------------------
 
-inline size_t get_common_prefix_length(const std::string &s1,
-                                       const std::string &s2) {
+inline size_t get_common_prefix_length(std::string_view s1,
+                                       std::string_view s2) {
   auto i = 0u;
   while (i < s1.size() && i < s2.size() && s1[i] == s2[i]) {
     i++;
@@ -218,7 +219,7 @@ inline size_t get_common_prefix_length(const std::string &s1,
 // get_prefix_length
 //-----------------------------------------------------------------------------
 
-inline bool get_prefix_length(const std::string &s1, const std::string &s2,
+inline bool get_prefix_length(std::string_view s1, std::string_view s2,
                               size_t &l) {
   l = 0;
   while (l < s1.size() && l < s2.size()) {
@@ -230,6 +231,19 @@ inline bool get_prefix_length(const std::string &s1, const std::string &s2,
   }
   return true;
 }
+
+//-----------------------------------------------------------------------------
+// hash_bytes (FNV-1a)
+//-----------------------------------------------------------------------------
+
+inline void hash_bytes(uint64_t &h, const void *data, size_t len) {
+  auto p = static_cast<const uint8_t *>(data);
+  for (size_t i = 0; i < len; i++) {
+    h = (h ^ p[i]) * 0x100000001b3ULL;
+  }
+}
+
+constexpr uint64_t kFnvBasis = 0xcbf29ce484222325ULL;
 
 //-----------------------------------------------------------------------------
 // OutputTraits
@@ -258,6 +272,8 @@ template <> struct OutputTraits<none_t> {
 
   static value_type init_value() { return 0; }
 
+  static void hash_value(uint64_t &h, value_type val) {}
+
   static size_t read_byte_value(const char *p, value_type &val) { return 0; }
 };
 
@@ -284,6 +300,10 @@ template <> struct OutputTraits<uint32_t> {
     auto p = reinterpret_cast<const char *>(&val);
     buff.insert(buff.begin(), p, p + sizeof(val));
     return sizeof(val);
+  }
+
+  static void hash_value(uint64_t &h, value_type val) {
+    hash_bytes(h, &val, sizeof(val));
   }
 
   static size_t get_byte_value_size(value_type val) {
@@ -322,6 +342,10 @@ template <> struct OutputTraits<uint64_t> {
     auto p = reinterpret_cast<const char *>(&val);
     buff.insert(buff.begin(), p, p + sizeof(val));
     return sizeof(val);
+  }
+
+  static void hash_value(uint64_t &h, value_type val) {
+    hash_bytes(h, &val, sizeof(val));
   }
 
   static size_t get_byte_value_size(value_type val) {
@@ -388,6 +412,10 @@ template <> struct OutputTraits<uint32bit> {
     return sizeof(val);
   }
 
+  static void hash_value(uint64_t &h, value_type val) {
+    hash_bytes(h, &val.bits, sizeof(val.bits));
+  }
+
   static size_t get_byte_value_size(value_type val) {
     return vb_encode_value_length(val.bits);
   }
@@ -452,6 +480,10 @@ template <> struct OutputTraits<uint64bit> {
     return sizeof(val);
   }
 
+  static void hash_value(uint64_t &h, value_type val) {
+    hash_bytes(h, &val.bits, sizeof(val.bits));
+  }
+
   static size_t get_byte_value_size(value_type val) {
     return vb_encode_value_length(val.bits);
   }
@@ -492,6 +524,10 @@ template <> struct OutputTraits<std::string> {
   template <typename T> static size_t write_value(T &buff, value_type val) {
     buff.insert(buff.begin(), val.data(), val.data() + val.size());
     return val.size();
+  }
+
+  static void hash_value(uint64_t &h, const value_type &val) {
+    hash_bytes(h, val.data(), val.size());
   }
 
   static size_t get_byte_value_size(const value_type &val) {
@@ -569,6 +605,23 @@ public:
       states_and_outputs.clear();
     }
 
+    // The minimization loop always rewires the most recently added arc.
+    void update_last_transition(State<output_t> *state) {
+      auto &t = states_and_outputs.back();
+      t.id = state->id;
+      t.final = state->final;
+      t.state_output = state->state_output;
+    }
+
+    // The tail initialization always adds a new arc.
+    void add_transition(char arc, State<output_t> *state) {
+      arcs.push_back(arc);
+      auto &t = states_and_outputs.emplace_back(Transition());
+      t.id = state->id;
+      t.final = state->final;
+      t.state_output = state->state_output;
+    }
+
     void set_transition(char arc, State<output_t> *state) {
       auto idx = get_index(arc);
       if (idx == -1) {
@@ -622,6 +675,14 @@ public:
     transitions.set_transition(arc, state);
   }
 
+  void update_last_transition(State<output_t> *state) {
+    transitions.update_last_transition(state);
+  }
+
+  void add_transition(char arc, State<output_t> *state) {
+    transitions.add_transition(arc, state);
+  }
+
   void set_output(char arc, const output_t &output) {
     transitions.set_output(arc, output);
   }
@@ -654,25 +715,28 @@ private:
 };
 
 template <typename output_t> inline uint64_t State<output_t>::hash() const {
-  std::vector<char> buff;
+  auto h = kFnvBasis;
 
   transitions.for_each([&](char arc, const State::Transition &t) {
-    buff.push_back(arc);
+    hash_bytes(h, &arc, sizeof(arc));
 
     auto val = static_cast<uint32_t>(t.id);
-    auto p = reinterpret_cast<const char *>(&val);
-    buff.insert(buff.begin(), p, p + sizeof(val));
+    hash_bytes(h, &val, sizeof(val));
 
     if (!OutputTraits<output_t>::empty(t.output)) {
-      OutputTraits<output_t>::write_value(buff, t.output);
+      OutputTraits<output_t>::hash_value(h, t.output);
     }
   });
 
   if (final && !OutputTraits<output_t>::empty(state_output)) {
-    OutputTraits<output_t>::write_value(buff, state_output);
+    OutputTraits<output_t>::hash_value(h, state_output);
   }
 
-  return MurmurHash64B(buff.data(), buff.size(), 0);
+  // Final mixing improves the bucket distribution in the dictionary.
+  h ^= h >> 33;
+  h *= 0xff51afd7ed558ccdULL;
+  h ^= h >> 33;
+  return h;
 }
 
 //-----------------------------------------------------------------------------
@@ -688,18 +752,24 @@ public:
   }
 
   State<output_t> *New(size_t state_id = -1) {
+    if (!free_list_.empty()) {
+      auto p = free_list_.back();
+      free_list_.pop_back();
+      p->reuse(state_id);
+      return p;
+    }
     auto p = new State<output_t>(state_id);
-    object_pool_.insert(p);
+    object_pool_.push_back(p);
     return p;
   }
 
-  void Delete(State<output_t> *p) {
-    object_pool_.erase(p);
-    delete p;
-  }
+  // Recycled states keep their transition vector capacities, which saves
+  // a large number of allocations during the build.
+  void Delete(State<output_t> *p) { free_list_.push_back(p); }
 
 private:
-  std::unordered_set<State<output_t> *> object_pool_;
+  std::vector<State<output_t> *> object_pool_;
+  std::vector<State<output_t> *> free_list_;
 };
 
 //-----------------------------------------------------------------------------
@@ -708,39 +778,97 @@ private:
 
 template <typename output_t> class Dictionary {
 public:
-  Dictionary(StatePool<output_t> &state_pool) : state_pool_(state_pool) {}
+  // With 'keep_all', the dictionary keeps every minimized state in a
+  // growable open addressing table, so no duplicate states are created.
+  // Otherwise it works as a fixed size 3-way LRU cache, which bounds the
+  // memory usage but produces duplicate states on eviction.
+  Dictionary(StatePool<output_t> &state_pool, bool keep_all)
+      : state_pool_(state_pool), keep_all_(keep_all) {
+    if (keep_all_) {
+      table_.resize(kInitialTableSize, {0, nullptr});
+    } else {
+      buckets_.resize(kBucketCount, {{0, nullptr}, {0, nullptr}, {0, nullptr}});
+    }
+  }
 
   State<output_t> *get(uint64_t key, State<output_t> *state) {
+    if (keep_all_) {
+      auto mask = table_.size() - 1;
+      auto i = key & mask;
+      while (table_[i].second) {
+        // Compare the hash keys first to avoid expensive state comparisons.
+        if (table_[i].first == key && *table_[i].second == *state) {
+          return table_[i].second;
+        }
+        i = (i + 1) & mask;
+      }
+      return nullptr;
+    }
+
     auto id = bucket_id(key);
     auto [first, second, third] = buckets_[id];
-    if (first && *first == *state) { return first; }
-    if (second && *second == *state) {
-      buckets_[id] = std::tuple(second, first, third);
-      return second;
+    // Compare the hash keys first to avoid expensive state comparisons.
+    if (first.second && first.first == key && *first.second == *state) {
+      return first.second;
     }
-    if (third && *third == *state) {
+    if (second.second && second.first == key && *second.second == *state) {
+      buckets_[id] = std::tuple(second, first, third);
+      return second.second;
+    }
+    if (third.second && third.first == key && *third.second == *state) {
       buckets_[id] = std::tuple(third, first, second);
-      return third;
+      return third.second;
     }
     return nullptr;
   }
 
   void put(uint64_t key, State<output_t> *state) {
+    if (keep_all_) {
+      if (count_ * 10 >= table_.size() * 7) { grow_table(); }
+      auto mask = table_.size() - 1;
+      auto i = key & mask;
+      while (table_[i].second) {
+        i = (i + 1) & mask;
+      }
+      table_[i] = {key, state};
+      count_++;
+      return;
+    }
+
     auto id = bucket_id(key);
     auto [first, second, third] = buckets_[id];
-    if (third) { state_pool_.Delete(third); }
-    buckets_[id] = std::tuple(state, first, second);
+    if (third.second) { state_pool_.Delete(third.second); }
+    buckets_[id] = std::tuple(Entry{key, state}, first, second);
   }
 
 private:
   StatePool<output_t> &state_pool_;
+  bool keep_all_;
 
   static const auto kBucketCount = 10000u;
+  static const auto kInitialTableSize = 1u << 16;
 
   size_t bucket_id(uint64_t key) const { return key % kBucketCount; }
 
-  std::tuple<State<output_t> *, State<output_t> *, State<output_t> *>
-      buckets_[kBucketCount] = {{nullptr, nullptr, nullptr}};
+  using Entry = std::pair<uint64_t, State<output_t> *>;
+
+  void grow_table() {
+    std::vector<Entry> old_table(table_.size() * 2, {0, nullptr});
+    table_.swap(old_table);
+    auto mask = table_.size() - 1;
+    for (const auto &entry : old_table) {
+      if (!entry.second) { continue; }
+      auto i = entry.first & mask;
+      while (table_[i].second) {
+        i = (i + 1) & mask;
+      }
+      table_[i] = entry;
+    }
+  }
+
+  std::vector<std::tuple<Entry, Entry, Entry>> buckets_;
+  std::vector<Entry> table_;
+  size_t count_ = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -781,10 +909,11 @@ enum class Result { Success, EmptyKey, UnsortedKey, DuplicateKey };
 
 template <typename output_t, typename Input, typename Writer>
 inline std::pair<Result, size_t>
-build_fst_core(const Input &input, Writer &writer, bool need_output) {
+build_fst_core(const Input &input, Writer &writer, bool need_output,
+               bool keep_all_states = false) {
   StatePool<output_t> state_pool;
 
-  Dictionary<output_t> dictionary(state_pool);
+  Dictionary<output_t> dictionary(state_pool, keep_all_states);
   auto next_state_id = 0u;
   auto error_input_index = 0u;
   auto result = Result::Success;
@@ -837,7 +966,7 @@ build_fst_core(const Input &input, Writer &writer, bool need_output) {
         temp_states[i] = state_pool.New();
       }
 
-      temp_states[i - 1]->set_transition(arc, state);
+      temp_states[i - 1]->update_last_transition(state);
     }
 
     // This loop initializes the tail states for the current word
@@ -849,7 +978,7 @@ build_fst_core(const Input &input, Writer &writer, bool need_output) {
         temp_states[i]->reuse(next_state_id++);
       }
       auto arc = current_word[i - 1];
-      temp_states[i - 1]->set_transition(arc, temp_states[i]);
+      temp_states[i - 1]->add_transition(arc, temp_states[i]);
     }
 
     if (current_word != previous_word) {
@@ -906,6 +1035,7 @@ build_fst_core(const Input &input, Writer &writer, bool need_output) {
   }
 
   // Here we are minimizing the states of the last word
+  State<output_t> *root = nullptr;
   for (auto i = static_cast<int>(previous_word.size()); i >= 0; i--) {
     auto [found, state] = find_minimized<output_t>(temp_states[i], dictionary);
 
@@ -917,8 +1047,14 @@ build_fst_core(const Input &input, Writer &writer, bool need_output) {
       writer.write(*state, arc);
     }
 
-    if (i > 0) { temp_states[i - 1]->set_transition(arc, state); }
+    if (i > 0) {
+      temp_states[i - 1]->update_last_transition(state);
+    } else {
+      root = state;
+    }
   }
+
+  writer.finish(*root);
 
   return std::pair(Result::Success, error_input_index);
 }
@@ -928,9 +1064,9 @@ build_fst_core(const Input &input, Writer &writer, bool need_output) {
 //-----------------------------------------------------------------------------
 
 template <typename output_t, typename Input, typename Writer, typename Progess>
-inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
-                                           bool need_output, bool sorted,
-                                           Progess progress = nullptr) {
+inline std::pair<Result, size_t>
+build_fst(const Input &input, Writer &writer, bool need_output, bool sorted,
+          bool keep_all_states = false, Progess progress = nullptr) {
   return build_fst_core<output_t>(
       [&](const auto &feeder) {
         if (sorted) {
@@ -960,12 +1096,13 @@ inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
           }
         }
       },
-      writer, need_output);
+      writer, need_output, keep_all_states);
 }
 
 template <typename Input, typename Writer>
 inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
-                                           bool need_output, bool sorted) {
+                                           bool need_output, bool sorted,
+                                           bool keep_all_states = false) {
   return build_fst_core<uint32_t>(
       [&](const auto &feeder) {
         if (sorted) {
@@ -996,7 +1133,7 @@ inline std::pair<Result, size_t> build_fst(const Input &input, Writer &writer,
           }
         }
       },
-      writer, need_output);
+      writer, need_output, keep_all_states);
 }
 
 //-----------------------------------------------------------------------------
@@ -1077,12 +1214,15 @@ template <typename output_t, bool need_state_output> struct FstRecord {
   char label = 0;
   size_t delta = 0;
   bool need_output = false;
+  bool omit_label = false; // label is stored in the state's jump table
   const output_t *output = nullptr;
   const output_t *state_output = nullptr;
 
   size_t byte_size() const {
     auto sz = 1u;
-    if (ope.label_index(need_output, need_state_output) == 0) { sz += 1; }
+    if (!omit_label && ope.label_index(need_output, need_state_output) == 0) {
+      sz += 1;
+    }
     if (!ope.data.no_address) { sz += vb_encode_value_length(delta); }
     if (need_output) {
       if (ope.data.has_output) {
@@ -1112,7 +1252,7 @@ template <typename output_t, bool need_state_output> struct FstRecord {
       OutputTraits<uint32_t>::write_byte_value(os,
                                                static_cast<uint32_t>(delta));
     }
-    if (ope.label_index(need_output, need_state_output) == 0) {
+    if (!omit_label && ope.label_index(need_output, need_state_output) == 0) {
       os.write(&label, 1);
     }
     os.write(reinterpret_cast<const char *>(&ope.byte), sizeof(ope.byte));
@@ -1124,7 +1264,9 @@ struct FstHeader {
     struct {
       unsigned output_type : 3;
       unsigned need_state_output : 1;
-      unsigned reserved : 4;
+      unsigned jump_table_labels : 1; // jump tables carry a label array
+      unsigned hub_table : 1; // hub state addresses are stored in a table
+      unsigned reserved : 2;
     } data;
 
     uint8_t byte;
@@ -1133,17 +1275,26 @@ struct FstHeader {
   uint32_t start_address = 0;
   char char_index[32] = {0};
 
+  uint32_t hub_count = 0;
+  const char *hub_table = nullptr;
+
   bool need_output = false;
   bool need_state_output = false;
 
   FstHeader() = default;
 
   FstHeader(OutputType output_type, bool need_state_output,
-            size_t start_address, const std::vector<size_t> &char_index_table)
-      : start_address(static_cast<uint32_t>(start_address)) {
+            size_t start_address, const std::vector<size_t> &char_index_table,
+            size_t hub_count = 0)
+      : flags{}, start_address(static_cast<uint32_t>(start_address)),
+        hub_count(static_cast<uint32_t>(hub_count)),
+        need_output{output_type != OutputType::none_t},
+        need_state_output{need_state_output} {
 
     flags.data.output_type = static_cast<uint8_t>(output_type);
     flags.data.need_state_output = need_state_output;
+    flags.data.jump_table_labels = 1;
+    flags.data.hub_table = hub_count > 0;
 
     auto size = char_index_size();
     for (auto ch = 0u; ch < 256; ch++) {
@@ -1161,7 +1312,20 @@ struct FstHeader {
     auto p = byte_code + (byte_code_size - sizeof(uint8_t));
     flags.byte = *p--;
 
+    // For performance
+    need_output = // needed before char_index_size()
+        static_cast<OutputType>(flags.data.output_type) != OutputType::none_t;
+    need_state_output = flags.data.need_state_output;
+
     remaining -= sizeof(uint8_t);
+
+    if (flags.data.hub_table) {
+      if (remaining < sizeof(uint32_t)) { return false; }
+      memcpy(&hub_count, p - (sizeof(uint32_t) - 1), sizeof(hub_count));
+      p -= sizeof(uint32_t);
+      remaining -= sizeof(uint32_t);
+    }
+
     if (remaining < sizeof(uint32_t)) { return false; }
 
     memcpy(&start_address, p - (sizeof(uint32_t) - 1), sizeof(start_address));
@@ -1172,18 +1336,29 @@ struct FstHeader {
     if (remaining < size) { return false; }
 
     memcpy(char_index, p - (size - 1), size);
+    p -= size;
+    remaining -= size;
 
-    // For performance
-    need_output =
-        static_cast<OutputType>(flags.data.output_type) != OutputType::none_t;
-    need_state_output = flags.data.need_state_output;
+    if (flags.data.hub_table) {
+      if (remaining < hub_count * sizeof(uint32_t)) { return false; }
+      hub_table = p - (hub_count * sizeof(uint32_t) - 1);
+    }
     return true;
   }
 
   void write(std::ostream &os) {
     os.write(char_index, char_index_size());
     os.write(reinterpret_cast<char *>(&start_address), sizeof(start_address));
+    if (flags.data.hub_table) {
+      os.write(reinterpret_cast<char *>(&hub_count), sizeof(hub_count));
+    }
     os.write(reinterpret_cast<char *>(&flags.byte), sizeof(flags.byte));
+  }
+
+  uint32_t hub_address(size_t index) const {
+    uint32_t address;
+    memcpy(&address, hub_table + index * sizeof(uint32_t), sizeof(address));
+    return address;
   }
 
   size_t char_index_size() const {
@@ -1193,10 +1368,16 @@ struct FstHeader {
 
 template <typename output_t, bool need_state_output> class FstWriter {
 public:
+  // With 'single_pass' (which requires building with 'keep_all_states'),
+  // the writer collects the states during the build and emits all records
+  // in finish(), where the most referenced states (hubs) are known and
+  // placed in an address table, so that references to them are encoded as
+  // short table indexes instead of long deltas.
   template <typename Input>
   FstWriter(std::ostream &os, bool need_output, bool dump, bool verbose,
-            const Input &input)
-      : os_(os), need_output_(need_output), dump_(dump), verbose_(verbose) {
+            const Input &input, bool single_pass = false)
+      : os_(os), need_output_(need_output), dump_(dump), verbose_(verbose),
+        single_pass_(single_pass && !dump) {
 
     initialize_char_index_table(input);
 
@@ -1219,20 +1400,89 @@ public:
     auto output_type =
         need_output_ ? OutputTraits<output_t>::type() : OutputType::none_t;
 
+    if (!dump_) {
+      for (auto id : hub_ids_) {
+        auto address =
+            static_cast<uint32_t>(address_table_[record_index_map_[id]]);
+        os_.write(reinterpret_cast<char *>(&address), sizeof(address));
+      }
+    }
+
     FstHeader header(output_type, need_state_output, start_byte_adress,
-                     char_index_table_);
+                     char_index_table_, hub_ids_.size());
 
     if (!dump_) { header.write(os_); }
 
     if (verbose_) {
-      std::cerr << "# unique char count: " << char_count_.size() << std::endl;
-      std::cerr << "# state count: " << record_index_map_.size() << std::endl;
+      const size_t char_index_size =
+          FstOpe::char_index_size(need_output_, need_state_output);
+      const size_t hub_table_size =
+          hub_ids_.empty() ? 0 : (hub_ids_.size() + 1) * sizeof(uint32_t);
+      const size_t total_size = address_ + hub_table_size + char_index_size +
+                                sizeof(uint32_t) + sizeof(uint8_t);
+      const auto unique_char_count =
+          std::count_if(std::begin(char_count_), std::end(char_count_),
+                        [](auto count) { return count > 0; });
+      std::cerr << "# unique char count: " << unique_char_count << std::endl;
+      std::cerr << "# state count: " << written_state_count_ << std::endl;
       std::cerr << "# record count: " << address_table_.size() << std::endl;
-      std::cerr << "# total size: " << address_ + sizeof(header) << std::endl;
+      std::cerr << "# total size: " << total_size << std::endl;
     }
   }
 
   void write(const State<output_t> &state, char prev_arc) {
+    if (single_pass_) {
+      // Just collect the state; the records are emitted in finish() once
+      // the reference counts are known. The state object stays alive
+      // because the build keeps all states.
+      if (state.id >= states_by_id_.size()) {
+        states_by_id_.resize(state.id + state.id / 2 + 16, nullptr);
+      }
+      states_by_id_[state.id] = &state;
+      return;
+    }
+
+    write_state_records(state, prev_arc);
+  }
+
+  void finish(const State<output_t> &root) {
+    if (!single_pass_) { return; }
+
+    initialize_hub_ranks();
+
+    // Write the records by a post-order traversal, which reproduces the
+    // order of the incremental write: a target state is always written
+    // before the states that reference it.
+    struct Frame {
+      const State<output_t> *state;
+      size_t transition_index;
+      char arc;
+    };
+
+    std::vector<bool> visited(states_by_id_.size(), false);
+    std::vector<Frame> stack;
+
+    visited[root.id] = true;
+    stack.push_back({&root, 0, 0});
+
+    while (!stack.empty()) {
+      auto &frame = stack.back();
+      if (frame.transition_index < frame.state->transitions.size()) {
+        auto i = frame.transition_index++;
+        const auto &t = frame.state->transitions.states_and_outputs[i];
+        auto child = states_by_id_[t.id];
+        if (child && !visited[t.id] && !child->transitions.empty()) {
+          visited[t.id] = true;
+          stack.push_back({child, 0, frame.state->transitions.arcs[i]});
+        }
+      } else {
+        write_state_records(*frame.state, frame.arc);
+        stack.pop_back();
+      }
+    }
+  }
+
+  void write_state_records(const State<output_t> &state, char prev_arc) {
     auto transition_count = state.transitions.size();
     const auto &[arcs, states_and_outputs] = state.transitions;
 
@@ -1241,6 +1491,11 @@ public:
 
     std::vector<size_t> jump_table(transition_count);
     auto need_jump_table = transition_count >= 8;
+
+    // Only states with a jump table carry a label array; avoid the
+    // allocation for the small states that make up the majority.
+    std::vector<char> jump_table_labels;
+    if (need_jump_table) { jump_table_labels.resize(transition_count); }
 
     size_t indexes_sorted_by_bigram_count[256];
 
@@ -1265,11 +1520,12 @@ public:
       auto arc = arcs[arc_i];
       const auto &t = states_and_outputs[arc_i];
 
-      auto recored_index_iter = record_index_map_.find(t.id);
-      auto has_address = recored_index_iter != record_index_map_.end();
+      auto record_index = record_index_of(t.id);
+      auto has_address = record_index >= 0;
       auto last_transition = transition_count - 1 == i;
-      auto no_address = last_transition && has_address &&
-                        record_index_map_[t.id] == address_table_.size() - 1;
+      auto no_address =
+          last_transition && has_address &&
+          record_index == static_cast<int64_t>(address_table_.size() - 1);
 
       // If the state has 6 or more transitions, then generate jump table.
       auto generate_jump_table = (i == 0) && need_jump_table;
@@ -1284,8 +1540,23 @@ public:
       auto next_address = 0u;
       if (!no_address) {
         if (has_address) {
-          rec.delta = address_ - address_table_[recored_index_iter->second];
-          next_address = address_ - rec.delta;
+          auto delta = address_ - address_table_[record_index];
+          next_address = address_ - delta;
+          rec.delta = delta;
+
+          if (!hub_ids_.empty()) {
+            // Real deltas are doubled; references to hub states are encoded
+            // as (rank * 2 + 1) when that is not longer than the delta.
+            rec.delta = delta * 2;
+            auto hub_rank = hub_rank_of(t.id);
+            if (hub_rank >= 0) {
+              auto index_value = static_cast<size_t>(hub_rank) * 2 + 1;
+              if (vb_encode_value_length(index_value) <=
+                  vb_encode_value_length(rec.delta)) {
+                rec.delta = index_value;
+              }
+            }
+          }
         }
       }
 
@@ -1305,20 +1576,29 @@ public:
         }
       }
 
-      auto label_index = 0u;
-      auto index = char_index_table_[static_cast<uint8_t>(arc)];
-      if (index < char_index_size) {
-        label_index = index;
-      } else {
-        rec.label = arc;
-      }
-      rec.ope.set_label_index(need_output_, need_state_output, label_index);
-
-      // When the ope byte happens to be the same as jump tag byte, change to
-      // use '.label' field instead.
-      if (rec.ope.has_jump_table()) {
-        rec.label = arc;
+      if (need_jump_table) {
+        // The label is stored in the state's jump table instead of the
+        // record itself. label_index 0 also keeps the ope byte away from
+        // the jump table tag values (0xff/0xfe).
+        rec.omit_label = true;
         rec.ope.set_label_index(need_output_, need_state_output, 0);
+        jump_table_labels[i] = arc;
+      } else {
+        auto label_index = 0u;
+        auto index = char_index_table_[static_cast<uint8_t>(arc)];
+        if (index < char_index_size) {
+          label_index = index;
+        } else {
+          rec.label = arc;
+        }
+        rec.ope.set_label_index(need_output_, need_state_output, label_index);
+
+        // When the ope byte happens to be the same as jump tag byte, change to
+        // use '.label' field instead.
+        if (rec.ope.has_jump_table()) {
+          rec.label = arc;
+          rec.ope.set_label_index(need_output_, need_state_output, 0);
+        }
       }
 
       auto byte_size = rec.byte_size();
@@ -1341,7 +1621,8 @@ public:
 
           auto jump_table_byte_size =
               1 + vb_encode_value_length(jump_table.size()) +
-              jump_table.size() * jump_table_element_size;
+              jump_table.size() * jump_table_element_size +
+              jump_table_labels.size();
 
           auto need_two_bytes = jump_table_element_size == 2;
 
@@ -1350,6 +1631,8 @@ public:
           byte_size += jump_table_byte_size;
           address_table_[address_table_.size() - 1] += jump_table_byte_size;
           address_ += jump_table_byte_size;
+
+          os_.write(jump_table_labels.data(), jump_table_labels.size());
 
           if (need_two_bytes) {
             write_jump_table<uint16_t>(os_, jump_table);
@@ -1392,7 +1675,12 @@ public:
     }
 
     if (!state.transitions.empty()) {
-      record_index_map_[state.id] = address_table_.size() - 1;
+      if (state.id >= record_index_map_.size()) {
+        record_index_map_.resize(state.id + state.id / 2 + 16, -1);
+      }
+      record_index_map_[state.id] =
+          static_cast<int64_t>(address_table_.size() - 1);
+      written_state_count_++;
     }
   }
 
@@ -1404,7 +1692,7 @@ private:
     input([&](const auto &word) {
       char prev = 0;
       for (auto ch : word) {
-        char_count_[ch]++;
+        char_count_[static_cast<uint8_t>(ch)]++;
         bigram_count_[bigram_key(prev, ch)]++;
         prev = ch;
       }
@@ -1421,8 +1709,10 @@ private:
                         std::vector<std::pair<char, size_t>>, second_order>
         que;
 
-    for (auto x : char_count_) {
-      que.push(x);
+    for (auto ch = 0u; ch < 256; ch++) {
+      if (char_count_[ch] > 0) {
+        que.push(std::pair(static_cast<char>(ch), char_count_[ch]));
+      }
     }
 
     auto index = 1u;
@@ -1443,48 +1733,102 @@ private:
     os_.write((char *)table.data(), table.size() * sizeof(T));
   }
 
+  void initialize_hub_ranks() {
+    std::vector<uint32_t> ref_counts(states_by_id_.size(), 0);
+    for (auto state : states_by_id_) {
+      if (!state) { continue; }
+      for (const auto &t : state->transitions.states_and_outputs) {
+        ref_counts[t.id]++;
+      }
+    }
+
+    std::vector<std::pair<size_t, size_t>> candidates; // (count, id)
+    for (auto id = 0u; id < states_by_id_.size(); id++) {
+      if (ref_counts[id] >= 2 && states_by_id_[id] &&
+          !states_by_id_[id]->transitions.empty()) {
+        candidates.emplace_back(ref_counts[id], id);
+      }
+    }
+
+    std::sort(
+        candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+          return a.first == b.first ? a.second < b.second : a.first > b.first;
+        });
+
+    if (candidates.size() > kMaxHubCount) { candidates.resize(kMaxHubCount); }
+
+    hub_rank_by_id_.assign(states_by_id_.size(), -1);
+    hub_ids_.reserve(candidates.size());
+    for (auto i = 0u; i < candidates.size(); i++) {
+      hub_rank_by_id_[candidates[i].second] = static_cast<int32_t>(i);
+      hub_ids_.push_back(candidates[i].second);
+    }
+  }
+
+  int64_t record_index_of(size_t id) const {
+    return id < record_index_map_.size() ? record_index_map_[id] : -1;
+  }
+
+  int32_t hub_rank_of(size_t id) const {
+    return id < hub_rank_by_id_.size() ? hub_rank_by_id_[id] : -1;
+  }
+
   std::ostream &os_;
   size_t need_output_ = true;
   size_t dump_ = true;
   size_t verbose_ = true;
 
-  std::unordered_map<char, size_t> char_count_;
+  size_t char_count_[256] = {0};
   std::vector<size_t> char_index_table_;
 
   uint16_t bigram_key(char prev, char cur) const {
     return static_cast<uint16_t>(prev) << 8 | static_cast<uint16_t>(cur);
   }
-  std::unordered_map<uint16_t, size_t> bigram_count_;
+  std::vector<size_t> bigram_count_ = std::vector<size_t>(65536, 0);
 
-  std::unordered_map<size_t, size_t> record_index_map_;
+  std::vector<int64_t> record_index_map_; // by state id, -1 = absent
+  size_t written_state_count_ = 0;
 
   size_t address_ = 0;
   std::vector<size_t> address_table_;
+
+  static constexpr size_t kMaxHubCount = 1024;
+  std::vector<int32_t> hub_rank_by_id_; // by state id, -1 = not a hub
+  std::vector<size_t> hub_ids_;
+
+  bool single_pass_ = false;
+  std::vector<const State<output_t> *> states_by_id_;
 };
 
 template <typename output_t, typename Input>
 inline std::pair<Result, size_t> compile(const Input &input, std::ostream &os,
                                          bool sorted, bool verbose = false) {
-  FstWriter<output_t, true> writer(os, true, false, verbose,
-                                   [&](const auto &feeder) {
-                                     for (const auto &[word, _] : input) {
-                                       feeder(word);
-                                     }
-                                   });
-  return build_fst<output_t>(input, writer, true, sorted);
+  FstWriter<output_t, true> writer(
+      os, true, false, verbose,
+      [&](const auto &feeder) {
+        for (const auto &[word, _] : input) {
+          feeder(word);
+        }
+      },
+      /*single_pass=*/true);
+  return build_fst<output_t>(input, writer, true, sorted,
+                             /*keep_all_states=*/true);
 }
 
 template <typename Input>
 inline std::pair<Result, size_t> compile(const Input &input, std::ostream &os,
                                          bool need_output, bool sorted,
                                          bool verbose = false) {
-  FstWriter<uint32_t, false> writer(os, need_output, false, verbose,
-                                    [&](const auto &feeder) {
-                                      for (const auto &word : input) {
-                                        feeder(word);
-                                      }
-                                    });
-  return build_fst(input, writer, need_output, sorted);
+  FstWriter<uint32_t, false> writer(
+      os, need_output, false, verbose,
+      [&](const auto &feeder) {
+        for (const auto &word : input) {
+          feeder(word);
+        }
+      },
+      /*single_pass=*/true);
+  return build_fst(input, writer, need_output, sorted,
+                   /*keep_all_states=*/true);
 }
 
 template <typename output_t, typename Input>
@@ -1549,6 +1893,8 @@ public:
           os_ << "\" fontcolor = red ];" << std::endl;
         });
   }
+
+  void finish(const State<output_t> &root) {}
 
 private:
   std::ostream &os_;
@@ -1637,12 +1983,12 @@ inline double cost_replace(std::string_view from, size_t i, std::string_view to,
 }
 
 inline double cost_insert(std::string_view to, size_t j) {
-  if (to[j] == to[j + 1]) return 0.5;
+  if (j + 1 < to.size() && to[j] == to[j + 1]) return 0.5;
   return 1.0;
 }
 
 inline double cost_delete(std::string_view from, size_t i) {
-  if (from[i] == from[i + 1]) return 0.5;
+  if (i + 1 < from.size() && from[i] == from[i + 1]) return 0.5;
   return 1.0;
 }
 
@@ -1679,10 +2025,10 @@ inline bool common_string(std::string_view s1, std::string_view s2,
 
   for (size_t i = 0; i < s1.length(); i++) {
     auto beg = std::max<int>(0, (int)i - (int)r);
-    auto end = std::min(s2.length(), (i + r));
+    auto end = std::min(s2.length(), (i + r + 1));
 
     auto c1 = s1[i];
-    for (size_t j = beg; j <= end; j++) {
+    for (size_t j = beg; j < end; j++) {
       if (c1 == s2[j]) {
         cs += c1;
         break;
@@ -1794,6 +2140,7 @@ protected:
 
     auto address = header_.start_address;
     auto i = 0u;
+    auto arc_in_jump_table = false;
     while (i < len) {
       auto ch = static_cast<uint8_t>(str[i]);
       auto state_output = output_t{};
@@ -1811,6 +2158,30 @@ protected:
         p -= jump_table_count * jump_table_element_size;
 
         auto jump_table = p;
+
+        if (header_.flags.data.jump_table_labels) {
+          // The labels are stored contiguously next to the jump table, so
+          // the binary search only touches sequential memory.
+          auto labels =
+              reinterpret_cast<const uint8_t *>(p) + 1 - jump_table_count;
+
+          auto jump_table_byte_size =
+              1 + vb_len + jump_table_count * jump_table_element_size +
+              jump_table_count;
+
+          auto found = lower_bound_index(
+              0, jump_table_count, [&](auto i) { return labels[i] < ch; });
+
+          if (found < jump_table_count && labels[found] == ch) {
+            auto offset =
+                lookup_jump_table(jump_table, found, jump_table_element_size);
+            address -= offset + jump_table_byte_size;
+            arc_in_jump_table = true;
+          } else {
+            break;
+          }
+          continue;
+        }
 
         auto jump_table_byte_size =
             1 + vb_len + jump_table_count * jump_table_element_size;
@@ -1837,10 +2208,19 @@ protected:
         continue;
       }
 
-      uint8_t arc = read_arc(ope, p);
+      uint8_t arc;
+      if (arc_in_jump_table) {
+        // The record was reached through a jump table hit, so its label is
+        // already verified and the record itself carries no label byte.
+        arc = ch;
+        arc_in_jump_table = false;
+      } else {
+        arc = read_arc(ope, p);
+      }
 
-      auto delta = 0u;
-      if (!ope.data.no_address) { p -= vb_decode_value_reverse(p, delta); }
+      uint32_t delta, hub_next_address;
+      bool has_hub_next_address;
+      read_delta(ope, p, delta, hub_next_address, has_hub_next_address);
 
       auto output_suffix = output_t{};
       if (ope.data.has_output) {
@@ -1857,7 +2237,11 @@ protected:
 
       auto next_address = 0u;
       if (!ope.data.no_address) {
-        if (delta) { next_address = address - byte_size - delta + 1; }
+        if (has_hub_next_address) {
+          next_address = hub_next_address;
+        } else if (delta) {
+          next_address = address - byte_size - delta + 1;
+        }
       } else {
         next_address = address - byte_size;
       }
@@ -1931,6 +2315,9 @@ protected:
                          U accept,
                          std::string_view prefix = std::string_view()) const {
 
+    const char *jump_table_labels = nullptr;
+    size_t jump_table_label_index = 0;
+
     while (true) {
       auto state_output = output_t{};
 
@@ -1946,14 +2333,28 @@ protected:
         p -= vb_len;
         p -= jump_table_count * jump_table_element_size;
 
+        if (header_.flags.data.jump_table_labels) {
+          // The records of this state carry no label bytes; remember the
+          // label array and read the labels from it while iterating.
+          jump_table_labels = p + 1 - jump_table_count;
+          jump_table_label_index = 0;
+          p -= jump_table_count;
+        }
+
         address -= std::distance(p, end);
         continue;
       }
 
-      auto arc = read_arc(ope, p);
+      char arc;
+      if (jump_table_labels) {
+        arc = jump_table_labels[jump_table_label_index++];
+      } else {
+        arc = read_arc(ope, p);
+      }
 
-      auto delta = 0u;
-      if (!ope.data.no_address) { p -= vb_decode_value_reverse(p, delta); }
+      uint32_t delta, hub_next_address;
+      bool has_hub_next_address;
+      read_delta(ope, p, delta, hub_next_address, has_hub_next_address);
 
       auto output_suffix = output_t{};
       if (ope.data.has_output) {
@@ -1970,7 +2371,11 @@ protected:
 
       auto next_address = 0u;
       if (!ope.data.no_address) {
-        if (delta) { next_address = address - byte_size - delta + 1; }
+        if (has_hub_next_address) {
+          next_address = hub_next_address;
+        } else if (delta) {
+          next_address = address - byte_size - delta + 1;
+        }
       } else {
         next_address = address - byte_size;
       }
@@ -2024,6 +2429,27 @@ protected:
     auto index =
         ope.label_index(header_.need_output, header_.need_state_output);
     return index == 0 ? *p-- : header_.char_index[index];
+  }
+
+  void read_delta(FstOpe ope, const char *&p, uint32_t &delta,
+                  uint32_t &hub_next_address,
+                  bool &has_hub_next_address) const {
+    delta = 0;
+    hub_next_address = 0;
+    has_hub_next_address = false;
+    if (!ope.data.no_address) {
+      p -= vb_decode_value_reverse(p, delta);
+      if (header_.flags.data.hub_table) {
+        if (delta & 1) {
+          // Odd values are hub table indexes.
+          hub_next_address = header_.hub_address(delta >> 1);
+          has_hub_next_address = true;
+          delta = 0;
+        } else {
+          delta >>= 1;
+        }
+      }
+    }
   }
 
   size_t lookup_jump_table(const char *p, size_t index,
@@ -2534,12 +2960,8 @@ public:
     if (!error_message.empty()) { return {results, error_message}; }
 
     matcher<output_t>::depth_first_visit(
-        matcher<output_t>::header_.start_address, // 从根节点开始遍历
-        std::string(),                            // 初始空字符串
-        output_t(),                               // 初始空输出
-        automaton,                                // 正则自动机
-        [&](const std::string &word, const output_t &output) {
-          // 匹配成功时回调，收集结果
+        matcher<output_t>::header_.start_address, std::string(), output_t(),
+        automaton, [&](const std::string &word, const output_t &output) {
           results.emplace_back(word, output);
         });
 
@@ -2641,7 +3063,6 @@ public:
     matcher<none_t>::depth_first_visit(
         matcher<none_t>::header_.start_address, std::string(), none_t{},
         automaton, [&](const std::string &word, const none_t &) {
-          // 匹配成功时回调，收集结果
           results.emplace_back(word);
         });
 

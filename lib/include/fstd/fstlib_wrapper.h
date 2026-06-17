@@ -16,7 +16,7 @@ compile(const std::vector<std::pair<std::string, output_t>> &input,
                                             feeder(word);
                                           }
                                         });
-  return fst::build_fst<output_t>(input, writer, true, sorted, progress);
+  return fst::build_fst<output_t>(input, writer, true, sorted, true, progress);
 }
 
 void show_error_message(fst::Result result, size_t line);
