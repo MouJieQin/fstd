@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <fstream>
 
 #include <fstd/logger.h>
@@ -73,6 +74,29 @@ public:
     return [this, bar_idx](const size_t index) { refresh_bar(bar_idx, index); };
   }
 
+  std::function<void(const size_t, const std::string &)>
+  push_back(std::string_view prefix_text,
+            indicators::Color color = indicators::Color::white) {
+    using namespace indicators;
+    std::lock_guard<std::mutex> lock(mtx);
+    max_prefix_len = std::max(max_prefix_len, prefix_text.size() + 1);
+    total_sizes.push_back(0);
+    last_progresses.push_back(0);
+    prefix_texts.push_back(std::string(prefix_text));
+    bar_instances.push_back(std::make_unique<Bar>(
+        option::BarWidth{80}, option::Start{"|"}, option::End{"|"},
+        option::PrefixText{prefix_text}, option::ShowElapsedTime{true},
+        option::ShowRemainingTime{true}, option::ForegroundColor{color},
+        option::ShowPercentage{true},
+        option::FontStyles{std::vector<FontStyle>{FontStyle::bold}}));
+    size_t bar_idx = bars.push_back(*bar_instances.back());
+    renew_prefix_text();
+    return
+        [this, bar_idx](const size_t count, const std::string &postfix_text) {
+          refresh_bar(bar_idx, count, postfix_text);
+        };
+  }
+
 private:
   void refresh_bar(size_t bar_idx, size_t index) {
     if (show_progress) {
@@ -87,6 +111,28 @@ private:
         last_progresses[bar_idx] = progress;
       }
       if (count == total_sizes[bar_idx]) { bars[bar_idx].mark_as_completed(); }
+    }
+  }
+
+  void refresh_bar(size_t bar_idx, size_t count,
+                   const std::string &postfix_text) {
+    using namespace std::chrono;
+    if (show_progress) {
+      if (count == 0) {
+        bars[bar_idx].set_progress(100);
+        bars[bar_idx].mark_as_completed();
+      } else {
+        bars[bar_idx].set_option(indicators::option::PostfixText{
+            std::to_string(count) + " " + postfix_text});
+        auto now = std::chrono::steady_clock::now();
+        auto diff_ms = duration_cast<milliseconds>(now - last_update).count();
+        auto diff_sec = duration_cast<seconds>(now - last_update).count();
+        if (diff_sec >= 1 && last_progresses[bar_idx] < 99) {
+          last_progresses[bar_idx] += 1;
+          bars[bar_idx].tick();
+          last_update = now;
+        }
+      }
     }
   }
 
@@ -109,7 +155,11 @@ private:
   std::vector<std::string> prefix_texts;
   std::vector<size_t> last_progresses;
   std::vector<size_t> total_sizes;
+  static std::chrono::steady_clock::time_point last_update;
 };
+template <typename Bar>
+std::chrono::steady_clock::time_point DyProgBars<Bar>::last_update =
+    std::chrono::steady_clock::now();
 
 using DyBlockProgBars = DyProgBars<indicators::BlockProgressBar>;
 

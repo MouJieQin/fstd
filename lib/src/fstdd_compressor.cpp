@@ -8,7 +8,6 @@
 #include <queue>
 #include <thread>
 #include <vector>
-#include <zstd.h>
 
 #include <fstd/common.h>
 #include <fstd/fstdd_compressor.h>
@@ -16,6 +15,7 @@
 #include <fstd/logger.h>
 #include <fstd/thread_pool.h>
 #include <nlohmann/json.hpp>
+#include <zstd.h>
 
 namespace fs = std::filesystem;
 using namespace std;
@@ -34,7 +34,8 @@ bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
                                std::ofstream &out, DdJsonHeader &header,
                                size_t block_size, size_t compress_level,
                                size_t worker_num, bool opt_verbose) {
-  thread reader([&]() { read_files(data_paths, header, block_size); });
+  thread reader(
+      [&]() { read_files(data_paths, header, block_size, opt_verbose); });
   if (worker_num == 0) {
     worker_num = get_optimal_thread_num(TaskType::CPU_INTENSIVE);
   }
@@ -79,7 +80,8 @@ vector<char> FstddCompressor::zstd_compress_block(const char *data, size_t size,
 
 std::vector<std::pair<std::string, size_t>>
 FstddCompressor::recursive_directory(
-    const std::vector<std::string> &data_paths) {
+    const std::vector<std::string> &data_paths, bool opt_verbose,
+    std::function<void(size_t, const std::string &)> refresh_bar) {
   std::vector<std::pair<std::string, size_t>> files_paths;
   for (size_t i = 0; i < data_paths.size(); ++i) {
     const string &data_path = data_paths[i];
@@ -87,21 +89,37 @@ FstddCompressor::recursive_directory(
       if (!entry.is_regular_file()) { continue; }
       std::string file =
           std::filesystem::relative(entry.path(), data_path).generic_string();
+      if (opt_verbose) {
+        std::cout << "collect file: " << file << "\n";
+      } else {
+        if (refresh_bar) { refresh_bar(files_paths.size() + 1, file); }
+      }
       files_paths.emplace_back(std::move(file), i);
     }
+  }
+  if (opt_verbose) {
+    std::cout << "collect " << files_paths.size() << " files" << std::endl;
+  } else {
+    if (refresh_bar) { refresh_bar(0, ""); }
   }
   return files_paths;
 }
 
 // -------------------- read files with single thread --------------------
 void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
-                                 DdJsonHeader &header, size_t block_size) {
+                                 DdJsonHeader &header, size_t block_size,
+                                 bool opt_verbose) {
   vector<char> disk_buf(disk_read_size);
   size_t buf_size = 0;
   uint64_t block_index = 0;
-  vector<pair<string, size_t>> files_paths = recursive_directory(data_paths);
-  size_t record = 0;
   DyBlockProgBars dy_bars;
+  std::function<void(size_t, const std::string &)> refresh_file_bar = nullptr;
+  if (!opt_verbose) {
+    refresh_file_bar = dy_bars.push_back("Collecting files:");
+  }
+  vector<pair<string, size_t>> files_paths =
+      recursive_directory(data_paths, opt_verbose, refresh_file_bar);
+  size_t record = 0;
   auto refresh_bar =
       dy_bars.push_back(files_paths.size(), "Compressing files:");
   for (size_t i = 0; i < files_paths.size(); ++i) {

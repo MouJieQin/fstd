@@ -311,9 +311,9 @@ int main(int argc, char **argv) {
     if (std::filesystem::is_directory(write_input_file)) {
       if (output_file.empty()) { output_file = "output.fstdd"; }
       fstd::FstddWriter fstdd_writer;
-      int ret =
-          fstdd_writer.compile_fstdd(write_input_file, output_file, meta_json,
-                                     compress_level, write_worker_num, verbose);
+      int ret = fstdd_writer.compile_fstdd(
+          write_input_file, output_file, meta_json, block_size, compress_level,
+          write_worker_num, verbose);
       if (ret != 0) {
         LOG_ERROR("编译失败，返回码：{}", ret);
         return ret;

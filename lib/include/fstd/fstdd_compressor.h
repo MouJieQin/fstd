@@ -41,15 +41,16 @@ public:
                 DdJsonHeader &header, size_t block_size_kb,
                 size_t compress_level, size_t worker_num, bool opt_verbose);
 
-  static std::vector<std::pair<std::string, size_t>>
-  recursive_directory(const std::vector<std::string> &data_paths);
+  static std::vector<std::pair<std::string, size_t>> recursive_directory(
+      const std::vector<std::string> &data_paths, bool opt_verbose = false,
+      std::function<void(size_t, const std::string &)> refresh_bar = nullptr);
 
 private:
   std::vector<char> zstd_compress_block(const char *data, size_t size,
                                         int level);
 
   void read_files(const std::vector<std::string> &data_paths,
-                  DdJsonHeader &header, size_t block_size_kb);
+                  DdJsonHeader &header, size_t block_size_kb, bool opt_verbose);
 
   void compress_worker(size_t compress_level);
 
