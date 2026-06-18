@@ -1063,10 +1063,11 @@ build_fst_core(const Input &input, Writer &writer, bool need_output,
 // build_fst
 //-----------------------------------------------------------------------------
 
-template <typename output_t, typename Input, typename Writer, typename Progess>
+template <typename output_t, typename Input, typename Writer>
 inline std::pair<Result, size_t>
 build_fst(const Input &input, Writer &writer, bool need_output, bool sorted,
-          bool keep_all_states = false, Progess progress = nullptr) {
+          bool keep_all_states = false,
+          std::function<void(size_t)> progress = nullptr) {
   return build_fst_core<output_t>(
       [&](const auto &feeder) {
         if (sorted) {
@@ -2399,14 +2400,15 @@ protected:
             const auto &final_output =
                 should_append_state_output ? output + state_output : output;
 
-            // 编译期判断：accept 是否支持 3 个参数 (word, output, transit)
+            // compile-time check: accept supports 3 parameters (word, output,
+            // transit)
             if constexpr (std::is_invocable_v<U &, decltype(word),
                                               decltype(final_output),
                                               const T &>) {
-              // 3参数版本：传入 atm
+              // 3-parameter version: pass atm
               accept(word, final_output, atm);
             } else {
-              // 2参数版本：原有逻辑（兼容旧代码）
+              // 2-parameter version: original logic (compatible with old code)
               accept(word, final_output);
             }
           }
@@ -2960,8 +2962,12 @@ public:
     if (!error_message.empty()) { return {results, error_message}; }
 
     matcher<output_t>::depth_first_visit(
-        matcher<output_t>::header_.start_address, std::string(), output_t(),
-        automaton, [&](const std::string &word, const output_t &output) {
+        matcher<output_t>::header_.start_address, // start from root node
+        std::string(),                            // initial empty string
+        output_t(),                               // initial empty output
+        automaton,                                // regex automaton
+        [&](const std::string &word, const output_t &output) {
+          // callback when match success
           results.emplace_back(word, output);
         });
 

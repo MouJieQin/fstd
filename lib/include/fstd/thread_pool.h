@@ -39,19 +39,25 @@ public:
   size_t worker_num() const;
 
 private:
-  // keep threads alive to reduce thread creation cost
   std::vector<std::thread> workers;
-  // task queue
   std::queue<std::function<void()>> tasks;
 
-  // synchronization variables
-  std::mutex queue_mutex;
+  // Marked mutable to allow locking within the const worker_num() function
+  mutable std::mutex queue_mutex;
   std::condition_variable condition;
   bool stop;
 };
 
 inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
-  for (size_t i = 0; i < threads; ++i)
+  // 1. Lock the pool during initialization to prevent premature thread
+  // execution races
+  std::unique_lock<std::mutex> lock(queue_mutex);
+
+  // 2. Critical: Reserve memory to prevent vector reallocation while threads
+  // are spawning
+  workers.reserve(threads);
+
+  for (size_t i = 0; i < threads; ++i) {
     workers.emplace_back([this] {
       for (;;) {
         std::function<void()> task;
@@ -66,9 +72,14 @@ inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
         task();
       }
     });
+  }
 }
 
-inline size_t ThreadPool::worker_num() const { return workers.size(); }
+inline size_t ThreadPool::worker_num() const {
+  // 3. Lock the mutex to ensure safe reading of the vector size across threads
+  std::unique_lock<std::mutex> lock(queue_mutex);
+  return workers.size();
+}
 
 template <class F, class... Args>
 auto ThreadPool::enqueue(F &&f, Args &&...args)
@@ -82,7 +93,6 @@ auto ThreadPool::enqueue(F &&f, Args &&...args)
   {
     std::unique_lock<std::mutex> lock(queue_mutex);
 
-    // allow enqueueing only when not stopped
     if (stop) throw std::runtime_error("enqueue on stopped ThreadPool");
 
     tasks.emplace([task]() { (*task)(); });
@@ -97,8 +107,10 @@ inline ThreadPool::~ThreadPool() {
     stop = true;
   }
   condition.notify_all();
-  for (std::thread &worker : workers)
-    worker.join();
+  for (std::thread &worker : workers) {
+    // 4. Defensive check to ensure the thread is joinable before calling join()
+    if (worker.joinable()) { worker.join(); }
+  }
 }
 
 #endif
