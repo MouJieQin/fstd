@@ -38,6 +38,8 @@ public:
 
   size_t worker_num() const;
 
+  size_t task_num() const;
+
 private:
   std::vector<std::thread> workers;
   std::queue<std::function<void()>> tasks;
@@ -79,6 +81,11 @@ inline size_t ThreadPool::worker_num() const {
   // 3. Lock the mutex to ensure safe reading of the vector size across threads
   std::unique_lock<std::mutex> lock(queue_mutex);
   return workers.size();
+}
+
+inline size_t ThreadPool::task_num() const {
+  std::unique_lock<std::mutex> lock(queue_mutex);
+  return tasks.size();
 }
 
 template <class F, class... Args>

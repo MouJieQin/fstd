@@ -13,10 +13,12 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <queue>
 #include <set>
@@ -27,6 +29,7 @@
 #include <unordered_set>
 #include <vector>
 #define PCRE2_CODE_UNIT_WIDTH 8
+// #include "thread_pool.h"
 #include <pcre2.h>
 
 #if !defined(__cplusplus) || __cplusplus < 201703L
@@ -2081,6 +2084,72 @@ inline double jaro_winkler_distance(std::string_view s1, std::string_view s2) {
 }
 
 //-----------------------------------------------------------------------------
+// UTF-8 -> UTF-32 decoder
+//-----------------------------------------------------------------------------
+
+inline bool decode_codepoint(std::string_view s8, char32_t &cp) {
+  auto l = s8.size();
+  if (l) {
+    uint8_t b = s8[0];
+    if ((b & 0x80) == 0) {
+      cp = b;
+      return true;
+    } else if ((b & 0xE0) == 0xC0) {
+      if (l >= 2) {
+        cp = ((static_cast<char32_t>(s8[0] & 0x1F)) << 6) |
+             (static_cast<char32_t>(s8[1] & 0x3F));
+        return true;
+      }
+    } else if ((b & 0xF0) == 0xE0) {
+      if (l >= 3) {
+        cp = ((static_cast<char32_t>(s8[0] & 0x0F)) << 12) |
+             ((static_cast<char32_t>(s8[1] & 0x3F)) << 6) |
+             (static_cast<char32_t>(s8[2] & 0x3F));
+        return true;
+      }
+    } else if ((b & 0xF8) == 0xF0) {
+      if (l >= 4) {
+        cp = ((static_cast<char32_t>(s8[0] & 0x07)) << 18) |
+             ((static_cast<char32_t>(s8[1] & 0x3F)) << 12) |
+             ((static_cast<char32_t>(s8[2] & 0x3F)) << 6) |
+             (static_cast<char32_t>(s8[3] & 0x3F));
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+inline std::u32string decode(std::string_view s8) {
+  std::u32string out;
+  size_t i = 0;
+  while (i < s8.size()) {
+    auto beg = i++;
+    while (i < s8.size() && (s8[i] & 0xc0) == 0x80) {
+      i++;
+    }
+    char32_t cp;
+    decode_codepoint(s8.substr(beg, i - beg), cp);
+    out += cp;
+  }
+  return out;
+}
+
+inline size_t calc_c_len(std::string_view s8) {
+  char32_t cp;
+  std::string u8code_ = "";
+  size_t c_len = 0;
+  for (size_t i = 0; i < s8.size(); ++i) {
+    u8code_ += s8[i];
+    if (decode_codepoint(u8code_, cp)) {
+      u8code_.clear();
+      c_len += 1;
+    }
+  }
+  return c_len;
+}
+
+//-----------------------------------------------------------------------------
 // matcher
 //-----------------------------------------------------------------------------
 
@@ -2310,11 +2379,12 @@ protected:
     return ret;
   }
 
-  template <typename T, typename U>
-  void depth_first_visit(uint32_t address, const std::string &partial_word,
-                         const output_t &partial_output, const T &transit,
-                         U accept,
-                         std::string_view prefix = std::string_view()) const {
+  template <typename T, typename U, typename M>
+  void
+  depth_first_visit_single(uint32_t address, const std::string &partial_word,
+                           const output_t &partial_output, const T &transit,
+                           U accept, M &accept_mutex,
+                           std::string_view prefix = std::string_view()) const {
 
     const char *jump_table_labels = nullptr;
     size_t jump_table_label_index = 0;
@@ -2400,6 +2470,136 @@ protected:
             const auto &final_output =
                 should_append_state_output ? output + state_output : output;
 
+            auto work = [&]() {
+              // compile-time check: accept supports 3 parameters (word, output,
+              // transit)
+              if constexpr (std::is_invocable_v<U &, decltype(word),
+                                                decltype(final_output),
+                                                const T &>) {
+                // 3-parameter version: pass atm
+                accept(word, final_output, atm);
+              } else {
+                // 2-parameter version: original logic (compatible with old
+                // code)
+                accept(word, final_output);
+              }
+            };
+            if constexpr (std::is_same_v<std::decay_t<M>, std::mutex>) {
+              std::lock_guard<std::mutex> lock(accept_mutex);
+              work();
+            } else {
+              work();
+            }
+          }
+        }
+      }
+
+      if (next_address) {
+        if ((prefix.empty() || prefix.front() == arc) && atm.can_match()) {
+          depth_first_visit_single(next_address, word, output, atm, accept,
+                                   accept_mutex,
+                                   prefix.empty() ? prefix : prefix.substr(1));
+        }
+      }
+
+      if (ope.data.last_transition) { break; }
+      address -= byte_size;
+    }
+  }
+
+  template <typename T, typename U, typename ThreadPool>
+  void
+  depth_first_visit_parallel(uint32_t address, const std::string &partial_word,
+                             const output_t &partial_output, const T &transit,
+                             U accept, std::string_view prefix,
+                             ThreadPool &thread_pool, std::mutex &accept_mutex,
+                             std::vector<std::future<void>> &results) const {
+
+    const char *jump_table_labels = nullptr;
+    size_t jump_table_label_index = 0;
+
+    while (true) {
+      auto state_output = output_t{};
+
+      auto end = byte_code_ + address;
+      auto p = end;
+
+      auto ope = FstOpe(*p--);
+
+      if (ope.has_jump_table()) {
+        auto jump_table_element_size = ope.jump_table_element_size();
+        size_t jump_table_count = 0;
+        auto vb_len = vb_decode_value_reverse(p, jump_table_count);
+        p -= vb_len;
+        p -= jump_table_count * jump_table_element_size;
+
+        if (header_.flags.data.jump_table_labels) {
+          // The records of this state carry no label bytes; remember the
+          // label array and read the labels from it while iterating.
+          jump_table_labels = p + 1 - jump_table_count;
+          jump_table_label_index = 0;
+          p -= jump_table_count;
+        }
+
+        address -= std::distance(p, end);
+        continue;
+      }
+
+      char arc;
+      if (jump_table_labels) {
+        arc = jump_table_labels[jump_table_label_index++];
+      } else {
+        arc = read_arc(ope, p);
+      }
+
+      uint32_t delta, hub_next_address;
+      bool has_hub_next_address;
+      read_delta(ope, p, delta, hub_next_address, has_hub_next_address);
+
+      auto output_suffix = output_t{};
+      if (ope.data.has_output) {
+        p -= OutputTraits<output_t>::read_byte_value(p, output_suffix);
+      }
+
+      if (header_.need_state_output) {
+        if (ope.data.has_state_output) {
+          p -= OutputTraits<output_t>::read_byte_value(p, state_output);
+        }
+      }
+
+      auto byte_size = std::distance(p, end);
+
+      auto next_address = 0u;
+      if (!ope.data.no_address) {
+        if (has_hub_next_address) {
+          next_address = hub_next_address;
+        } else if (delta) {
+          next_address = address - byte_size - delta + 1;
+        }
+      } else {
+        next_address = address - byte_size;
+      }
+
+      auto atm = transit; // copy
+      atm.step(arc);
+
+      auto word = partial_word + arc;
+      auto output = partial_output + output_suffix;
+
+      if (ope.data.final) {
+        if (atm.is_match()) {
+          if (prefix.empty() || (prefix.size() == 1 && prefix.front() == arc)) {
+            auto should_append_state_output = false;
+            if (OutputTraits<output_t>::type() != OutputType::none_t) {
+              if (!OutputTraits<output_t>::empty(state_output)) {
+                should_append_state_output = true;
+              }
+            }
+
+            const auto &final_output =
+                should_append_state_output ? output + state_output : output;
+
+            std::lock_guard<std::mutex> lock(accept_mutex);
             // compile-time check: accept supports 3 parameters (word, output,
             // transit)
             if constexpr (std::is_invocable_v<U &, decltype(word),
@@ -2417,13 +2617,72 @@ protected:
 
       if (next_address) {
         if ((prefix.empty() || prefix.front() == arc) && atm.can_match()) {
-          depth_first_visit(next_address, word, output, atm, accept,
-                            prefix.empty() ? prefix : prefix.substr(1));
+          char32_t _;
+          if (decode_codepoint(word, _)) {
+            results.emplace_back(
+                thread_pool.enqueue([this, next_address, word, output, atm,
+                                     accept, prefix, &accept_mutex] {
+                  depth_first_visit_single(
+                      next_address, word, output, atm, accept, accept_mutex,
+                      prefix.empty() ? prefix : prefix.substr(1));
+                }));
+          } else {
+            depth_first_visit_parallel(next_address, word, output, atm, accept,
+                                       prefix.empty() ? prefix
+                                                      : prefix.substr(1),
+                                       thread_pool, accept_mutex, results);
+          }
         }
       }
 
       if (ope.data.last_transition) { break; }
       address -= byte_size;
+    }
+  }
+
+  template <typename T, typename U>
+  void depth_first_visit(uint32_t address, const std::string &partial_word,
+                         const output_t &partial_output, const T &transit,
+                         U accept,
+                         std::string_view prefix = std::string_view()) const {
+    struct Dummy_mutex {};
+    Dummy_mutex dummy_mutex;
+    depth_first_visit_single(address, partial_word, partial_output, transit,
+                             accept, dummy_mutex, prefix);
+  }
+
+  // template <typename T, typename U>
+  // void depth_first_visit(uint32_t address, const std::string &partial_word,
+  //                        const output_t &partial_output, const T &transit,
+  //                        U accept,
+  //                        std::string_view prefix = std::string_view()) const
+  //                        {
+  //   std::mutex accept_mutex;
+  //   std::vector<std::future<void>> results;
+  //   ThreadPool thread_pool(8);
+  //   depth_first_visit_parallel(address, partial_word, partial_output,
+  //   transit,
+  //                              accept, prefix, thread_pool, accept_mutex,
+  //                              results);
+
+  //   for (auto &result : results) {
+  //     result.get();
+  //   }
+  // }
+
+  template <typename T, typename U, typename ThreadPool>
+  void depth_first_visit(uint32_t address, const std::string &partial_word,
+                         const output_t &partial_output, const T &transit,
+                         U accept, ThreadPool &thread_pool,
+                         std::string_view prefix = std::string_view()) const {
+    std::mutex accept_mutex;
+    std::vector<std::future<void>> results;
+    depth_first_visit_parallel(address, partial_word, partial_output, transit,
+                               accept, prefix, thread_pool, accept_mutex,
+                               results);
+
+    for (auto &result : results) {
+      result.get();
     }
   }
 
@@ -2522,72 +2781,6 @@ protected:
     return suggestions;
   }
 };
-
-//-----------------------------------------------------------------------------
-// UTF-8 -> UTF-32 decoder
-//-----------------------------------------------------------------------------
-
-inline bool decode_codepoint(std::string_view s8, char32_t &cp) {
-  auto l = s8.size();
-  if (l) {
-    uint8_t b = s8[0];
-    if ((b & 0x80) == 0) {
-      cp = b;
-      return true;
-    } else if ((b & 0xE0) == 0xC0) {
-      if (l >= 2) {
-        cp = ((static_cast<char32_t>(s8[0] & 0x1F)) << 6) |
-             (static_cast<char32_t>(s8[1] & 0x3F));
-        return true;
-      }
-    } else if ((b & 0xF0) == 0xE0) {
-      if (l >= 3) {
-        cp = ((static_cast<char32_t>(s8[0] & 0x0F)) << 12) |
-             ((static_cast<char32_t>(s8[1] & 0x3F)) << 6) |
-             (static_cast<char32_t>(s8[2] & 0x3F));
-        return true;
-      }
-    } else if ((b & 0xF8) == 0xF0) {
-      if (l >= 4) {
-        cp = ((static_cast<char32_t>(s8[0] & 0x07)) << 18) |
-             ((static_cast<char32_t>(s8[1] & 0x3F)) << 12) |
-             ((static_cast<char32_t>(s8[2] & 0x3F)) << 6) |
-             (static_cast<char32_t>(s8[3] & 0x3F));
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-inline std::u32string decode(std::string_view s8) {
-  std::u32string out;
-  size_t i = 0;
-  while (i < s8.size()) {
-    auto beg = i++;
-    while (i < s8.size() && (s8[i] & 0xc0) == 0x80) {
-      i++;
-    }
-    char32_t cp;
-    decode_codepoint(s8.substr(beg, i - beg), cp);
-    out += cp;
-  }
-  return out;
-}
-
-inline size_t calc_c_len(std::string_view s8) {
-  char32_t cp;
-  std::string u8code_ = "";
-  size_t c_len = 0;
-  for (size_t i = 0; i < s8.size(); ++i) {
-    u8code_ += s8[i];
-    if (decode_codepoint(u8code_, cp)) {
-      u8code_.clear();
-      c_len += 1;
-    }
-  }
-  return c_len;
-}
 
 //-----------------------------------------------------------------------------
 // PrefixDistanceAutomaton
@@ -2970,6 +3163,29 @@ public:
           // callback when match success
           results.emplace_back(word, output);
         });
+
+    return {results, error_message};
+  }
+
+  template <typename ThreadPool>
+  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
+  regex_search(const std::string_view &pattern, ThreadPool &thread_pool) const {
+    std::vector<std::pair<std::string, output_t>> results;
+
+    std::string error_message;
+    RegexAutomaton automaton(pattern, error_message);
+    if (!error_message.empty()) { return {results, error_message}; }
+
+    matcher<output_t>::depth_first_visit(
+        matcher<output_t>::header_.start_address, // start from root node
+        std::string(),                            // initial empty string
+        output_t(),                               // initial empty output
+        automaton,                                // regex automaton
+        [&](const std::string &word, const output_t &output) {
+          // callback when match success
+          results.emplace_back(word, output);
+        },
+        thread_pool, std::string_view());
 
     return {results, error_message};
   }
