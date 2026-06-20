@@ -4,6 +4,7 @@
 #include <set>
 #include <unordered_map>
 
+#include <fstd/fstdd_reader.h>
 #include <fstd/fstdx_reader.h>
 
 namespace fstd {
@@ -16,6 +17,11 @@ public:
   FstdxSearcher(const std::string &meta_json_path, size_t worker_num = 0);
 
   operator bool() const;
+
+  bool extract(const std::string &name, const std::string &file_path,
+               const std::string &dst_dir) const;
+
+  bool extract(const std::string &name, const std::string &file_path) const;
 
   std::vector<std::string> search(std::string_view word,
                                   const std::string &name);
@@ -64,6 +70,8 @@ public:
 private:
   bool load_file(const std::string &meta_json_path);
 
+  std::vector<std::string> find_fstdd(const std::string &target_dir) const;
+
   bool save_fst_index_to_disk(const std::string &fst_index_path);
 
   bool load_fst_index(const std::string &fst_index_path);
@@ -86,6 +94,8 @@ private:
   std::vector<std::string> fst_indexes_names_;
   std::set<std::string> fst_indexes_names_set_;
   std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes_;
+  std::unordered_map<std::string, std::vector<std::shared_ptr<FstddReader>>>
+      fstdds_;
   nlohmann::json meta_json_;
   static std::shared_ptr<ThreadPool> thread_pool_ptr;
 };

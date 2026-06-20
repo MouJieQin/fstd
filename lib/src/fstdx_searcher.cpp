@@ -27,6 +27,26 @@ FstdxSearcher::FstdxSearcher(const std::string &meta_json_path,
 
 FstdxSearcher::operator bool() const { return is_valid_; }
 
+bool FstdxSearcher::extract(const std::string &name,
+                            const std::string &file_path,
+                            const std::string &dst_dir) const {
+  auto iter = fstdds_.find(name);
+  if (iter == fstdds_.end()) { return false; }
+  for (auto &ptr : iter->second) {
+    if (ptr->extract(file_path, dst_dir)) { return true; }
+  }
+}
+
+bool FstdxSearcher::extract(const std::string &name,
+                            const std::string &file_path) const {
+  const json &fstdx_obj = meta_json_["fstdx"];
+  auto iter = fstdx_obj.find(name);
+  if (iter == fstdx_obj.end()) { return false; }
+
+  fs::path default_dst_dir = fs::path(*iter).parent_path() / "data";
+  return extract(name, file_path, default_dst_dir.string());
+}
+
 std::vector<std::string> FstdxSearcher::search(std::string_view word,
                                                const std::string &name) {
   std::vector<std::string> result;
@@ -284,7 +304,33 @@ bool FstdxSearcher::insert(const std::string &name,
   }
   fstdxes_[name] = ptr;
   meta_json_["fstdx"][name] = fs::absolute(fstdx_path).string();
+
+  const vector<string> fstdds = find_fstdd(fs::path(fstdx_path).parent_path());
+  fstdds_[name] = std::vector<std::shared_ptr<FstddReader>>();
+  for (const string &fstdd : fstdds) {
+    auto ptr = std::make_shared<FstddReader>(fstdd);
+    if (*(ptr)) { fstdds_[name].push_back(ptr); }
+  }
   return true;
+}
+
+std::vector<std::string>
+FstdxSearcher::find_fstdd(const std::string &target_dir) const {
+  std::vector<std::string> fstdd_files;
+  try {
+    for (const auto &entry : fs::directory_iterator(target_dir)) {
+      if (entry.is_regular_file()) {
+        const fs::path &file_path = entry.path();
+        if (file_path.extension() == ".fstdd") {
+          fstdd_files.push_back(file_path.string());
+        }
+      }
+    }
+  } catch (const fs::filesystem_error &e) {
+    LOG_ERROR("Found fstdd failed: {}", e.what());
+    return fstdd_files;
+  }
+  return fstdd_files;
 }
 
 bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {

@@ -98,7 +98,7 @@ bool FstddReader::extract_impl(const string &key, const string &output_path) {
   ValueBlockPosIndex vbp_idx;
   if (!read_hash_index(ins, key, vbp_idx, dup_idxes_, bucket_size_,
                        hash_bucket_offset_, hash_index_offset_)) {
-    cout << "Not found the key: " << key << endl;
+    LOG_ERROR("Not found the key: [{}] in {}", key, fstdd_path_);
     return false;
   }
   uint32_t start_index = vbp_idx.get_start_index();
