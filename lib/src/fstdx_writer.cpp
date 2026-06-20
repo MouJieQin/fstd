@@ -85,9 +85,8 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
                          opt_sorted, opt_verbose);
   } else {
     // Load fstdx file
-    bool is_valid = true;
-    FstdxReader reader(input_file, is_valid);
-    if (!is_valid) {
+    FstdxReader reader(input_file);
+    if (!reader) {
       LOG_ERROR("Invalid fstdx file {}.", input_file);
       return 2;
     }

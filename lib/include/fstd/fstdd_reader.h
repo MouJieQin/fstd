@@ -10,9 +10,11 @@ namespace fstd {
 class FstddReader {
 
 public:
-  FstddReader(const std::string &fstdd_path, bool &is_valid);
+  FstddReader(const std::string &fstdd_path);
 
   ~FstddReader() {}
+
+  operator bool() const;
 
   bool extract(const std::string &key, const std::string &dst_dir = "data");
 
@@ -29,6 +31,7 @@ private:
 
 private:
   const std::string fstdd_path_;
+  bool is_valid_;
   DdJsonHeader md_json_header_;
   size_t key_size_;
   std::set<size_t> dup_idxes_;

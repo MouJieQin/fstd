@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstd/fstlib.h>
+#include <fstd/thread_pool.h>
 #include <sstream>
 
 namespace fstd {
@@ -110,6 +111,11 @@ public:
   std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
   regex_search(std::string_view pattern) const {
     return matcher_ptr_->regex_search(pattern);
+  }
+
+  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
+  regex_search(std::string_view pattern, ThreadPool &thread_pool) const {
+    return matcher_ptr_->regex_search(pattern, thread_pool);
   }
 
   std::vector<std::tuple<double, std::string, output_t>>

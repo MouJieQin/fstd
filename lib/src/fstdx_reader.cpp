@@ -16,6 +16,8 @@ FstdxHashReader::FstdxHashReader(const std::string &fstdx_path)
   is_valid_ = true;
 }
 
+FstdxHashReader::~FstdxHashReader() { ZSTD_freeDDict(ddict_); }
+
 FstdxHashReader::operator bool() const { return is_valid_; }
 
 size_t FstdxHashReader::get_key_size() const { return key_size_; }
@@ -236,23 +238,18 @@ std::vector<std::string> FstdxHashReader::extract_values() const {
   return extract_comp_blocks();
 }
 
-FstdxReader::FstdxReader(const std::string &fstdx_path, bool &is_valid)
+FstdxReader::FstdxReader(const std::string &fstdx_path)
     : FstdxHashReader(fstdx_path), fst_key_size_(0) {
-  if (!FstdxHashReader::operator bool()) {
-    is_valid = false;
-    return;
-  }
+  if (!FstdxHashReader::operator bool()) { return; }
   fst_key_size_ = mx_json_header_["key_fst"]["keys_size"];
   std::vector<char> key_fst_byte_code;
   if (!decompress(fstdx_path, "key_fst", mx_json_header_, key_fst_byte_code)) {
-    is_valid = false;
+    is_valid_ = false;
     return;
   }
   fst_map_searcher_ = FstMapSearcher<uint64_t>(std::move(key_fst_byte_code));
-  is_valid = true;
+  is_valid_ = true;
 }
-
-FstdxReader::~FstdxReader() { ZSTD_freeDDict(ddict_); }
 
 size_t FstdxReader::get_fst_key_size() const { return fst_key_size_; }
 
@@ -287,6 +284,12 @@ FstdxReader::edit_distance_search(std::string_view word,
 std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
 FstdxReader::regex_search(std::string_view pattern) const {
   return fst_map_searcher_.regex_search(pattern);
+}
+
+std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+FstdxReader::regex_search(std::string_view pattern,
+                          ThreadPool &thread_pool) const {
+  return fst_map_searcher_.regex_search(pattern, thread_pool);
 }
 
 std::vector<std::tuple<double, std::string, uint64_t>>

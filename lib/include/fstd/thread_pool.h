@@ -54,6 +54,9 @@ inline ThreadPool::ThreadPool(size_t threads) : stop(false) {
   // 1. Lock the pool during initialization to prevent premature thread
   // execution races
   std::unique_lock<std::mutex> lock(queue_mutex);
+  if (threads == 0) {
+    threads = get_optimal_thread_num(TaskType::CPU_INTENSIVE);
+  }
 
   // 2. Critical: Reserve memory to prevent vector reallocation while threads
   // are spawning

@@ -1,10 +1,9 @@
 #pragma once
 
+#include <nlohmann/json.hpp>
 #include <set>
 #include <unordered_map>
-#include <nlohmann/json.hpp>
 
-#include <fstd/fstdx_compressor.h>
 #include <fstd/fstdx_reader.h>
 
 namespace fstd {
@@ -12,8 +11,11 @@ namespace fstd {
 class FstdxSearcher {
 
 public:
-  FstdxSearcher() = default;
-  FstdxSearcher(const std::string &meta_json_path, bool &is_valid);
+  FstdxSearcher(size_t worker_num = 0);
+
+  FstdxSearcher(const std::string &meta_json_path, size_t worker_num = 0);
+
+  operator bool() const;
 
   std::vector<std::string> search(std::string_view word,
                                   const std::string &name);
@@ -78,13 +80,14 @@ private:
                        search_method) const;
 
 private:
+  bool is_valid_;
   FstMapSearcher<fst::uint64bit> fst_indexes_searcher_;
   size_t fst_indexes_size_;
   std::vector<std::string> fst_indexes_names_;
   std::set<std::string> fst_indexes_names_set_;
   std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes_;
   nlohmann::json meta_json_;
-  FstdxCompressor compressor;
+  static std::shared_ptr<ThreadPool> thread_pool_ptr;
 };
 
 } // namespace fstd

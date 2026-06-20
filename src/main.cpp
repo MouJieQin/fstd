@@ -151,8 +151,8 @@ int main(int argc, char **argv) {
   if (*search_cmd) {
     bool is_valid = false;
     if (ends_with(file_path, ".fstdd")) {
-      fstd::FstddReader fstdd_reader(file_path, is_valid);
-      if (!is_valid) {
+      fstd::FstddReader fstdd_reader(file_path);
+      if (!fstdd_reader) {
         LOG_ERROR("文件 {} 不是有效的 fstdd 文件", file_path);
         return 1;
       }
@@ -161,8 +161,8 @@ int main(int argc, char **argv) {
         std::cout << meta.dump(2) << std::endl;
       }
     } else if (ends_with(file_path, ".fstdx")) {
-      fstd::FstdxReader fstdx_searcher(file_path, is_valid);
-      if (!is_valid) {
+      fstd::FstdxReader fstdx_searcher(file_path);
+      if (!fstdx_searcher) {
         LOG_ERROR("文件 {} 不是有效的 fstdx 文件", file_path);
         return 1;
       }
@@ -337,15 +337,13 @@ int main(int argc, char **argv) {
   } else if (*extract_cmd) {
 
     if (ends_with(extract_input_file, ".fstdx")) {
-      bool is_valid = true;
-      fstd::FstdxReader fstdx_reader(extract_input_file, is_valid);
-      if (!is_valid) { return 1; }
+      fstd::FstdxReader fstdx_reader(extract_input_file);
+      if (!fstdx_reader) { return 1; }
       bool ret = fstdx_reader.extract(extract_output_file);
       if (!ret) { return 3; }
     } else if (ends_with(extract_input_file, ".fstdd")) {
-      bool is_valid = true;
-      fstd::FstddReader fstdd_reader(extract_input_file, is_valid);
-      if (!is_valid) { return 1; }
+      fstd::FstddReader fstdd_reader(extract_input_file);
+      if (!fstdd_reader) { return 1; }
       if (key_file_path.empty()) {
         if (!fstdd_reader.extract_all()) { return 1; }
       } else {

@@ -14,6 +14,8 @@ class FstdxHashReader {
 public:
   FstdxHashReader(const std::string &fstdx_path);
 
+  ~FstdxHashReader();
+
   const nlohmann::json &get_meta() const;
 
   const DxJsonHeader &get_header() const;
@@ -66,11 +68,8 @@ protected:
 };
 
 class FstdxReader : public FstdxHashReader {
-
 public:
-  FstdxReader(const std::string &fstdx_path, bool &is_valid);
-
-  ~FstdxReader();
+  FstdxReader(const std::string &fstdx_path);
 
   size_t get_fst_key_size() const;
 
@@ -92,6 +91,9 @@ public:
 
   std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
   regex_search(std::string_view pattern) const;
+
+  std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+  regex_search(std::string_view pattern, ThreadPool &thread_pool) const;
 
   std::vector<std::tuple<double, std::string, uint64_t>>
   spellcheck_word(std::string_view word, const size_t n = 10) const;

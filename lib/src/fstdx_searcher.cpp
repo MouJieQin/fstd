@@ -9,21 +9,30 @@ using json = nlohmann::json;
 
 namespace fstd {
 
+std::shared_ptr<ThreadPool> FstdxSearcher::thread_pool_ptr = nullptr;
+
+FstdxSearcher::FstdxSearcher(size_t worker_num) : is_valid_(true) {
+  thread_pool_ptr = make_shared<ThreadPool>(worker_num);
+}
+
 FstdxSearcher::FstdxSearcher(const std::string &meta_json_path,
-                             bool &is_valid) {
+                             size_t worker_num) {
   if (!load_file(meta_json_path)) {
-    is_valid = false;
+    is_valid_ = false;
     return;
   }
-  is_valid = true;
+  thread_pool_ptr = make_shared<ThreadPool>(worker_num);
+  is_valid_ = true;
 }
+
+FstdxSearcher::operator bool() const { return is_valid_; }
 
 std::vector<std::string> FstdxSearcher::search(std::string_view word,
                                                const std::string &name) {
   std::vector<std::string> result;
   auto iter = fstdxes_.find(name);
   if (iter != fstdxes_.end()) {
-    iter->second->exact_match_search(word, result);
+    iter->second->hash_exact_match_search(word, result);
   }
   return result;
 }
@@ -36,7 +45,7 @@ FstdxSearcher::search(std::string_view word,
     vector<string> result;
     auto iter = fstdxes_.find(name);
     if (iter != fstdxes_.end()) {
-      bool res = iter->second->exact_match_search(word, result);
+      bool res = iter->second->hash_exact_match_search(word, result);
       if (res) { results.emplace(name, std::move(result)); }
     }
   }
@@ -107,9 +116,9 @@ FstdxSearcher::edit_distance_search(std::string_view word,
   if (not_indexes_names.empty()) {
     return sort_container(std::move(filtered_indexes_search_result));
   }
-
+  LOG_INFO("not_indexes_names: {}", not_indexes_names[0]);
   std::unordered_set<std::string> uni_result;
-  for (const string &name : names) {
+  for (const string &name : not_indexes_names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
       LOG_ERROR("FstdxSearcher::edit_distance_search, name {} not found", name);
@@ -231,7 +240,8 @@ FstdxSearcher::regex_search(std::string_view pattern,
   std::pair<std::vector<std::pair<std::string, fst::uint64bit>>, std::string>
       indexes_search_result;
   if (index != 0) {
-    indexes_search_result = fst_indexes_searcher_.regex_search(pattern);
+    indexes_search_result =
+        fst_indexes_searcher_.regex_search(pattern, *thread_pool_ptr);
   }
   if (!indexes_search_result.second.empty()) {
     return {std::vector<std::string>(), indexes_search_result.second};
@@ -260,9 +270,14 @@ bool FstdxSearcher::insert(const std::string &name,
     LOG_ERROR("Insert fstdx failed, as name {} already exists", name);
     return false;
   }
-  bool is_valid = false;
-  shared_ptr<FstdxReader> ptr = make_shared<FstdxReader>(fstdx_path, is_valid);
-  if (!is_valid) {
+  shared_ptr<FstdxReader> ptr = nullptr;
+  if (fst_indexes_names_set_.find(name) != fst_indexes_names_set_.end()) {
+    ptr = std::static_pointer_cast<FstdxReader>(
+        std::make_shared<FstdxHashReader>(fstdx_path));
+  } else {
+    ptr = make_shared<FstdxReader>(fstdx_path);
+  }
+  if (!(*ptr)) {
     LOG_ERROR("Insert fstdx failed, as path {} is not a valid fstdx file",
               fstdx_path);
     return false;
@@ -332,7 +347,11 @@ bool FstdxSearcher::build_fst_index(const std::string &fst_index_path) {
   for (const auto &p : sorted_input) {
     of << p.first << ": " << p.second.bits << endl;
   }
-  if (!fstd::compile_fst(sorted_input, fst_str_stream, true, true)) {
+  DyBlockProgBars dy_bars;
+  auto refresh_bar = dy_bars.push_back(
+      sorted_input.size(), "Compiling FST index:", indicators::Color::white);
+  if (!fstd::compile_fst(sorted_input, fst_str_stream, true, true,
+                         refresh_bar)) {
     return false;
   }
   string fst_str = fst_str_stream.str();
@@ -370,15 +389,6 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
     LOG_ERROR("Meta JSON does not contain a valid 'fstdx' object.");
     return false;
   }
-  const json &fstdx_obj = meta_json_["fstdx"];
-  for (auto it = fstdx_obj.begin(); it != fstdx_obj.end(); ++it) {
-    const string &name = it.key();
-    const string &path = it.value();
-    if (!insert(name, path)) {
-      LOG_ERROR("Failed to insert fstdx with name {} and path {}", name, path);
-      return false;
-    }
-  }
 
   try {
     const std::string fst_index_path =
@@ -397,6 +407,16 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
   } catch (const std::exception &e) {
     LOG_ERROR("Meta JSON processing error: {}", e.what());
     return false;
+  }
+
+  const json &fstdx_obj = meta_json_["fstdx"];
+  for (auto it = fstdx_obj.begin(); it != fstdx_obj.end(); ++it) {
+    const string &name = it.key();
+    const string &path = it.value();
+    if (!insert(name, path)) {
+      LOG_ERROR("Failed to insert fstdx with name {} and path {}", name, path);
+      return false;
+    }
   }
   return true;
 }
@@ -449,15 +469,15 @@ bool FstdxSearcher::match_index(fst::uint64bit index, uint64_t mask) const {
 
 std::pair<uint64_t, std::vector<std::string>>
 FstdxSearcher::cost_analysis(const std::vector<std::string> &names) const {
-  if (names.size() < 2) { return {0, names}; }
-  size_t key_size = 0;
-  for (const string &name : names) {
-    auto iter = fstdxes_.find(name);
-    if (iter != fstdxes_.end()) {
-      key_size += iter->second->get_fst_key_size();
-    }
-  }
-  if (key_size < fst_indexes_size_) { return {0, names}; }
+  // if (names.size() < 2) { return {0, names}; }
+  // size_t key_size = 0;
+  // for (const string &name : names) {
+  //   auto iter = fstdxes_.find(name);
+  //   if (iter != fstdxes_.end()) {
+  //     key_size += iter->second->get_fst_key_size();
+  //   }
+  // }
+  // if (key_size < fst_indexes_size_) { return {0, names}; }
   uint64_t index = 1;
   uint64_t result_index = 0;
   std::vector<std::string> result_names;

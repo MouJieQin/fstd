@@ -10,14 +10,16 @@ namespace fs = std::filesystem;
 using namespace std;
 using json = nlohmann::json;
 
-FstddReader::FstddReader(const std::string &fstdd_path, bool &is_valid)
+FstddReader::FstddReader(const std::string &fstdd_path)
     : fstdd_path_(fstdd_path) {
   if (!parse_fstdd(fstdd_path_)) {
-    is_valid = false;
+    is_valid_ = false;
     return;
   }
-  is_valid = true;
+  is_valid_ = true;
 }
+
+FstddReader::operator bool() const { return is_valid_; }
 
 const DdJsonHeader &FstddReader::get_header() const { return md_json_header_; }
 

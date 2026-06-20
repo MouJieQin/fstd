@@ -1876,7 +1876,6 @@ public:
   void write(const State<output_t> &state, char prev_arc) {
     if (state.final) {
       auto state_output = OutputTraits<output_t>::init_value();
-      ;
       if (!OutputTraits<output_t>::empty(state.state_output)) {
         state_output = state.state_output;
       }

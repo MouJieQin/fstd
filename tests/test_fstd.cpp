@@ -27,14 +27,13 @@ const vector<string> data_paths{lib_dir, dict_dir};
 
 class TestFstdx : public ::testing::Test {
 protected:
-  void exact_match_search(const string &fstdx_path) {
+  void exact_match_search(const string &fstdx_path, bool fst_search) {
     FstdxWriter writer;
     vector<string> keys, values;
     ASSERT_TRUE(writer.load_file(raw_file_path, keys, values));
     ASSERT_EQ(keys.size(), values.size());
-    bool is_valid = false;
-    FstdxReader reader(fstdx_path, is_valid);
-    ASSERT_TRUE(is_valid);
+    FstdxReader reader(fstdx_path);
+    ASSERT_TRUE(reader);
     size_t idx = 0;
     string key = "";
     for (size_t i = 0; i < keys.size(); i++) {
@@ -44,11 +43,23 @@ protected:
         key = keys[idx];
       }
       vector<string> result;
-      ASSERT_TRUE(reader.exact_match_search(key, result));
+      if (fst_search) {
+        ASSERT_TRUE(reader.exact_match_search(key, result));
+      } else {
+        ASSERT_TRUE(reader.hash_exact_match_search(key, result));
+      }
       for (size_t j = 0; j < result.size(); j++) {
         ASSERT_EQ(result[j], values[idx + j]);
       }
     }
+  }
+
+  void exact_match_search(const string &fstdx_path) {
+    exact_match_search(fstdx_path, false);
+  }
+
+  void fst_exact_match_search(const string &fstdx_path) {
+    exact_match_search(fstdx_path, true);
   }
 
   static void SetUpTestSuite() {
@@ -97,7 +108,11 @@ TEST_F(TestFstdx, CompileTest) {
                                     4, 0, false, true));
 }
 
-TEST_F(TestFstdx, SearchTest) { exact_match_search(fstdx_out_path); }
+TEST_F(TestFstdx, exactMatchSearchTest) { exact_match_search(fstdx_out_path); }
+
+TEST_F(TestFstdx, fstExactMatchSearchTest) {
+  fst_exact_match_search(fstdx_out_path);
+}
 
 TEST_F(TestFstdx, ReCompileTestByFstdxNoRecompress) {
   FstdxWriter writer;
@@ -116,9 +131,8 @@ TEST_F(TestFstdx, ReCompileTestByFstdxWithRecompress) {
 }
 
 TEST_F(TestFstdx, ExtractTest) {
-  bool is_valid = false;
-  FstdxReader reader(fstdx_out_path, is_valid);
-  ASSERT_TRUE(is_valid);
+  FstdxReader reader(fstdx_out_path);
+  ASSERT_TRUE(reader);
   ASSERT_TRUE(reader.extract(extract_file_path));
   FstdxWriter writer;
   vector<string> ex_keys, ex_values;
@@ -144,8 +158,8 @@ TEST_F(TestFstdd, CompileTest) {
 
 TEST_F(TestFstdd, ReadTest) {
   bool is_valid = false;
-  FstddReader reader(fstdd_out_path, is_valid);
-  ASSERT_TRUE(is_valid);
+  FstddReader reader(fstdd_out_path);
+  ASSERT_TRUE(reader);
   vector<pair<string, size_t>> files_paths =
       FstddCompressor::recursive_directory(data_paths);
   for (size_t i = 0; i < files_paths.size(); ++i) {
@@ -161,9 +175,8 @@ TEST_F(TestFstdd, ReadTest) {
 }
 
 TEST_F(TestFstdd, ExtractAllTest) {
-  bool is_valid = false;
-  FstddReader reader(fstdd_out_path, is_valid);
-  ASSERT_TRUE(is_valid);
+  FstddReader reader(fstdd_out_path);
+  ASSERT_TRUE(reader);
   const string extract_dir = cache_dir + "/extract_all";
   ASSERT_TRUE(reader.extract_all(extract_dir));
   vector<pair<string, size_t>> files_paths =
