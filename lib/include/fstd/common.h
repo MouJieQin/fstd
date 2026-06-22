@@ -125,7 +125,7 @@ private:
         bars[bar_idx].set_option(indicators::option::PostfixText{
             std::to_string(count) + " " + postfix_text});
         auto now = std::chrono::steady_clock::now();
-        auto diff_ms = duration_cast<milliseconds>(now - last_update).count();
+        // auto diff_ms = duration_cast<milliseconds>(now - last_update).count();
         auto diff_sec = duration_cast<seconds>(now - last_update).count();
         if (diff_sec >= 1 && last_progresses[bar_idx] < 99) {
           last_progresses[bar_idx] += 1;

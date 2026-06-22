@@ -148,7 +148,7 @@ bool FstddReader::extract_impl(const string &key, const string &output_path) {
           ZSTD_decompress(decomp_buf.data(), block_size_,
                           comp_blocks.data() + buf_offset, comp_block_size);
       if (ZSTD_isError(decomp_size)) {
-        cerr << "解压失败: " << ZSTD_getErrorName(decomp_size) << endl;
+        LOG_ERROR("Decompress failed: {}", ZSTD_getErrorName(decomp_size));
         return false;
       }
       size_t offset = 0;
