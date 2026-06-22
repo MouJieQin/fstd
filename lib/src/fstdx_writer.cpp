@@ -105,7 +105,8 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
     if (compress_level == header["meta"]["Compressionlevel"].get<size_t>() &&
         zstd_dict_size_kb * 1024 ==
             header["comp_dict"]["original_size"].get<size_t>() &&
-        block_size_kb * 1024 == header["comp_blocks"]["block_size"].get<size_t>()) {
+        block_size_kb * 1024 ==
+            header["comp_blocks"]["block_size"].get<size_t>()) {
       size_t copy_size = header["key_fst"]["offset"].get<size_t>() +
                          header["key_fst"]["compressed_size"].get<size_t>();
       if (!copy_file(fin, 0, copy_size, fout)) { return 6; }
@@ -168,14 +169,14 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
   }
   return compile_fstdx_impl(fout, input, values, header, block_size_kb,
                             compress_level, zstd_dict_size_kb, worker_num,
-                            opt_sorted, opt_verbose);
+                            opt_verbose);
 }
 
 int FstdxWriter::compile_fstdx_impl(
     std::ostream &fout, std::vector<std::pair<std::string, uint64_t>> &input,
     std::vector<std::string> &values, DxJsonHeader &header,
     uint16_t block_size_kb, uint8_t compress_level, uint16_t zstd_dict_size_kb,
-    size_t worker_num, bool opt_sorted, bool opt_verbose) {
+    size_t worker_num, bool opt_verbose) {
 
   if (worker_num == 0) { worker_num = get_cpu_core_count(); }
   ThreadPool thread_pool(worker_num);

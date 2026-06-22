@@ -1,6 +1,8 @@
 #pragma once
 
-#include <fstd/fstlib.h>
+#include <fstlib/build_fst.h>
+#include <fstlib/map.h>
+#include <fstlib/writer.h>
 #include <fstd/thread_pool.h>
 #include <sstream>
 

@@ -68,7 +68,7 @@ private:
                          std::vector<std::string> &values, DxJsonHeader &header,
                          uint16_t block_size_kb, uint8_t compress_level,
                          uint16_t zstd_dict_size_kb, size_t worker_num,
-                         bool opt_sorted, bool opt_verbose);
+                         bool opt_verbose);
 
   int write_fst_header(std::ostream &fout, size_t hash_data_size,
                        std::ostringstream &oss_key_fst_out,

@@ -149,7 +149,6 @@ int main(int argc, char **argv) {
   std::cout << "详细日志：" << (verbose ? "开启" : "关闭") << "\n";
 
   if (*search_cmd) {
-    bool is_valid = false;
     if (ends_with(file_path, ".fstdd")) {
       fstd::FstddReader fstdd_reader(file_path);
       if (!fstdd_reader) {

@@ -1,12 +1,13 @@
 #pragma once
 
 #include <fstream>
-#include <indicators/block_progress_bar.hpp>
-#include <nlohmann/json.hpp>
+#include <set>
+#include <zstd.h>
 
 #include <fstd/common.h>
 #include <fstd/fstlib_wrapper.h>
-#include <zstd.h>
+#include <indicators/block_progress_bar.hpp>
+#include <nlohmann/json.hpp>
 
 namespace fstd {
 

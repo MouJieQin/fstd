@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <unordered_set>
 
 #include <fstd/fstdx_searcher.h>
 #include <fstd/logger.h>
@@ -35,6 +36,7 @@ bool FstdxSearcher::extract(const std::string &name,
   for (auto &ptr : iter->second) {
     if (ptr->extract(file_path, dst_dir)) { return true; }
   }
+  return false;
 }
 
 bool FstdxSearcher::extract(const std::string &name,

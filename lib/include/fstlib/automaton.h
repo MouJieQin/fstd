@@ -1,0 +1,258 @@
+//
+//  fstlib.h
+//
+//  Copyright (c) 2022 Yuji Hirose. All rights reserved.
+//  MIT License
+//
+
+#pragma once
+#include <iostream>
+#include <numeric>
+
+#include <fstlib/matcher_utility.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+
+namespace fst {
+
+//-----------------------------------------------------------------------------
+// PrefixDistanceAutomaton
+//-----------------------------------------------------------------------------
+
+class PrefixDistanceAutomaton {
+public:
+  PrefixDistanceAutomaton(std::string_view sv, const size_t max_distance,
+                          const size_t longest_prefix_len)
+      : s_(decode(sv)), max_distance_(max_distance),
+        longest_prefix_len_(calc_c_len(sv.substr(0, longest_prefix_len))),
+        common_prefix_len_(0), prefix_distance_(0), word_("") {
+    std::cout << "orginal world: " << sv << " practical len: " << calc_c_len(sv)
+              << std::endl;
+  }
+
+  PrefixDistanceAutomaton(const PrefixDistanceAutomaton &rhs) = default;
+
+  void step(char c) {
+    word_ += c;
+    u8code_ += c;
+    char32_t cp;
+    if (!decode_codepoint(u8code_, cp)) { return; }
+    u8code_.clear();
+
+    if (prefix_distance_ != 0) {
+      prefix_distance_ += 1;
+      return;
+    }
+
+    if (s_[common_prefix_len_] == cp) {
+      common_prefix_len_ += 1;
+    } else {
+      prefix_distance_ += 1;
+    }
+  }
+
+  bool is_match() const {
+    if (common_prefix_len_ == 0) {
+      // one common prefix at least.
+      return false;
+    }
+    return distance() <= max_distance_;
+  }
+
+  bool can_match() const {
+    if (prefix_distance_ == 0) {
+      return true;
+    } else {
+      if (common_prefix_len_ == 0) {
+        return false;
+      } else {
+        return distance() < max_distance_;
+      }
+    }
+  }
+
+  size_t distance() const {
+    return (longest_prefix_len_ - common_prefix_len_) + prefix_distance_;
+  }
+
+private:
+  const std::u32string s_;
+  const size_t max_distance_;
+  const size_t longest_prefix_len_;
+  size_t common_prefix_len_;
+  size_t prefix_distance_;
+  std::string u8code_;
+  std::string word_;
+};
+
+//-----------------------------------------------------------------------------
+// LevenshteinAutomaton
+//-----------------------------------------------------------------------------
+
+class LevenshteinAutomaton {
+public:
+  LevenshteinAutomaton(std::string_view sv, size_t max_edits,
+                       size_t insert_cost, size_t delete_cost,
+                       size_t replace_cost)
+      : s_(decode(sv)), max_edits_(max_edits), insert_cost_(insert_cost),
+        delete_cost_(delete_cost), replace_cost_(replace_cost) {
+    state_.resize(s_.size() + 1);
+    std::iota(state_.begin(), state_.end(), 0);
+  }
+
+  LevenshteinAutomaton(const LevenshteinAutomaton &rhs) = default;
+
+  void step(char c) {
+    u8code_ += c;
+    char32_t cp;
+    if (!decode_codepoint(u8code_, cp)) { return; }
+    u8code_.clear();
+
+    std::vector<size_t> new_state{state_[0] + 1};
+
+    for (size_t i = 0; i < state_.size() - 1; i++) {
+      auto cost = (s_[i] == cp) ? 0 : replace_cost_;
+      auto edits = std::min({new_state[i] + insert_cost_, state_[i] + cost,
+                             state_[i + 1] + delete_cost_});
+      new_state.push_back(edits);
+    }
+
+    std::transform(new_state.begin(), new_state.end(), state_.begin(),
+                   [this](auto edits) { return std::min(edits, max_edits_ + 1); });
+  }
+
+  bool is_match() const {
+    if (!u8code_.empty()) { return false; }
+    return state_.back() <= max_edits_;
+  }
+
+  bool can_match() const {
+    auto it = std::min_element(state_.begin(), state_.end());
+    return *it <= max_edits_;
+  }
+
+private:
+  std::u32string s_;
+  size_t max_edits_;
+  size_t insert_cost_;
+  size_t delete_cost_;
+  size_t replace_cost_; // TODO: better cost function is needed?
+  std::vector<size_t> state_;
+  std::string u8code_;
+};
+
+//-----------------------------------------------------------------------------
+// DummyAutomaton
+//-----------------------------------------------------------------------------
+
+struct DummyAutomaton {
+  void step(char _) {}
+  bool is_match() const { return true; }
+  bool can_match() const { return true; }
+};
+
+//-----------------------------------------------------------------------------
+// RegexAutomaton
+//-----------------------------------------------------------------------------
+
+class Pcre2RegexAutomaton {
+public:
+  // Note: For FST traversal, it is highly recommended that your regex
+  // patterns are anchored (e.g., "^pattern$"). Otherwise, the engine
+  // assumes wildcards at the beginning and will never prune branches.
+  explicit Pcre2RegexAutomaton(std::string_view pattern,
+                               std::string &error_message) {
+    int errornumber;
+    PCRE2_SIZE erroroffset;
+    error_message.clear();
+
+    // Compile the regex. PCRE2_ANCHORED forces the pattern to match from
+    // the start of the string, which is required for FST prefix pruning.
+    pcre2_code *re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern.data()),
+                                   pattern.size(), PCRE2_ANCHORED, &errornumber,
+                                   &erroroffset, nullptr);
+
+    if (re == nullptr) {
+      PCRE2_UCHAR buffer[256];
+      pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
+      error_message =
+          std::string("PCRE2 compilation failed: " +
+                      std::string(reinterpret_cast<char *>(buffer)));
+      return;
+    }
+
+    // Wrap the compiled AST in a shared_ptr. The FST traverses by copying
+    // the automaton at branch points. We do NOT want to recompile the regex
+    // for every node in the dictionary.
+    re_ = std::shared_ptr<pcre2_code>(
+        re, [](pcre2_code *p) { pcre2_code_free(p); });
+
+    // Allocate match data (the output block for PCRE2)
+    match_data_ = std::shared_ptr<pcre2_match_data>(
+        pcre2_match_data_create_from_pattern(re_.get(), nullptr),
+        [](pcre2_match_data *m) { pcre2_match_data_free(m); });
+
+    // Evaluate the empty string initially to handle cases like "^$" or "^a?$"
+    evaluate();
+  }
+
+  // FSTs copy the automaton to explore different branches.
+  // We share the compiled regex (thread-safe, read-only) but allocate
+  // fresh match data for the new branch's state.
+  Pcre2RegexAutomaton(const Pcre2RegexAutomaton &rhs)
+      : re_(rhs.re_), buffer_(rhs.buffer_), is_match_(rhs.is_match_),
+        can_match_(true) {
+    if (re_) {
+      match_data_ = std::shared_ptr<pcre2_match_data>(
+          pcre2_match_data_create_from_pattern(re_.get(), nullptr),
+          [](pcre2_match_data *m) { pcre2_match_data_free(m); });
+    }
+  }
+
+  void step(char c) {
+    if (!can_match_) { return; }
+    buffer_ += c;
+    evaluate();
+  }
+
+  bool is_match() const { return is_match_; }
+
+  bool can_match() const { return can_match_; }
+
+private:
+  std::shared_ptr<pcre2_code> re_;
+  std::shared_ptr<pcre2_match_data> match_data_;
+  std::string buffer_;
+  bool is_match_ = false;
+  bool can_match_ = true;
+
+  void evaluate() {
+    int rc = pcre2_match(
+        re_.get(), reinterpret_cast<PCRE2_SPTR>(buffer_.data()), buffer_.size(),
+        0,                  // start offset
+        PCRE2_PARTIAL_SOFT, // CRITICAL: Enables partial prefix matching
+        match_data_.get(), nullptr);
+
+    if (rc >= 0) {
+      // A full, valid match was found.
+      is_match_ = true;
+      // We set can_match_ to true because the string might still be
+      // valid if extended (e.g. "hello" matching "^hello.*"). If the
+      // next char breaks it, the subsequent evaluate() will prune it.
+      can_match_ = true;
+    } else if (rc == PCRE2_ERROR_PARTIAL) {
+      // The current buffer is a valid prefix, but not yet a full match.
+      is_match_ = false;
+      can_match_ = true;
+    } else {
+      // PCRE2_ERROR_NOMATCH or another fatal error.
+      // The regex can no longer be satisfied. Prune this FST branch.
+      is_match_ = false;
+      can_match_ = false;
+    }
+  }
+};
+
+using RegexAutomaton = Pcre2RegexAutomaton;
+
+} // namespace fst
