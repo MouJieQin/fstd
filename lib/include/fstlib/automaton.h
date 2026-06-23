@@ -117,8 +117,9 @@ public:
       new_state.push_back(edits);
     }
 
-    std::transform(new_state.begin(), new_state.end(), state_.begin(),
-                   [this](auto edits) { return std::min(edits, max_edits_ + 1); });
+    std::transform(
+        new_state.begin(), new_state.end(), state_.begin(),
+        [this](auto edits) { return std::min(edits, max_edits_ + 1); });
   }
 
   bool is_match() const {
@@ -168,8 +169,9 @@ public:
 
     // Compile the regex. PCRE2_ANCHORED forces the pattern to match from
     // the start of the string, which is required for FST prefix pruning.
+    const uint32_t compile_flags = PCRE2_ANCHORED | PCRE2_UTF | PCRE2_UCP;
     pcre2_code *re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern.data()),
-                                   pattern.size(), PCRE2_ANCHORED, &errornumber,
+                                   pattern.size(), compile_flags, &errornumber,
                                    &erroroffset, nullptr);
 
     if (re == nullptr) {
@@ -200,8 +202,8 @@ public:
   // We share the compiled regex (thread-safe, read-only) but allocate
   // fresh match data for the new branch's state.
   Pcre2RegexAutomaton(const Pcre2RegexAutomaton &rhs)
-      : re_(rhs.re_), buffer_(rhs.buffer_), is_match_(rhs.is_match_),
-        can_match_(true) {
+      : re_(rhs.re_), buffer_(rhs.buffer_), u8code_(rhs.u8code_),
+        is_match_(rhs.is_match_), can_match_(true) {
     if (re_) {
       match_data_ = std::shared_ptr<pcre2_match_data>(
           pcre2_match_data_create_from_pattern(re_.get(), nullptr),
@@ -211,7 +213,11 @@ public:
 
   void step(char c) {
     if (!can_match_) { return; }
-    buffer_ += c;
+    u8code_ += c;
+    char32_t cp;
+    if (!decode_codepoint(u8code_, cp)) { return; }
+    buffer_ += u8code_;
+    u8code_.clear();
     evaluate();
   }
 
@@ -223,6 +229,7 @@ private:
   std::shared_ptr<pcre2_code> re_;
   std::shared_ptr<pcre2_match_data> match_data_;
   std::string buffer_;
+  std::string u8code_;
   bool is_match_ = false;
   bool can_match_ = true;
 
