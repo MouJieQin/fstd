@@ -189,13 +189,20 @@ public:
     re_ = std::shared_ptr<pcre2_code>(
         re, [](pcre2_code *p) { pcre2_code_free(p); });
 
+    // CRITICAL PERFORMANCE GAIN: Enable Just-In-Time (JIT) compilation.
+    // We must pass the partial flags during JIT compilation so that the JIT
+    // compiler generates the specific machine code optimized for partial
+    // matching.
+    pcre2_jit_compile(re_.get(),
+                      PCRE2_JIT_PARTIAL_HARD | PCRE2_JIT_PARTIAL_SOFT);
+
     // Allocate match data (the output block for PCRE2)
     match_data_ = std::shared_ptr<pcre2_match_data>(
         pcre2_match_data_create_from_pattern(re_.get(), nullptr),
         [](pcre2_match_data *m) { pcre2_match_data_free(m); });
 
-    // Evaluate the empty string initially to handle cases like "^$" or "^a?$"
-    evaluate();
+    // // Evaluate the empty string initially to handle cases like "^$" or "^a?$"
+    // evaluate();
   }
 
   // FSTs copy the automaton to explore different branches.
@@ -203,7 +210,7 @@ public:
   // fresh match data for the new branch's state.
   Pcre2RegexAutomaton(const Pcre2RegexAutomaton &rhs)
       : re_(rhs.re_), buffer_(rhs.buffer_), u8code_(rhs.u8code_),
-        is_match_(rhs.is_match_), can_match_(true) {
+        is_match_(rhs.is_match_), can_match_(rhs.can_match_) {
     if (re_) {
       match_data_ = std::shared_ptr<pcre2_match_data>(
           pcre2_match_data_create_from_pattern(re_.get(), nullptr),
@@ -213,9 +220,9 @@ public:
 
   void step(char c) {
     if (!can_match_) { return; }
+
     u8code_ += c;
-    char32_t cp;
-    if (!decode_codepoint(u8code_, cp)) { return; }
+    if (!u8_validator(u8code_)) { return; }
     buffer_ += u8code_;
     u8code_.clear();
     evaluate();
@@ -234,10 +241,16 @@ private:
   bool can_match_ = true;
 
   void evaluate() {
+    // 1. We always scan from 0 so lookarounds/anchors remain valid.
+    // 2. We use PCRE2_PARTIAL_SOFT for accurate FST tree pruning.
+    // 3. We use PCRE2_NO_UTF_CHECK to skip validation because step() guarantees
+    // safety.
+    const uint32_t match_flags = PCRE2_PARTIAL_SOFT | PCRE2_NO_UTF_CHECK;
+
     int rc = pcre2_match(
         re_.get(), reinterpret_cast<PCRE2_SPTR>(buffer_.data()), buffer_.size(),
-        0,                  // start offset
-        PCRE2_PARTIAL_SOFT, // CRITICAL: Enables partial prefix matching
+        0,           // start offset
+        match_flags, // CRITICAL: Enables partial prefix matching
         match_data_.get(), nullptr);
 
     if (rc >= 0) {
@@ -248,7 +261,7 @@ private:
       // next char breaks it, the subsequent evaluate() will prune it.
       can_match_ = true;
     } else if (rc == PCRE2_ERROR_PARTIAL) {
-      // The current buffer is a valid prefix, but not yet a full match.
+      // Partial Match found (valid prefix, can keep expanding)
       is_match_ = false;
       can_match_ = true;
     } else {

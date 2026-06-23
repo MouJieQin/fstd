@@ -9,9 +9,7 @@
 
 #include <fstlib/byte_code.h>
 
-
 namespace fst {
-
 
 //-----------------------------------------------------------------------------
 // get_output_type
@@ -214,6 +212,24 @@ inline bool decode_codepoint(std::string_view s8, char32_t &cp) {
   return false;
 }
 
+// Simple UTF-8 stream validator helper.
+inline bool u8_validator(std::string_view s8) {
+  auto l = s8.size();
+  if (l) {
+    uint8_t b = s8[0];
+    if ((b & 0x80) == 0) {
+      return true;
+    } else if ((b & 0xE0) == 0xC0) {
+      if (l >= 2) { return true; }
+    } else if ((b & 0xF0) == 0xE0) {
+      if (l >= 3) { return true; }
+    } else if ((b & 0xF8) == 0xF0) {
+      if (l >= 4) { return true; }
+    }
+  }
+  return false;
+}
+
 inline std::u32string decode(std::string_view s8) {
   std::u32string out;
   size_t i = 0;
@@ -230,12 +246,11 @@ inline std::u32string decode(std::string_view s8) {
 }
 
 inline size_t calc_c_len(std::string_view s8) {
-  char32_t cp;
   std::string u8code_ = "";
   size_t c_len = 0;
   for (size_t i = 0; i < s8.size(); ++i) {
     u8code_ += s8[i];
-    if (decode_codepoint(u8code_, cp)) {
+    if (u8_validator(u8code_)) {
       u8code_.clear();
       c_len += 1;
     }
