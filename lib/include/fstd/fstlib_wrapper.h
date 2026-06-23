@@ -1,9 +1,9 @@
 #pragma once
 
+#include <fstd/thread_pool.h>
 #include <fstlib/build_fst.h>
 #include <fstlib/map.h>
 #include <fstlib/writer.h>
-#include <fstd/thread_pool.h>
 #include <sstream>
 
 namespace fstd {
@@ -93,31 +93,34 @@ public:
   }
 
   std::vector<std::pair<std::string, output_t>>
-  predictive_search(std::string_view word) const {
+  predictive_search(std::string_view word, uint64_t mask = 0) const {
     std::vector<std::pair<std::string, output_t>> result;
-    matcher_ptr_->predictive_search(word,
-                                    [&](const auto &word, const auto &output) {
-                                      result.emplace_back(word, output);
-                                    });
+    matcher_ptr_->predictive_search(
+        word,
+        [&](const auto &word, const auto &output) {
+          result.emplace_back(word, output);
+        },
+        mask);
     return result;
   }
 
   std::vector<std::pair<std::string, output_t>>
   edit_distance_search(std::string_view word, size_t max_edits,
                        size_t insert_cost = 1, size_t delete_cost = 1,
-                       size_t replace_cost = 2) const {
+                       size_t replace_cost = 2, uint64_t mask = 0) const {
     return matcher_ptr_->edit_distance_search(word, max_edits, insert_cost,
-                                              delete_cost, replace_cost);
+                                              delete_cost, replace_cost, mask);
   }
 
   std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
-  regex_search(std::string_view pattern) const {
-    return matcher_ptr_->regex_search(pattern);
+  regex_search(std::string_view pattern, uint64_t mask = 0) const {
+    return matcher_ptr_->regex_search(pattern, mask);
   }
 
   std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
-  regex_search(std::string_view pattern, ThreadPool &thread_pool) const {
-    return matcher_ptr_->regex_search(pattern, thread_pool);
+  regex_search(std::string_view pattern, ThreadPool &thread_pool,
+               uint64_t mask = 0) const {
+    return matcher_ptr_->regex_search(pattern, thread_pool, mask);
   }
 
   std::vector<std::tuple<double, std::string, output_t>>

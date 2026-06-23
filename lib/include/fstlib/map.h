@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <fstlib/matcher.h>
 #include <fstlib/automaton.h>
+#include <fstlib/matcher.h>
 
 namespace fst {
 
@@ -73,10 +73,10 @@ public:
     return matcher<output_t>::longest_prefix_len(sv);
   }
 
-  bool
-  predictive_search(std::string_view sv,
-                    std::function<void(const std::string &, const output_t &)>
-                        callback) const {
+  bool predictive_search(
+      std::string_view sv,
+      std::function<void(const std::string &, const output_t &)> callback,
+      uint64_t mask = 0) const {
     auto ret = false;
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, std::string(), output_t{},
@@ -85,23 +85,26 @@ public:
           ret = true;
           callback(word, output);
         },
-        sv);
+        sv, mask);
     return ret;
   }
 
   std::vector<std::pair<std::string, output_t>>
-  predictive_search(std::string_view sv) const {
+  predictive_search(std::string_view sv, uint64_t mask = 0) const {
     std::vector<std::pair<std::string, output_t>> ret;
-    predictive_search(sv, [&](const auto &word, const auto &output) {
-      ret.emplace_back(word, output);
-    });
+    predictive_search(
+        sv,
+        [&](const auto &word, const auto &output) {
+          ret.emplace_back(word, output);
+        },
+        std::string_view(), mask);
     return ret;
   }
 
   std::vector<std::pair<std::string, output_t>>
   edit_distance_search(std::string_view sv, size_t max_edits,
                        size_t insert_cost = 1, size_t delete_cost = 1,
-                       size_t replace_cost = 1) const {
+                       size_t replace_cost = 1, uint64_t mask = 0) const {
 
     std::vector<std::pair<std::string, output_t>> ret;
 
@@ -113,13 +116,15 @@ public:
                              replace_cost),
         [&](const auto &word, const auto &output) {
           ret.emplace_back(std::pair(word, output));
-        });
+        },
+        std::string_view(), mask);
 
     return ret;
   }
 
   std::vector<std::vector<std::pair<std::string, output_t>>>
-  prefix_distance_search(std::string_view sv, size_t max_distance) const {
+  prefix_distance_search(std::string_view sv, size_t max_distance,
+                         uint64_t mask = 0) const {
     std::vector<std::vector<std::pair<std::string, output_t>>> ret(
         max_distance, std::vector<std::pair<std::string, output_t>>());
     if (sv.empty()) { return ret; }
@@ -131,35 +136,14 @@ public:
         PrefixDistanceAutomaton(sv, max_distance, longest_prefix_len),
         [&](const auto &word, const auto &output, const auto &automaton) {
           ret[automaton.distance()].emplace_back(word, output);
-        });
+        },
+        std::string_view(), mask);
 
     return ret;
   }
 
   std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
-  regex_search(const std::string_view &pattern) const {
-    std::vector<std::pair<std::string, output_t>> results;
-
-    std::string error_message;
-    RegexAutomaton automaton(pattern, error_message);
-    if (!error_message.empty()) { return {results, error_message}; }
-
-    matcher<output_t>::depth_first_visit(
-        matcher<output_t>::header_.start_address, // start from root node
-        std::string(),                            // initial empty string
-        output_t(),                               // initial empty output
-        automaton,                                // regex automaton
-        [&](const std::string &word, const output_t &output) {
-          // callback when match success
-          results.emplace_back(word, output);
-        });
-
-    return {results, error_message};
-  }
-
-  template <typename ThreadPool>
-  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
-  regex_search(const std::string_view &pattern, ThreadPool &thread_pool) const {
+  regex_search(const std::string_view &pattern, uint64_t mask = 0) const {
     std::vector<std::pair<std::string, output_t>> results;
 
     std::string error_message;
@@ -175,14 +159,38 @@ public:
           // callback when match success
           results.emplace_back(word, output);
         },
-        thread_pool, std::string_view());
+        std::string_view(), mask);
+
+    return {results, error_message};
+  }
+
+  template <typename ThreadPool>
+  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
+  regex_search(const std::string_view &pattern, ThreadPool &thread_pool,
+               uint64_t mask = 0) const {
+    std::vector<std::pair<std::string, output_t>> results;
+
+    std::string error_message;
+    RegexAutomaton automaton(pattern, error_message);
+    if (!error_message.empty()) { return {results, error_message}; }
+
+    matcher<output_t>::depth_first_visit(
+        matcher<output_t>::header_.start_address, // start from root node
+        std::string(),                            // initial empty string
+        output_t(),                               // initial empty output
+        automaton,                                // regex automaton
+        [&](const std::string &word, const output_t &output) {
+          // callback when match success
+          results.emplace_back(word, output);
+        },
+        thread_pool, std::string_view(), mask);
 
     return {results, error_message};
   }
 
   std::vector<std::tuple<double, std::string, output_t>>
-  suggest(std::string_view word) const {
-    return matcher<output_t>::suggest_core(word, *this);
+  suggest(std::string_view word, uint64_t mask = 0) const {
+    return matcher<output_t>::suggest_core(word, *this, mask);
   }
 
   template <typename T> void enumerate(T callback) const {

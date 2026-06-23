@@ -263,16 +263,16 @@ FstdxSearcher::regex_search(std::string_view pattern,
       indexes_search_result;
   if (index != 0) {
     indexes_search_result =
-        fst_indexes_searcher_.regex_search(pattern, *thread_pool_ptr);
+        fst_indexes_searcher_.regex_search(pattern, *thread_pool_ptr, index);
   }
   if (!indexes_search_result.second.empty()) {
     return {std::vector<std::string>(), indexes_search_result.second};
   }
   std::vector<std::string> filtered_indexes_search_result;
   for (const auto &p : indexes_search_result.first) {
-    if (match_index(p.second, index)) {
-      filtered_indexes_search_result.emplace_back(std::move(p.first));
-    }
+    // if (match_index(p.second, index)) {
+    filtered_indexes_search_result.emplace_back(std::move(p.first));
+    // }
   }
   if (not_indexes_names.empty()) {
     return {sort_container(std::move(filtered_indexes_search_result)), ""};

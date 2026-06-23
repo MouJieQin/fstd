@@ -259,6 +259,10 @@ template <> struct OutputTraits<uint64bit> {
   static size_t read_byte_value(const char *p, value_type &val) {
     return vb_decode_value_reverse(p, val.bits);
   }
+
+  static bool output_validator(uint64bit output, uint64_t mask) {
+    return (output.bits & mask) != 0;
+  }
 };
 
 template <> struct OutputTraits<std::string> {
@@ -314,4 +318,4 @@ template <> struct OutputTraits<std::string> {
   }
 };
 
-}
+} // namespace fst
