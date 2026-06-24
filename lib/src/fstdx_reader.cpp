@@ -280,6 +280,11 @@ FstdxReader::edit_distance_search(std::string_view word,
   return fst_map_searcher_.edit_distance_search(word, edit_distance);
 }
 
+std::vector<std::unique_ptr<std::pair<double, std::string>>>
+FstdxReader::suggest(std::string_view word) const {
+  return fst_map_searcher_.suggest(word);
+}
+
 std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
 FstdxReader::regex_search(std::string_view pattern) const {
   return fst_map_searcher_.regex_search(pattern);

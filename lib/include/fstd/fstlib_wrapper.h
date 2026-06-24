@@ -84,27 +84,26 @@ public:
   }
 
   std::vector<std::unique_ptr<std::string>>
-  predictive_search(std::string_view word, uint64_t mask = 0) const {
-    return matcher_ptr_->predictive_search(word, mask);
+  predictive_search(std::string_view word) const {
+    return matcher_ptr_->predictive_search(word);
   }
 
   std::vector<std::unique_ptr<std::string>>
   edit_distance_search(std::string_view word, size_t max_edits,
                        size_t insert_cost = 1, size_t delete_cost = 1,
-                       size_t replace_cost = 2, uint64_t mask = 0) const {
+                       size_t replace_cost = 2) const {
     return matcher_ptr_->edit_distance_search(word, max_edits, insert_cost,
-                                              delete_cost, replace_cost, mask);
+                                              delete_cost, replace_cost);
   }
 
   std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
-  regex_search(std::string_view pattern, uint64_t mask = 0) const {
-    return matcher_ptr_->regex_search(pattern, mask);
+  regex_search(std::string_view pattern) const {
+    return matcher_ptr_->regex_search(pattern);
   }
 
   std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
-  regex_search(std::string_view pattern, ThreadPool &thread_pool,
-               uint64_t mask = 0) const {
-    return matcher_ptr_->regex_search(pattern, thread_pool, mask);
+  regex_search(std::string_view pattern, ThreadPool &thread_pool) const {
+    return matcher_ptr_->regex_search(pattern, thread_pool);
   }
 
   std::vector<std::unique_ptr<std::pair<double, std::string>>>

@@ -247,12 +247,11 @@ protected:
   }
 
   template <typename T, typename U, typename M>
-  void depth_first_visit_single(uint32_t address,
-                                const std::string &partial_word,
-                                const output_t &partial_output,
-                                const T &transit, U accept, M &accept_mutex,
-                                std::string_view prefix = std::string_view(),
-                                uint64_t mask = 0) const {
+  void
+  depth_first_visit_single(uint32_t address, const std::string &partial_word,
+                           const output_t &partial_output, const T &transit,
+                           U accept, M &accept_mutex,
+                           std::string_view prefix = std::string_view()) const {
 
     const char *jump_table_labels = nullptr;
     size_t jump_table_label_index = 0;
@@ -353,23 +352,11 @@ protected:
               }
             };
 
-            auto work = [&]() {
-              if constexpr (std::is_same_v<std::decay_t<M>, std::mutex>) {
-                std::lock_guard<std::mutex> lock(accept_mutex);
-                acceptor();
-              } else {
-                acceptor();
-              }
-            };
-
-            if constexpr (std::is_same_v<std::decay_t<output_t>,
-                                         fst::uint64bit>) {
-              if (OutputTraits<uint64bit>::output_validator(final_output,
-                                                            mask)) {
-                work();
-              }
+            if constexpr (std::is_same_v<std::decay_t<M>, std::mutex>) {
+              std::lock_guard<std::mutex> lock(accept_mutex);
+              acceptor();
             } else {
-              work();
+              acceptor();
             }
           }
         }
@@ -377,9 +364,9 @@ protected:
 
       if (next_address) {
         if ((prefix.empty() || prefix.front() == arc) && atm.can_match()) {
-          depth_first_visit_single(
-              next_address, word, output, atm, accept, accept_mutex,
-              prefix.empty() ? prefix : prefix.substr(1), mask);
+          depth_first_visit_single(next_address, word, output, atm, accept,
+                                   accept_mutex,
+                                   prefix.empty() ? prefix : prefix.substr(1));
         }
       }
 
@@ -394,8 +381,7 @@ protected:
                              const output_t &partial_output, const T &transit,
                              U accept, std::string_view prefix,
                              ThreadPool &thread_pool, std::mutex &accept_mutex,
-                             std::vector<std::future<void>> &results,
-                             uint64_t mask) const {
+                             std::vector<std::future<void>> &results) const {
 
     const char *jump_table_labels = nullptr;
     size_t jump_table_label_index = 0;
@@ -481,30 +467,18 @@ protected:
             const auto &final_output =
                 should_append_state_output ? output + state_output : output;
 
-            auto work = [&]() {
-              std::lock_guard<std::mutex> lock(accept_mutex);
-              // compile-time check: accept supports 3 parameters (word,
-              // output, transit)
-              if constexpr (std::is_invocable_v<U &, decltype(word),
-                                                decltype(final_output),
-                                                const T &>) {
-                // 3-parameter version: pass atm
-                accept(word, final_output, atm);
-              } else {
-                // 2-parameter version: original logic (compatible with old
-                // code)
-                accept(word, final_output);
-              }
-            };
-
-            if constexpr (std::is_same_v<std::decay_t<output_t>,
-                                         fst::uint64bit>) {
-              if (OutputTraits<uint64bit>::output_validator(final_output,
-                                                            mask)) {
-                work();
-              }
+            std::lock_guard<std::mutex> lock(accept_mutex);
+            // compile-time check: accept supports 3 parameters (word,
+            // output, transit)
+            if constexpr (std::is_invocable_v<U &, decltype(word),
+                                              decltype(final_output),
+                                              const T &>) {
+              // 3-parameter version: pass atm
+              accept(word, final_output, atm);
             } else {
-              work();
+              // 2-parameter version: original logic (compatible with old
+              // code)
+              accept(word, final_output);
             }
           }
         }
@@ -516,16 +490,16 @@ protected:
           if (decode_codepoint(word, _)) {
             results.emplace_back(
                 thread_pool.enqueue([this, next_address, word, output, atm,
-                                     accept, prefix, &accept_mutex, mask] {
+                                     accept, prefix, &accept_mutex] {
                   depth_first_visit_single(
                       next_address, word, output, atm, accept, accept_mutex,
-                      prefix.empty() ? prefix : prefix.substr(1), mask);
+                      prefix.empty() ? prefix : prefix.substr(1));
                 }));
           } else {
-            depth_first_visit_parallel(
-                next_address, word, output, atm, accept,
-                prefix.empty() ? prefix : prefix.substr(1), thread_pool,
-                accept_mutex, results, mask);
+            depth_first_visit_parallel(next_address, word, output, atm, accept,
+                                       prefix.empty() ? prefix
+                                                      : prefix.substr(1),
+                                       thread_pool, accept_mutex, results);
           }
         }
       }
@@ -538,12 +512,12 @@ protected:
   template <typename T, typename U>
   void depth_first_visit(uint32_t address, const std::string &partial_word,
                          const output_t &partial_output, const T &transit,
-                         U accept, std::string_view prefix = std::string_view(),
-                         uint64_t mask = 0) const {
+                         U accept,
+                         std::string_view prefix = std::string_view()) const {
     struct Dummy_mutex {};
     Dummy_mutex dummy_mutex;
     depth_first_visit_single(address, partial_word, partial_output, transit,
-                             accept, dummy_mutex, prefix, mask);
+                             accept, dummy_mutex, prefix);
   }
 
   // template <typename T, typename U>
@@ -570,13 +544,12 @@ protected:
   void depth_first_visit(uint32_t address, const std::string &partial_word,
                          const output_t &partial_output, const T &transit,
                          U accept, ThreadPool &thread_pool,
-                         std::string_view prefix = std::string_view(),
-                         uint64_t mask = 0) const {
+                         std::string_view prefix = std::string_view()) const {
     std::mutex accept_mutex;
     std::vector<std::future<void>> results;
     depth_first_visit_parallel(address, partial_word, partial_output, transit,
                                accept, prefix, thread_pool, accept_mutex,
-                               results, mask);
+                               results);
 
     for (auto &result : results) {
       result.get();
@@ -628,20 +601,24 @@ protected:
 
   // Suggestion
   template <typename T>
-  decltype(auto) suggest_core(std::string_view word, const T &matcher,
-                              uint64_t mask = 0) const {
+  decltype(auto) suggest_core(std::string_view word, const T &matcher) const {
     std::vector<std::unique_ptr<std::pair<double, std::string>>> suggestions;
-
-    size_t min_edits = 2;
-    size_t max_edits = 6;
+    size_t c_len = calc_c_len(word);
+    if (c_len == 0) { return suggestions; }
+    size_t min_edits = c_len <= 1 ? 1 : 2;
+    size_t max_edits = c_len;
 
     for (size_t edits = min_edits; edits <= max_edits; edits++) {
-      auto results = matcher.edit_distance_search(word, edits, mask);
+      auto results = matcher.edit_distance_search(word, edits, 1, 1, 2);
 
-      if (results.size() >= 2) {
+      if (results.size() >= 1) {
         for (auto &result : results) {
           std::string &candidate = *result;
-          if (candidate != word) {
+          if (candidate == word) {
+            suggestions.emplace_back(
+                std::make_unique<std::pair<double, std::string>>(
+                    1, std::move(candidate)));
+          } else {
             auto jw = jaro_winkler_distance(word, candidate);
             auto le = levenshtein_distance(word, candidate);
             auto similarity = jw * le;

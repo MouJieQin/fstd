@@ -162,7 +162,7 @@ FstdxSearcher::predictive_search(std::string_view word,
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
-      LOG_ERROR("FstdxSearcher::predictive_search, name [{}] not found", name);
+      LOG_ERROR("FstdxSearcher: name [{}] not found", name);
     } else {
       vector<unique_ptr<string>> res = iter->second->predictive_search(word);
       count += res.size();
@@ -172,58 +172,95 @@ FstdxSearcher::predictive_search(std::string_view word,
   return uniq_sort_results(std::move(results), count);
 }
 
+std::vector<std::string> FstdxSearcher::uniq_sort_results(
+    std::vector<std::vector<std::unique_ptr<std::pair<double, std::string>>>>
+        &&results,
+    size_t count) const {
+  vector<string> result;
+  if (count == 0) { return result; }
+  vector<unique_ptr<pair<double, string>>> result_ptrs;
+  result.reserve(count);
+  result_ptrs.reserve(count);
+  for (auto &res : results) {
+    for (auto &ptr : res) {
+      result_ptrs.emplace_back(std::move(ptr));
+    }
+  }
+
+  std::sort(result_ptrs.begin(), result_ptrs.end(), [&](auto &x, auto &y) {
+    return x->first == y->first ? x->second < y->second : x->first > y->first;
+  });
+
+  // unique
+  size_t index = 0;
+  for (size_t i = 1; i < result_ptrs.size(); i++) {
+    auto &x = result_ptrs[index]->second;
+    auto &y = result_ptrs[i]->second;
+    if (!(x.size() == y.size() && x == y)) {
+      result.emplace_back(std::move(x));
+      index = i;
+    }
+  }
+  // handle the last key
+  result.emplace_back(std::move(result_ptrs[index]->second));
+  return result;
+}
+
 std::vector<std::string>
 FstdxSearcher::suggest(std::string_view word,
                        const std::vector<std::string> &names) const {
-  // auto [index, not_indexes_names] = cost_analysis(names);
-  // std::vector<std::tuple<double, std::string, fst::uint64bit>>
-  //     indexes_search_result;
-  // if (index != 0) {
-  //   indexes_search_result = fst_indexes_searcher_.suggest(word);
-  // }
-  // std::vector<std::string> filtered_indexes_search_result;
-  // for (const auto &p : indexes_search_result) {
-  //   if (match_index(std::get<2>(p), index)) {
-  //     filtered_indexes_search_result.emplace_back(std::get<1>(p));
-  //   }
-  // }
-  // if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
-  // return filtered_indexes_search_result;
-  return std::vector<std::string>();
+
+  vector<vector<unique_ptr<pair<double, string>>>> results;
+  results.reserve(names.size());
+  size_t count = 0;
+  for (const string &name : names) {
+    auto iter = fstdxes_.find(name);
+    if (iter == fstdxes_.end()) {
+      LOG_ERROR("FstdxSearcher: name [{}] not found", name);
+    } else {
+      vector<unique_ptr<pair<double, string>>> res =
+          iter->second->suggest(word);
+      count += res.size();
+      results.emplace_back(std::move(res));
+    }
+  }
+  return uniq_sort_results(std::move(results), count);
 }
 
 std::vector<std::string>
 FstdxSearcher::prefix_distance_search(std::string_view word,
                                       const std::vector<std::string> &names,
                                       size_t max_distance) const {
-  auto [index, not_indexes_names] = cost_analysis(names);
-  std::vector<std::vector<std::pair<std::string, fst::uint64bit>>>
-      indexes_search_result;
-  if (index != 0) {
-    indexes_search_result =
-        fst_indexes_searcher_.prefix_distance_search(word, max_distance);
-  }
-  std::vector<std::string> filtered_indexes_search_result;
-  size_t dist = 0;
-  for (auto &v : indexes_search_result) {
-    std::cout << "v.size(): " << v.size() << " indexes_search_result.size(): "
-              << indexes_search_result.size() << std::endl;
-    std::vector<size_t> indices;
-    indices.reserve(v.size());
-    for (size_t i = 0; i < v.size(); ++i) {
-      if (match_index(v[i].second, index)) { indices.push_back(i); }
-    }
-    std::sort(indices.begin(), indices.end(),
-              [&](size_t i, size_t j) { return v[i].first < v[j].first; });
-    for (size_t i : indices) {
-      std::cout << "v[i].first: " << v[i].first << " dist: " << dist
-                << std::endl;
-      filtered_indexes_search_result.emplace_back(std::move(v[i].first));
-    }
-    dist += 1;
-  }
-  if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
-  return filtered_indexes_search_result;
+  // auto [index, not_indexes_names] = cost_analysis(names);
+  // std::vector<std::vector<std::pair<std::string, fst::uint64bit>>>
+  //     indexes_search_result;
+  // if (index != 0) {
+  //   indexes_search_result =
+  //       fst_indexes_searcher_.prefix_distance_search(word, max_distance);
+  // }
+  // std::vector<std::string> filtered_indexes_search_result;
+  // size_t dist = 0;
+  // for (auto &v : indexes_search_result) {
+  //   std::cout << "v.size(): " << v.size() << " indexes_search_result.size():
+  //   "
+  //             << indexes_search_result.size() << std::endl;
+  //   std::vector<size_t> indices;
+  //   indices.reserve(v.size());
+  //   for (size_t i = 0; i < v.size(); ++i) {
+  //     if (match_index(v[i].second, index)) { indices.push_back(i); }
+  //   }
+  //   std::sort(indices.begin(), indices.end(),
+  //             [&](size_t i, size_t j) { return v[i].first < v[j].first; });
+  //   for (size_t i : indices) {
+  //     std::cout << "v[i].first: " << v[i].first << " dist: " << dist
+  //               << std::endl;
+  //     filtered_indexes_search_result.emplace_back(std::move(v[i].first));
+  //   }
+  //   dist += 1;
+  // }
+  // if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
+  // return filtered_indexes_search_result;
+  return std::vector<std::string>();
 }
 
 std::vector<std::string> FstdxSearcher::uniq_sort_results(
@@ -245,9 +282,9 @@ std::vector<std::string> FstdxSearcher::uniq_sort_results(
   // unique
   size_t index = 0;
   for (size_t i = 1; i < result_ptrs.size(); i++) {
-    if (result_ptrs[index]->size() == result_ptrs[i]->size() &&
-        *result_ptrs[index] == *result_ptrs[i]) {
-    } else {
+    auto &x = result_ptrs[index];
+    auto &y = result_ptrs[i];
+    if (!(x->size() == y->size() && *x == *y)) {
       result.emplace_back(std::move(*result_ptrs[index]));
       index = i;
     }
@@ -514,58 +551,6 @@ bool FstdxSearcher::load_fst_index(const std::string &fst_index_path) {
   }
   fst_indexes_searcher_ = FstMapSearcher<fst::uint64bit>(std::move(dst));
   return true;
-}
-
-bool FstdxSearcher::match_index(fst::uint64bit index, uint64_t mask) const {
-  return (index.bits & mask) != 0;
-}
-
-std::pair<uint64_t, std::vector<std::string>>
-FstdxSearcher::cost_analysis(const std::vector<std::string> &names) const {
-  // if (names.size() < 2) { return {0, names}; }
-  // size_t key_size = 0;
-  // for (const string &name : names) {
-  //   auto iter = fstdxes_.find(name);
-  //   if (iter != fstdxes_.end()) {
-  //     key_size += iter->second->get_fst_key_size();
-  //   }
-  // }
-  // if (key_size < fst_indexes_size_) { return {0, names}; }
-  uint64_t index = 1;
-  uint64_t result_index = 0;
-  std::vector<std::string> result_names;
-  std::unordered_set<std::string> names_set(names.begin(), names.end());
-  for (const string &name : fst_indexes_names_) {
-    if (names_set.find(name) != names_set.end()) {
-      result_index |= index;
-    } else {
-      result_names.emplace_back(name);
-    }
-    index <<= 1;
-  }
-  return {result_index, result_names};
-}
-
-std::vector<std::string> FstdxSearcher::uniq_sort_search(
-    std::string_view word, const std::vector<std::string> &names,
-    std::function<std::vector<std::pair<std::string, uint64_t>>(
-        std::string_view, const std::shared_ptr<FstdxReader> &)>
-        search_method) const {
-
-  std::set<string> uni_sorted_result;
-  for (const string &name : names) {
-    auto iter = fstdxes_.find(name);
-    if (iter != fstdxes_.end()) {
-      std::vector<std::pair<std::string, uint64_t>> predictive_results =
-          search_method(word, iter->second);
-      if (!predictive_results.empty()) {
-        for (auto &p : predictive_results) {
-          uni_sorted_result.emplace(std::move(p.first));
-        }
-      }
-    }
-  }
-  return {uni_sorted_result.cbegin(), uni_sorted_result.cend()};
 }
 
 } // namespace fstd

@@ -74,7 +74,7 @@ public:
   }
 
   std::vector<std::unique_ptr<std::string>>
-  predictive_search(std::string_view sv, uint64_t mask = 0) const {
+  predictive_search(std::string_view sv) const {
     std::vector<std::unique_ptr<std::string>> ret;
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, std::string(), output_t{},
@@ -82,14 +82,14 @@ public:
         [&](const auto &word, const auto &_) {
           ret.emplace_back(std::make_unique<std::string>(word));
         },
-        sv, mask);
+        sv);
     return ret;
   }
 
   std::vector<std::unique_ptr<std::string>>
   edit_distance_search(std::string_view sv, size_t max_edits,
                        size_t insert_cost = 1, size_t delete_cost = 1,
-                       size_t replace_cost = 1, uint64_t mask = 0) const {
+                       size_t replace_cost = 2) const {
     std::vector<std::unique_ptr<std::string>> ret;
     if (sv.empty()) { return ret; }
     matcher<output_t>::depth_first_visit(
@@ -99,14 +99,13 @@ public:
         [&](const auto &word, const auto &_) {
           ret.emplace_back(std::make_unique<std::string>(word));
         },
-        std::string_view(), mask);
+        std::string_view());
 
     return ret;
   }
 
   std::vector<std::vector<std::pair<std::string, output_t>>>
-  prefix_distance_search(std::string_view sv, size_t max_distance,
-                         uint64_t mask = 0) const {
+  prefix_distance_search(std::string_view sv, size_t max_distance) const {
     std::vector<std::vector<std::pair<std::string, output_t>>> ret(
         max_distance, std::vector<std::pair<std::string, output_t>>());
     if (sv.empty()) { return ret; }
@@ -119,13 +118,13 @@ public:
         [&](const auto &word, const auto &output, const auto &automaton) {
           ret[automaton.distance()].emplace_back(word, output);
         },
-        std::string_view(), mask);
+        std::string_view());
 
     return ret;
   }
 
   std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
-  regex_search(std::string_view pattern, uint64_t mask = 0) const {
+  regex_search(std::string_view pattern) const {
     std::vector<std::unique_ptr<std::string>> results;
     std::string error_message;
     RegexAutomaton automaton(pattern, error_message);
@@ -142,15 +141,14 @@ public:
           // callback when match success
           results.emplace_back(std::make_unique<std::string>(word));
         },
-        std::string_view(), mask);
+        std::string_view());
 
     return {std::move(results), std::move(error_message)};
   }
 
   template <typename ThreadPool>
   std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
-  regex_search(std::string_view pattern, ThreadPool &thread_pool,
-               uint64_t mask = 0) const {
+  regex_search(std::string_view pattern, ThreadPool &thread_pool) const {
     std::vector<std::unique_ptr<std::string>> results;
 
     std::string error_message;
@@ -168,14 +166,14 @@ public:
           // callback when match success
           results.emplace_back(std::make_unique<std::string>(word));
         },
-        thread_pool, std::string_view(), mask);
+        thread_pool, std::string_view());
 
     return {std::move(results), std::move(error_message)};
   }
 
   std::vector<std::unique_ptr<std::pair<double, std::string>>>
-  suggest(std::string_view word, uint64_t mask = 0) const {
-    return matcher<output_t>::suggest_core(word, *this, mask);
+  suggest(std::string_view word) const {
+    return matcher<output_t>::suggest_core(word, *this);
   }
 
   template <typename T> void enumerate(T callback) const {
