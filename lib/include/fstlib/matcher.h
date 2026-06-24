@@ -290,17 +290,6 @@ protected:
         arc = read_arc(ope, p);
       }
 
-      if constexpr (std::is_same_v<std::decay_t<output_t>, fst::uint64bit>) {
-        // pruning
-        if (!OutputTraits<output_t>::empty(partial_output) &&
-            (!ope.data.has_output && !ope.data.has_state_output)) {
-          if (!OutputTraits<uint64bit>::output_validator(partial_output,
-                                                         mask)) {
-            break;
-          }
-        }
-      }
-
       uint32_t delta, hub_next_address;
       bool has_hub_next_address;
       read_delta(ope, p, delta, hub_next_address, has_hub_next_address);
@@ -442,17 +431,6 @@ protected:
         arc = jump_table_labels[jump_table_label_index++];
       } else {
         arc = read_arc(ope, p);
-      }
-
-      if constexpr (std::is_same_v<std::decay_t<output_t>, fst::uint64bit>) {
-        // pruning
-        if (!OutputTraits<output_t>::empty(partial_output) &&
-            (!ope.data.has_output && !ope.data.has_state_output)) {
-          if (!OutputTraits<uint64bit>::output_validator(partial_output,
-                                                         mask)) {
-            break;
-          }
-        }
       }
 
       uint32_t delta, hub_next_address;
