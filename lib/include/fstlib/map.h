@@ -50,11 +50,11 @@ public:
     return matcher<output_t>::match(sv.data(), sv.size(), nullptr, prefixes);
   }
 
-  std::vector<std::pair<size_t, output_t>>
+  std::vector<size_t>
   common_prefix_search(std::string_view sv) const {
     std::vector<std::pair<size_t, output_t>> ret;
-    common_prefix_search(sv, [&](size_t length, const output_t &output) {
-      ret.emplace_back(std::pair(length, output));
+    common_prefix_search(sv, [&](size_t length, const output_t &_) {
+      ret.emplace_back(length);
     });
     return ret;
   }
@@ -73,49 +73,31 @@ public:
     return matcher<output_t>::longest_prefix_len(sv);
   }
 
-  bool predictive_search(
-      std::string_view sv,
-      std::function<void(const std::string &, const output_t &)> callback,
-      uint64_t mask = 0) const {
-    auto ret = false;
+  std::vector<std::unique_ptr<std::string>>
+  predictive_search(std::string_view sv, uint64_t mask = 0) const {
+    std::vector<std::unique_ptr<std::string>> ret;
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, std::string(), output_t{},
         DummyAutomaton(),
-        [&](const auto &word, const auto &output) {
-          ret = true;
-          callback(word, output);
+        [&](const auto &word, const auto &_) {
+          ret.emplace_back(std::make_unique<std::string>(word));
         },
         sv, mask);
     return ret;
   }
 
-  std::vector<std::pair<std::string, output_t>>
-  predictive_search(std::string_view sv, uint64_t mask = 0) const {
-    std::vector<std::pair<std::string, output_t>> ret;
-    predictive_search(
-        sv,
-        [&](const auto &word, const auto &output) {
-          ret.emplace_back(word, output);
-        },
-        std::string_view(), mask);
-    return ret;
-  }
-
-  std::vector<std::pair<std::string, output_t>>
+  std::vector<std::unique_ptr<std::string>>
   edit_distance_search(std::string_view sv, size_t max_edits,
                        size_t insert_cost = 1, size_t delete_cost = 1,
                        size_t replace_cost = 1, uint64_t mask = 0) const {
-
-    std::vector<std::pair<std::string, output_t>> ret;
-
+    std::vector<std::unique_ptr<std::string>> ret;
     if (sv.empty()) { return ret; }
-
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, std::string(), output_t{},
         LevenshteinAutomaton(sv, max_edits, insert_cost, delete_cost,
                              replace_cost),
-        [&](const auto &word, const auto &output) {
-          ret.emplace_back(std::pair(word, output));
+        [&](const auto &word, const auto &_) {
+          ret.emplace_back(std::make_unique<std::string>(word));
         },
         std::string_view(), mask);
 
@@ -142,53 +124,56 @@ public:
     return ret;
   }
 
-  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
-  regex_search(const std::string_view &pattern, uint64_t mask = 0) const {
-    std::vector<std::pair<std::string, output_t>> results;
-
+  std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
+  regex_search(std::string_view pattern, uint64_t mask = 0) const {
+    std::vector<std::unique_ptr<std::string>> results;
     std::string error_message;
     RegexAutomaton automaton(pattern, error_message);
-    if (!error_message.empty()) { return {results, error_message}; }
+    if (!error_message.empty()) {
+      return {std::move(results), std::move(error_message)};
+    }
 
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, // start from root node
         std::string(),                            // initial empty string
         output_t(),                               // initial empty output
         automaton,                                // regex automaton
-        [&](const std::string &word, const output_t &output) {
+        [&](const std::string &word, const output_t &_) {
           // callback when match success
-          results.emplace_back(word, output);
+          results.emplace_back(std::make_unique<std::string>(word));
         },
         std::string_view(), mask);
 
-    return {results, error_message};
+    return {std::move(results), std::move(error_message)};
   }
 
   template <typename ThreadPool>
-  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
-  regex_search(const std::string_view &pattern, ThreadPool &thread_pool,
+  std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
+  regex_search(std::string_view pattern, ThreadPool &thread_pool,
                uint64_t mask = 0) const {
-    std::vector<std::pair<std::string, output_t>> results;
+    std::vector<std::unique_ptr<std::string>> results;
 
     std::string error_message;
     RegexAutomaton automaton(pattern, error_message);
-    if (!error_message.empty()) { return {results, error_message}; }
+    if (!error_message.empty()) {
+      return {std::move(results), std::move(error_message)};
+    }
 
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, // start from root node
         std::string(),                            // initial empty string
         output_t(),                               // initial empty output
         automaton,                                // regex automaton
-        [&](const std::string &word, const output_t &output) {
+        [&](const std::string &word, const output_t &_) {
           // callback when match success
-          results.emplace_back(word, output);
+          results.emplace_back(std::make_unique<std::string>(word));
         },
         thread_pool, std::string_view(), mask);
 
-    return {results, error_message};
+    return {std::move(results), std::move(error_message)};
   }
 
-  std::vector<std::tuple<double, std::string, output_t>>
+  std::vector<std::unique_ptr<std::pair<double, std::string>>>
   suggest(std::string_view word, uint64_t mask = 0) const {
     return matcher<output_t>::suggest_core(word, *this, mask);
   }

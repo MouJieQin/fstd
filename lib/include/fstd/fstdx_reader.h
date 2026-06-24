@@ -77,23 +77,21 @@ public:
   bool exact_match_search(std::string_view word,
                           std::vector<std::string> &result) const;
 
-  std::vector<std::pair<std::string, uint64_t>>
+  std::vector<std::unique_ptr<std::string>>
   common_prefix_search(std::string_view word) const;
 
-  size_t
-  longest_common_prefix_search(std::string_view word,
-                               std::pair<std::string, uint64_t> &result) const;
+  size_t longest_common_prefix_search(std::string_view word) const;
 
-  std::vector<std::pair<std::string, uint64_t>>
+  std::vector<std::unique_ptr<std::string>>
   predictive_search(std::string_view word) const;
 
-  std::vector<std::pair<std::string, uint64_t>>
+  std::vector<std::unique_ptr<std::string>>
   edit_distance_search(std::string_view word, size_t edit_distance = 1) const;
 
-  std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+  std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
   regex_search(std::string_view pattern) const;
 
-  std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+  std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
   regex_search(std::string_view pattern, ThreadPool &thread_pool) const;
 
   std::vector<std::tuple<double, std::string, uint64_t>>

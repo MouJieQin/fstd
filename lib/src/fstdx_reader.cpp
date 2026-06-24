@@ -260,42 +260,41 @@ bool FstdxReader::exact_match_search(std::string_view word,
   return exact_match_search_by_index_code(index_res, result);
 }
 
-std::vector<std::pair<std::string, uint64_t>>
+std::vector<std::unique_ptr<std::string>>
 FstdxReader::common_prefix_search(std::string_view word) const {
   return fst_map_searcher_.common_prefix_search(word);
 }
 
-size_t FstdxReader::longest_common_prefix_search(
-    std::string_view word, std::pair<std::string, uint64_t> &result) const {
-  return fst_map_searcher_.longest_common_prefix_search(word, result);
+size_t FstdxReader::longest_common_prefix_search(std::string_view word) const {
+  return fst_map_searcher_.longest_common_prefix_search(word);
 }
 
-std::vector<std::pair<std::string, uint64_t>>
+std::vector<std::unique_ptr<std::string>>
 FstdxReader::predictive_search(std::string_view word) const {
   return fst_map_searcher_.predictive_search(word);
 }
 
-std::vector<std::pair<std::string, uint64_t>>
+std::vector<std::unique_ptr<std::string>>
 FstdxReader::edit_distance_search(std::string_view word,
                                   size_t edit_distance) const {
   return fst_map_searcher_.edit_distance_search(word, edit_distance);
 }
 
-std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
 FstdxReader::regex_search(std::string_view pattern) const {
   return fst_map_searcher_.regex_search(pattern);
 }
 
-std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
 FstdxReader::regex_search(std::string_view pattern,
                           ThreadPool &thread_pool) const {
   return fst_map_searcher_.regex_search(pattern, thread_pool);
 }
 
-std::vector<std::tuple<double, std::string, uint64_t>>
-FstdxReader::spellcheck_word(std::string_view word, const size_t n) const {
-  return fst_map_searcher_.spellcheck_word(word, n);
-}
+// std::vector<std::tuple<double, std::string, uint64_t>>
+// FstdxReader::spellcheck_word(std::string_view word, const size_t n) const {
+//   return fst_map_searcher_.spellcheck_word(word, n);
+// }
 
 std::vector<std::pair<std::string, uint64_t>> FstdxReader::enumerate() const {
   return fst_map_searcher_.enumerate(fst_key_size_);

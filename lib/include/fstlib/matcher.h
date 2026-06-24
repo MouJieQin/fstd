@@ -8,6 +8,7 @@
 #pragma once
 #include <future>
 #include <iostream>
+#include <memory>
 #include <mutex>
 
 #include <fstlib/automaton.h>
@@ -629,12 +630,7 @@ protected:
   template <typename T>
   decltype(auto) suggest_core(std::string_view word, const T &matcher,
                               uint64_t mask = 0) const {
-    using R =
-        typename std::conditional<T::has_output,
-                                  std::tuple<double, std::string, output_t>,
-                                  std::pair<double, std::string>>::type;
-
-    std::vector<R> suggestions;
+    std::vector<std::unique_ptr<std::pair<double, std::string>>> suggestions;
 
     size_t min_edits = 2;
     size_t max_edits = 6;
@@ -643,38 +639,21 @@ protected:
       auto results = matcher.edit_distance_search(word, edits, mask);
 
       if (results.size() >= 2) {
-        for (const auto &result : results) {
-          std::string candidate;
-          if constexpr (T::has_output) {
-            candidate = result.first;
-          } else {
-            candidate = result;
-          }
+        for (auto &result : results) {
+          std::string &candidate = *result;
           if (candidate != word) {
             auto jw = jaro_winkler_distance(word, candidate);
             auto le = levenshtein_distance(word, candidate);
             auto similarity = jw * le;
-            if constexpr (T::has_output) {
-              suggestions.emplace_back(
-                  std::tuple(similarity, candidate, result.second));
-            } else {
-              suggestions.emplace_back(std::pair(similarity, candidate));
-            }
+            suggestions.emplace_back(
+                std::make_unique<std::pair<double, std::string>>(
+                    similarity, std::move(candidate)));
           }
         }
 
-        if (!suggestions.empty()) {
-          std::sort(suggestions.begin(), suggestions.end(),
-                    [](const auto &a, const auto &b) {
-                      return std::get<0>(a) == std::get<0>(b)
-                                 ? std::get<1>(a) < std::get<1>(b)
-                                 : std::get<0>(a) > std::get<0>(b);
-                    });
-          break;
-        }
+        if (!suggestions.empty()) { break; }
       }
     }
-
     return suggestions;
   }
 };

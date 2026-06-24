@@ -149,123 +149,123 @@ int main(int argc, char **argv) {
   std::cout << "详细日志：" << (verbose ? "开启" : "关闭") << "\n";
 
   if (*search_cmd) {
-    if (ends_with(file_path, ".fstdd")) {
-      fstd::FstddReader fstdd_reader(file_path);
-      if (!fstdd_reader) {
-        LOG_ERROR("文件 {} 不是有效的 fstdd 文件", file_path);
-        return 1;
-      }
-      if (query_meta) {
-        json meta = fstdd_reader.get_meta();
-        std::cout << meta.dump(2) << std::endl;
-      }
-    } else if (ends_with(file_path, ".fstdx")) {
-      fstd::FstdxReader fstdx_searcher(file_path);
-      if (!fstdx_searcher) {
-        LOG_ERROR("文件 {} 不是有效的 fstdx 文件", file_path);
-        return 1;
-      }
+    // if (ends_with(file_path, ".fstdd")) {
+    //   fstd::FstddReader fstdd_reader(file_path);
+    //   if (!fstdd_reader) {
+    //     LOG_ERROR("文件 {} 不是有效的 fstdd 文件", file_path);
+    //     return 1;
+    //   }
+    //   if (query_meta) {
+    //     json meta = fstdd_reader.get_meta();
+    //     std::cout << meta.dump(2) << std::endl;
+    //   }
+    // } else if (ends_with(file_path, ".fstdx")) {
+    //   fstd::FstdxReader fstdx_searcher(file_path);
+    //   if (!fstdx_searcher) {
+    //     LOG_ERROR("文件 {} 不是有效的 fstdx 文件", file_path);
+    //     return 1;
+    //   }
 
-      if (query_meta) {
-        json meta = fstdx_searcher.get_meta();
-        std::cout << meta.dump(2) << std::endl;
-      } else if (common_prefix) {
-        LOG_INFO("搜索公共前缀");
-        std::vector<std::pair<std::string, uint64_t>> result =
-            fstdx_searcher.common_prefix_search(word);
-        if (result.empty()) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        for (const auto &p : result) {
-          std::cout << p.first << " -> " << p.second << std::endl;
-        }
-      } else if (longest_common_prefix) {
-        LOG_INFO("搜索最长公前缀");
-        std::pair<std::string, uint64_t> result;
-        size_t len = fstdx_searcher.longest_common_prefix_search(word, result);
-        if (len == 0) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        std::cout << "最长公前缀: " << result.first << std::endl;
-        std::cout << "最长公前缀长度: " << len << std::endl;
-      } else if (predictive) {
-        LOG_INFO("指定预测词");
-        std::vector<std::pair<std::string, uint64_t>> result =
-            fstdx_searcher.predictive_search(word);
-        if (result.empty()) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        for (const auto &p : result) {
-          std::cout << p.first << " -> " << p.second << std::endl;
-        }
-      } else if (edit_distance) {
-        LOG_INFO("指定编辑距离");
-        std::vector<std::pair<std::string, uint64_t>> result =
-            fstdx_searcher.edit_distance_search(word, 1);
-        if (result.empty()) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        for (const auto &p : result) {
-          std::cout << p.first << " -> " << p.second << std::endl;
-        }
-      } else if (regex) {
-        LOG_INFO("指定正则表达式");
-        std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
-            p_results = fstdx_searcher.regex_search(word);
-        const auto &results = p_results.first;
-        const auto &error_message = p_results.second;
-        if (!error_message.empty()) {
-          LOG_ERROR("正则表达式错误：{}", error_message);
-          return 1;
-        }
-        if (results.empty()) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        for (const auto &p : results) {
-          std::cout << p.first << " -> " << p.second << std::endl;
-        }
-      } else if (spellcheck) {
-        LOG_INFO("指定拼写检查");
-        std::vector<std::tuple<double, std::string, uint64_t>> result =
-            fstdx_searcher.spellcheck_word(word);
-        if (result.empty()) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        for (const auto &p : result) {
-          std::cout << std::get<1>(p) << " -> " << std::get<2>(p) << std::endl;
-        }
-      } else if (enumerate) {
-        LOG_INFO("枚举所有键");
-        std::vector<std::pair<std::string, uint64_t>> result =
-            fstdx_searcher.enumerate();
-        if (result.empty()) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        for (const auto &p : result) {
-          std::cout << p.first << " -> " << p.second << std::endl;
-        }
-      } else {
-        LOG_INFO("进行精确匹配搜索");
-        std::vector<std::string> result;
-        bool res = fstdx_searcher.exact_match_search(word, result);
-        if (!res) {
-          LOG_INFO("未找到匹配项");
-          return 1;
-        }
-        for (const std::string &s : result) {
-          std::cout << "------------------------------" << std::endl;
-          std::cout << s << std::endl;
-          std::cout << "------------------------------" << std::endl;
-        }
-      }
-    }
+      // if (query_meta) {
+      //   json meta = fstdx_searcher.get_meta();
+      //   std::cout << meta.dump(2) << std::endl;
+      // } else if (common_prefix) {
+      //   LOG_INFO("搜索公共前缀");
+      //   std::vector<std::pair<std::string, uint64_t>> result =
+      //       fstdx_searcher.common_prefix_search(word);
+      //   if (result.empty()) {
+      //     LOG_INFO("未找到匹配项");
+      //     return 1;
+      //   }
+      //   for (const auto &p : result) {
+      //     std::cout << p.first << " -> " << p.second << std::endl;
+      //   }
+      // } else if (longest_common_prefix) {
+      //   LOG_INFO("搜索最长公前缀");
+      //   std::pair<std::string, uint64_t> result;
+      //   size_t len = fstdx_searcher.longest_common_prefix_search(word, result);
+      //   if (len == 0) {
+      //     LOG_INFO("未找到匹配项");
+      //     return 1;
+      //   }
+      //   std::cout << "最长公前缀: " << result.first << std::endl;
+      //   std::cout << "最长公前缀长度: " << len << std::endl;
+      // } else if (predictive) {
+      //   LOG_INFO("指定预测词");
+      //   std::vector<std::pair<std::string, uint64_t>> result =
+      //       fstdx_searcher.predictive_search(word);
+      //   if (result.empty()) {
+      //     LOG_INFO("未找到匹配项");
+      //     return 1;
+      //   }
+      //   for (const auto &p : result) {
+      //     std::cout << p.first << " -> " << p.second << std::endl;
+      //   }
+      // } else if (edit_distance) {
+      //   LOG_INFO("指定编辑距离");
+      //   std::vector<std::pair<std::string, uint64_t>> result =
+      //       fstdx_searcher.edit_distance_search(word, 1);
+      //   if (result.empty()) {
+      //     LOG_INFO("未找到匹配项");
+      //     return 1;
+      //   }
+      //   for (const auto &p : result) {
+      //     std::cout << p.first << " -> " << p.second << std::endl;
+      //   }
+      // } else if (regex) {
+        // LOG_INFO("指定正则表达式");
+        // std::pair<std::vector<std::pair<std::string, uint64_t>>, std::string>
+        //     p_results = fstdx_searcher.regex_search(word);
+        // const auto &results = p_results.first;
+        // const auto &error_message = p_results.second;
+        // if (!error_message.empty()) {
+        //   LOG_ERROR("正则表达式错误：{}", error_message);
+        //   return 1;
+        // }
+        // if (results.empty()) {
+        //   LOG_INFO("未找到匹配项");
+        //   return 1;
+        // }
+        // for (const auto &p : results) {
+        //   std::cout << p.first << " -> " << p.second << std::endl;
+        // }
+    //   } else if (spellcheck) {
+    //     LOG_INFO("指定拼写检查");
+    //     std::vector<std::tuple<double, std::string, uint64_t>> result =
+    //         fstdx_searcher.spellcheck_word(word);
+    //     if (result.empty()) {
+    //       LOG_INFO("未找到匹配项");
+    //       return 1;
+    //     }
+    //     for (const auto &p : result) {
+    //       std::cout << std::get<1>(p) << " -> " << std::get<2>(p) << std::endl;
+    //     }
+    //   } else if (enumerate) {
+    //     LOG_INFO("枚举所有键");
+    //     std::vector<std::pair<std::string, uint64_t>> result =
+    //         fstdx_searcher.enumerate();
+    //     if (result.empty()) {
+    //       LOG_INFO("未找到匹配项");
+    //       return 1;
+    //     }
+    //     for (const auto &p : result) {
+    //       std::cout << p.first << " -> " << p.second << std::endl;
+    //     }
+    //   } else {
+    //     LOG_INFO("进行精确匹配搜索");
+    //     std::vector<std::string> result;
+    //     bool res = fstdx_searcher.exact_match_search(word, result);
+    //     if (!res) {
+    //       LOG_INFO("未找到匹配项");
+    //       return 1;
+    //     }
+    //     for (const std::string &s : result) {
+    //       std::cout << "------------------------------" << std::endl;
+    //       std::cout << s << std::endl;
+    //       std::cout << "------------------------------" << std::endl;
+    //     }
+    //   }
+    // }
   } else if (*write_cmd) {
     json meta_json;
     meta_json["Version"] = FSTD_VERSION;

@@ -1,11 +1,11 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
 #include <set>
 #include <unordered_map>
 
 #include <fstd/fstdd_reader.h>
 #include <fstd/fstdx_reader.h>
+#include <nlohmann/json.hpp>
 
 namespace fstd {
 
@@ -81,11 +81,21 @@ private:
   std::pair<uint64_t, std::vector<std::string>>
   cost_analysis(const std::vector<std::string> &names) const;
 
+  std::vector<std::string> uniq_sort_results(
+      std::vector<std::vector<std::unique_ptr<std::string>>> &&results,
+      size_t count) const;
+
   std::vector<std::string>
   uniq_sort_search(std::string_view word, const std::vector<std::string> &names,
                    std::function<std::vector<std::pair<std::string, uint64_t>>(
                        std::string_view, const std::shared_ptr<FstdxReader> &)>
                        search_method) const;
+
+  std::vector<std::string> search_impl(
+      std::string_view word, const std::vector<std::string> &names,
+      std::function<std::vector<std::unique_ptr<std::string>>(
+          std::shared_ptr<FstdxReader> &, std::string_view)>
+          search_func) const;
 
 private:
   bool is_valid_;

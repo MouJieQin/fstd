@@ -76,43 +76,31 @@ FstdxSearcher::search(std::string_view word,
 
 std::vector<std::string> FstdxSearcher::common_prefix_search(
     std::string_view word, const std::vector<std::string> &names) const {
-  std::vector<std::pair<std::string, fst::uint64bit>> indexes_search_result;
-  auto [index, not_indexes_names] = cost_analysis(names);
-  if (index != 0) {
-    indexes_search_result = fst_indexes_searcher_.common_prefix_search(word);
-  }
-  std::vector<std::string> filtered_indexes_search_result;
-  for (const auto &p : indexes_search_result) {
-    if (match_index(p.second, index)) {
-      filtered_indexes_search_result.emplace_back(std::move(p.first));
+  vector<vector<unique_ptr<string>>> results;
+  results.reserve(names.size());
+  size_t count = 0;
+  for (const string &name : names) {
+    auto iter = fstdxes_.find(name);
+    if (iter == fstdxes_.end()) {
+      LOG_ERROR("FstdxSearcher: name [{}] not found", name);
+    } else {
+      vector<unique_ptr<string>> res = iter->second->common_prefix_search(word);
+      count += res.size();
+      results.emplace_back(std::move(res));
     }
   }
-  if (not_indexes_names.empty()) {
-    return sort_container(std::move(filtered_indexes_search_result));
-  }
-  return sort_container(std::move(filtered_indexes_search_result));
+  return uniq_sort_results(std::move(results), count);
 }
 
 size_t FstdxSearcher::longest_common_prefix_search(
     std::string_view word, const std::vector<std::string> &names) const {
-  std::pair<std::string, fst::uint64bit> index_result;
-  auto [index, not_indexes_names] = cost_analysis(names);
   size_t longest_prefix_len = 0;
-  if (index != 0) {
-    longest_prefix_len =
-        fst_indexes_searcher_.longest_common_prefix_search(word, index_result);
-  }
-  if (not_indexes_names.empty()) { return longest_prefix_len; }
-
-  std::pair<std::string, uint64_t> result;
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
-      LOG_ERROR(
-          "FstdxSearcher::longest_common_prefix_search, name {} not found",
-          name);
+      LOG_ERROR("FstdxSearcher: name {} not found", name);
     } else {
-      size_t len = iter->second->longest_common_prefix_search(word, result);
+      size_t len = iter->second->longest_common_prefix_search(word);
       if (len > longest_prefix_len) { longest_prefix_len = len; }
     }
   }
@@ -123,102 +111,85 @@ std::vector<std::string>
 FstdxSearcher::edit_distance_search(std::string_view word,
                                     const std::vector<std::string> &names,
                                     size_t edit_distance) const {
-  auto [index, not_indexes_names] = cost_analysis(names);
-  std::vector<std::pair<std::string, fst::uint64bit>> indexes_search_result;
-  if (index != 0) {
-    indexes_search_result =
-        fst_indexes_searcher_.edit_distance_search(word, edit_distance);
-  }
-  std::vector<std::string> filtered_indexes_search_result;
-  for (const auto &p : indexes_search_result) {
-    if (match_index(p.second, index)) {
-      filtered_indexes_search_result.emplace_back(std::move(p.first));
-    }
-  }
-  if (not_indexes_names.empty()) {
-    return sort_container(std::move(filtered_indexes_search_result));
-  }
-  LOG_INFO("not_indexes_names: {}", not_indexes_names[0]);
-  std::unordered_set<std::string> uni_result;
-  for (const string &name : not_indexes_names) {
+
+  vector<vector<unique_ptr<string>>> results;
+  results.reserve(names.size());
+  size_t count = 0;
+  for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
-      LOG_ERROR("FstdxSearcher::edit_distance_search, name {} not found", name);
+      LOG_ERROR("FstdxSearcher::edit_distance_search, name [{}] not found",
+                name);
     } else {
-      std::vector<std::pair<std::string, uint64_t>> edit_distance_results =
+      vector<unique_ptr<string>> res =
           iter->second->edit_distance_search(word, edit_distance);
-      if (!edit_distance_results.empty()) {
-        for (auto &p : edit_distance_results) {
-          uni_result.emplace(std::move(p.first));
-        }
-      }
+      count += res.size();
+      results.emplace_back(std::move(res));
     }
   }
-  for (const string &p : filtered_indexes_search_result) {
-    uni_result.emplace(std::move(p));
-  }
-  std::vector<std::string> result(uni_result.begin(), uni_result.end());
-  return sort_container(std::move(result));
+  return uniq_sort_results(std::move(results), count);
 }
+
+// std::vector<std::string> FstdxSearcher::search_impl(
+//     std::string_view word, const std::vector<std::string> &names,
+//     std::function<std::vector<std::unique_ptr<std::string>>(
+//         std::shared_ptr<FstdxReader> &, std::string_view)>
+//         search_func) const {
+//   vector<string> result;
+//   vector<vector<unique_ptr<string>>> results;
+//   results.reserve(names.size());
+//   size_t count = 0;
+//   for (const string &name : names) {
+//     auto iter = fstdxes_.find(name);
+//     if (iter == fstdxes_.end()) {
+//       LOG_ERROR("FstdxSearcher:: name [{}] not found", name);
+//     } else {
+//       vector<unique_ptr<string>> res = search_func(iter->second, word);
+//       iter->second->predictive_search(word);
+//       count += res.first.size();
+//       results.emplace_back(std::move(res.first));
+//     }
+//   }
+//   return {uniq_sort_results(std::move(results), count), ""};
+// }
 
 std::vector<std::string>
 FstdxSearcher::predictive_search(std::string_view word,
                                  const std::vector<std::string> &names) const {
-  auto [index, not_indexes_names] = cost_analysis(names);
-
-  std::vector<std::pair<std::string, fst::uint64bit>> indexes_search_result;
-  if (index != 0) {
-    indexes_search_result = fst_indexes_searcher_.predictive_search(word);
-  }
-  std::vector<std::string> filtered_indexes_search_result;
-  for (const auto &p : indexes_search_result) {
-    if (match_index(p.second, index)) {
-      filtered_indexes_search_result.emplace_back(std::move(p.first));
-    }
-  }
-  if (not_indexes_names.empty()) {
-    return sort_container(std::move(filtered_indexes_search_result));
-  }
-
-  std::unordered_set<std::string> uni_result;
+  vector<vector<unique_ptr<string>>> results;
+  results.reserve(names.size());
+  size_t count = 0;
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
-      LOG_ERROR("FstdxSearcher::predictive_search, name {} not found", name);
+      LOG_ERROR("FstdxSearcher::predictive_search, name [{}] not found", name);
     } else {
-      std::vector<std::pair<std::string, uint64_t>> predictive_results =
-          iter->second->predictive_search(word);
-      if (!predictive_results.empty()) {
-        for (auto &p : predictive_results) {
-          uni_result.emplace(std::move(p.first));
-        }
-      }
+      vector<unique_ptr<string>> res = iter->second->predictive_search(word);
+      count += res.size();
+      results.emplace_back(std::move(res));
     }
   }
-  for (const string &p : filtered_indexes_search_result) {
-    uni_result.emplace(std::move(p));
-  }
-  std::vector<std::string> result(uni_result.begin(), uni_result.end());
-  return sort_container(std::move(result));
+  return uniq_sort_results(std::move(results), count);
 }
 
 std::vector<std::string>
 FstdxSearcher::suggest(std::string_view word,
                        const std::vector<std::string> &names) const {
-  auto [index, not_indexes_names] = cost_analysis(names);
-  std::vector<std::tuple<double, std::string, fst::uint64bit>>
-      indexes_search_result;
-  if (index != 0) {
-    indexes_search_result = fst_indexes_searcher_.suggest(word);
-  }
-  std::vector<std::string> filtered_indexes_search_result;
-  for (const auto &p : indexes_search_result) {
-    if (match_index(std::get<2>(p), index)) {
-      filtered_indexes_search_result.emplace_back(std::get<1>(p));
-    }
-  }
-  if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
-  return filtered_indexes_search_result;
+  // auto [index, not_indexes_names] = cost_analysis(names);
+  // std::vector<std::tuple<double, std::string, fst::uint64bit>>
+  //     indexes_search_result;
+  // if (index != 0) {
+  //   indexes_search_result = fst_indexes_searcher_.suggest(word);
+  // }
+  // std::vector<std::string> filtered_indexes_search_result;
+  // for (const auto &p : indexes_search_result) {
+  //   if (match_index(std::get<2>(p), index)) {
+  //     filtered_indexes_search_result.emplace_back(std::get<1>(p));
+  //   }
+  // }
+  // if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
+  // return filtered_indexes_search_result;
+  return std::vector<std::string>();
 }
 
 std::vector<std::string>
@@ -255,29 +226,59 @@ FstdxSearcher::prefix_distance_search(std::string_view word,
   return filtered_indexes_search_result;
 }
 
+std::vector<std::string> FstdxSearcher::uniq_sort_results(
+    std::vector<std::vector<std::unique_ptr<std::string>>> &&results,
+    size_t count) const {
+  vector<string> result;
+  if (count == 0) { return result; }
+  vector<unique_ptr<string>> result_ptrs;
+  result.reserve(count);
+  result_ptrs.reserve(count);
+  for (auto &res : results) {
+    for (auto &ptr : res) {
+      result_ptrs.emplace_back(std::move(ptr));
+    }
+  }
+  std::sort(result_ptrs.begin(), result_ptrs.end(),
+            [&](auto &x, auto &y) { return *x < *y; });
+
+  // unique
+  size_t index = 0;
+  for (size_t i = 1; i < result_ptrs.size(); i++) {
+    if (result_ptrs[index]->size() == result_ptrs[i]->size() &&
+        *result_ptrs[index] == *result_ptrs[i]) {
+    } else {
+      result.emplace_back(std::move(*result_ptrs[index]));
+      index = i;
+    }
+  }
+  // handle the last key
+  result.emplace_back(std::move(*result_ptrs[index]));
+  return result;
+}
+
 std::pair<std::vector<std::string>, std::string>
 FstdxSearcher::regex_search(std::string_view pattern,
                             const std::vector<std::string> &names) const {
-  auto [index, not_indexes_names] = cost_analysis(names);
-  std::pair<std::vector<std::pair<std::string, fst::uint64bit>>, std::string>
-      indexes_search_result;
-  if (index != 0) {
-    indexes_search_result =
-        fst_indexes_searcher_.regex_search(pattern, *thread_pool_ptr, index);
+  vector<vector<unique_ptr<string>>> results;
+  results.reserve(names.size());
+  size_t count = 0;
+  for (const auto &name : names) {
+    auto iter = fstdxes_.find(name);
+    if (iter == fstdxes_.end()) {
+      LOG_ERROR("FstdxSearcher::regex_search, name [{}] not found", name);
+    } else {
+      pair<vector<unique_ptr<string>>, string> res =
+          iter->second->regex_search(pattern, *thread_pool_ptr);
+      if (!res.second.empty()) {
+        return {vector<string>(), res.second};
+      } else {
+        count += res.first.size();
+        results.emplace_back(std::move(res.first));
+      }
+    }
   }
-  if (!indexes_search_result.second.empty()) {
-    return {std::vector<std::string>(), indexes_search_result.second};
-  }
-  std::vector<std::string> filtered_indexes_search_result;
-  for (const auto &p : indexes_search_result.first) {
-    // if (match_index(p.second, index)) {
-    filtered_indexes_search_result.emplace_back(std::move(p.first));
-    // }
-  }
-  if (not_indexes_names.empty()) {
-    return {sort_container(std::move(filtered_indexes_search_result)), ""};
-  }
-  return {sort_container(std::move(filtered_indexes_search_result)), ""};
+  return {uniq_sort_results(std::move(results), count), ""};
 }
 
 void FstdxSearcher::insert_if_not_exists(const std::string &name,
@@ -292,13 +293,17 @@ bool FstdxSearcher::insert(const std::string &name,
     LOG_ERROR("Insert fstdx failed, as name {} already exists", name);
     return false;
   }
-  shared_ptr<FstdxReader> ptr = nullptr;
-  if (fst_indexes_names_set_.find(name) != fst_indexes_names_set_.end()) {
-    ptr = std::static_pointer_cast<FstdxReader>(
-        std::make_shared<FstdxHashReader>(fstdx_path));
-  } else {
-    ptr = make_shared<FstdxReader>(fstdx_path);
-  }
+
+  shared_ptr<FstdxReader> ptr = make_shared<FstdxReader>(fstdx_path);
+
+  // shared_ptr<FstdxReader> ptr = nullptr;
+  // if (fst_indexes_names_set_.find(name) != fst_indexes_names_set_.end()) {
+  //   ptr = std::static_pointer_cast<FstdxReader>(
+  //       std::make_shared<FstdxHashReader>(fstdx_path));
+  // } else {
+  //   ptr = make_shared<FstdxReader>(fstdx_path);
+  // }
+
   if (!(*ptr)) {
     LOG_ERROR("Insert fstdx failed, as path {} is not a valid fstdx file",
               fstdx_path);

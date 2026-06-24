@@ -63,48 +63,32 @@ public:
   }
 
   bool exact_match_search(std::string_view word, output_t &output) const {
-    bool ret = matcher_ptr_->exact_match_search(word, output);
-    return ret;
+    return matcher_ptr_->exact_match_search(word, output);
   }
+
+  operator bool() const { return matcher_ptr_ != nullptr; }
 
   bool is_valid() { return matcher_ptr_ != nullptr; }
 
-  std::vector<std::pair<std::string, output_t>>
+  std::vector<std::unique_ptr<std::string>>
   common_prefix_search(std::string_view word) const {
-    std::vector<std::pair<std::string, output_t>> result;
-    matcher_ptr_->common_prefix_search(
-        word, [&](size_t len, const auto &output) {
-          result.emplace_back(word.substr(0, len), output);
-        });
+    std::vector<std::unique_ptr<std::string>> result;
+    matcher_ptr_->common_prefix_search(word, [&](size_t len, const auto &_) {
+      result.emplace_back(std::make_unique<std::string>(word.substr(0, len)));
+    });
     return result;
-  }
-
-  size_t
-  longest_common_prefix_search(std::string_view word,
-                               std::pair<std::string, output_t> &result) const {
-    size_t len =
-        matcher_ptr_->longest_common_prefix_search(word, result.second);
-    if (len > 0) { result.first = word.substr(0, len); }
-    return len;
   }
 
   size_t longest_common_prefix_search(std::string_view word) const {
     return matcher_ptr_->longest_common_prefix_search(word);
   }
 
-  std::vector<std::pair<std::string, output_t>>
+  std::vector<std::unique_ptr<std::string>>
   predictive_search(std::string_view word, uint64_t mask = 0) const {
-    std::vector<std::pair<std::string, output_t>> result;
-    matcher_ptr_->predictive_search(
-        word,
-        [&](const auto &word, const auto &output) {
-          result.emplace_back(word, output);
-        },
-        mask);
-    return result;
+    return matcher_ptr_->predictive_search(word, mask);
   }
 
-  std::vector<std::pair<std::string, output_t>>
+  std::vector<std::unique_ptr<std::string>>
   edit_distance_search(std::string_view word, size_t max_edits,
                        size_t insert_cost = 1, size_t delete_cost = 1,
                        size_t replace_cost = 2, uint64_t mask = 0) const {
@@ -112,18 +96,18 @@ public:
                                               delete_cost, replace_cost, mask);
   }
 
-  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
+  std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
   regex_search(std::string_view pattern, uint64_t mask = 0) const {
     return matcher_ptr_->regex_search(pattern, mask);
   }
 
-  std::pair<std::vector<std::pair<std::string, output_t>>, std::string>
+  std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
   regex_search(std::string_view pattern, ThreadPool &thread_pool,
                uint64_t mask = 0) const {
     return matcher_ptr_->regex_search(pattern, thread_pool, mask);
   }
 
-  std::vector<std::tuple<double, std::string, output_t>>
+  std::vector<std::unique_ptr<std::pair<double, std::string>>>
   suggest(std::string_view word) const {
     return matcher_ptr_->suggest(word);
   }
@@ -133,19 +117,19 @@ public:
     return matcher_ptr_->prefix_distance_search(sv, max_distance);
   }
 
-  std::vector<std::tuple<double, std::string, output_t>>
-  spellcheck_word(std::string_view word, size_t n = 10) const {
-    std::vector<std::tuple<double, std::string, output_t>> result;
-    for (const auto &item : matcher_ptr_->suggest(word)) {
-      if (n == 0) { break; }
-      auto similarity = std::get<0>(item);
-      const std::string &candidate = std::get<1>(item);
-      const output_t &output = std::get<2>(item);
-      result.emplace_back(similarity, candidate, output);
-      n--;
-    }
-    return result;
-  }
+  // std::vector<std::unique_ptr<std::pair<double, std::string>>>
+  // spellcheck_word(std::string_view word, size_t n = 10) const {
+  //   std::vector<std::tuple<double, std::string, output_t>> result;
+  //   for (const auto &item : matcher_ptr_->suggest(word)) {
+  //     if (n == 0) { break; }
+  //     auto similarity = std::get<0>(item);
+  //     const std::string &candidate = std::get<1>(item);
+  //     const output_t &output = std::get<2>(item);
+  //     result.emplace_back(similarity, candidate, output);
+  //     n--;
+  //   }
+  //   return result;
+  // }
 
   std::vector<std::pair<std::string, output_t>>
   enumerate(const size_t predictive_fst_key_size = 0,
