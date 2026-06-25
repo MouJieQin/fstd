@@ -50,8 +50,7 @@ public:
     return matcher<output_t>::match(sv.data(), sv.size(), nullptr, prefixes);
   }
 
-  std::vector<size_t>
-  common_prefix_search(std::string_view sv) const {
+  std::vector<size_t> common_prefix_search(std::string_view sv) const {
     std::vector<std::pair<size_t, output_t>> ret;
     common_prefix_search(sv, [&](size_t length, const output_t &_) {
       ret.emplace_back(length);
@@ -104,22 +103,20 @@ public:
     return ret;
   }
 
-  std::vector<std::vector<std::pair<std::string, output_t>>>
+  std::vector<std::vector<std::unique_ptr<std::string>>>
   prefix_distance_search(std::string_view sv, size_t max_distance) const {
-    std::vector<std::vector<std::pair<std::string, output_t>>> ret(
-        max_distance, std::vector<std::pair<std::string, output_t>>());
+    std::vector<std::vector<std::unique_ptr<std::string>>> ret(max_distance +
+                                                               1);
     if (sv.empty()) { return ret; }
     size_t longest_prefix_len = matcher<output_t>::longest_prefix_len(sv);
-    std::cout << "sv.size(): " << sv.size() << std::endl;
-    std::cout << "longest_prefix_len: " << longest_prefix_len << std::endl;
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, std::string(), output_t{},
         PrefixDistanceAutomaton(sv, max_distance, longest_prefix_len),
-        [&](const auto &word, const auto &output, const auto &automaton) {
-          ret[automaton.distance()].emplace_back(word, output);
+        [&](const auto &word, const auto &_, const auto &automaton) {
+          ret[automaton.distance()].emplace_back(
+              std::make_unique<std::string>(word));
         },
         std::string_view());
-
     return ret;
   }
 

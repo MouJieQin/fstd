@@ -85,6 +85,11 @@ private:
           &&results,
       size_t count) const;
 
+  std::vector<std::string> uniq_sort_results(
+      std::vector<std::vector<std::vector<std::unique_ptr<std::string>>>>
+          &&results,
+      std::vector<size_t> counts, size_t count) const;
+
   std::vector<std::string>
   search_impl(std::string_view word, const std::vector<std::string> &names,
               std::function<std::vector<std::unique_ptr<std::string>>(

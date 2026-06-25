@@ -88,6 +88,9 @@ public:
   std::vector<std::unique_ptr<std::string>>
   edit_distance_search(std::string_view word, size_t edit_distance = 1) const;
 
+  std::vector<std::vector<std::unique_ptr<std::string>>>
+  prefix_distance_search(std::string_view sv, size_t max_distance) const;
+
   std::vector<std::unique_ptr<std::pair<double, std::string>>>
   suggest(std::string_view word) const;
 

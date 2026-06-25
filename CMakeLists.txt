@@ -187,7 +187,7 @@ install(TARGETS fstd_shared fstd_static
 )
 
 # 3. 安装头文件（安装后路径：/usr/local/include/fstd/xxx.hpp）
-install(DIRECTORY ${FSTD_INCLUDE_DIR}/fstd
+install(DIRECTORY ${FSTD_INCLUDE_DIR}/fstd ${FSTD_INCLUDE_DIR}/fstlib
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
 )

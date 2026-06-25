@@ -111,7 +111,7 @@ public:
     return matcher_ptr_->suggest(word);
   }
 
-  std::vector<std::vector<std::pair<std::string, output_t>>>
+  std::vector<std::vector<std::unique_ptr<std::string>>>
   prefix_distance_search(std::string_view sv, size_t max_distance) const {
     return matcher_ptr_->prefix_distance_search(sv, max_distance);
   }

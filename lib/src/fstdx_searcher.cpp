@@ -209,7 +209,6 @@ std::vector<std::string> FstdxSearcher::uniq_sort_results(
 std::vector<std::string>
 FstdxSearcher::suggest(std::string_view word,
                        const std::vector<std::string> &names) const {
-
   vector<vector<unique_ptr<pair<double, string>>>> results;
   results.reserve(names.size());
   size_t count = 0;
@@ -227,40 +226,56 @@ FstdxSearcher::suggest(std::string_view word,
   return uniq_sort_results(std::move(results), count);
 }
 
+std::vector<std::string> FstdxSearcher::uniq_sort_results(
+    std::vector<std::vector<std::vector<std::unique_ptr<std::string>>>>
+        &&results,
+    std::vector<size_t> counts, size_t count) const {
+  vector<string> result;
+  if (count == 0) { return result; }
+  size_t distance = results[0].size();
+  vector<vector<unique_ptr<string>>> result_ptrs(distance);
+  result.reserve(count);
+  for (auto &result : results) {
+    for (size_t i = 0; i < distance; i++) {
+      result_ptrs[i].reserve(counts[i]);
+      for (auto &ptr : result[i]) {
+        result_ptrs[i].emplace_back(std::move(ptr));
+      }
+      std::sort(result_ptrs[i].begin(), result_ptrs[i].end(),
+                [&](auto &x, auto &y) { return *x < *y; });
+    }
+  }
+  for (auto &res_ptr : result_ptrs) {
+    for (auto &ptr : res_ptr) {
+      result.emplace_back(std::move(*ptr));
+    }
+  }
+  return result;
+}
+
 std::vector<std::string>
 FstdxSearcher::prefix_distance_search(std::string_view word,
                                       const std::vector<std::string> &names,
                                       size_t max_distance) const {
-  // auto [index, not_indexes_names] = cost_analysis(names);
-  // std::vector<std::vector<std::pair<std::string, fst::uint64bit>>>
-  //     indexes_search_result;
-  // if (index != 0) {
-  //   indexes_search_result =
-  //       fst_indexes_searcher_.prefix_distance_search(word, max_distance);
-  // }
-  // std::vector<std::string> filtered_indexes_search_result;
-  // size_t dist = 0;
-  // for (auto &v : indexes_search_result) {
-  //   std::cout << "v.size(): " << v.size() << " indexes_search_result.size():
-  //   "
-  //             << indexes_search_result.size() << std::endl;
-  //   std::vector<size_t> indices;
-  //   indices.reserve(v.size());
-  //   for (size_t i = 0; i < v.size(); ++i) {
-  //     if (match_index(v[i].second, index)) { indices.push_back(i); }
-  //   }
-  //   std::sort(indices.begin(), indices.end(),
-  //             [&](size_t i, size_t j) { return v[i].first < v[j].first; });
-  //   for (size_t i : indices) {
-  //     std::cout << "v[i].first: " << v[i].first << " dist: " << dist
-  //               << std::endl;
-  //     filtered_indexes_search_result.emplace_back(std::move(v[i].first));
-  //   }
-  //   dist += 1;
-  // }
-  // if (not_indexes_names.empty()) { return filtered_indexes_search_result; }
-  // return filtered_indexes_search_result;
-  return std::vector<std::string>();
+  vector<vector<vector<unique_ptr<string>>>> results;
+  results.reserve(names.size());
+  size_t count = 0;
+  vector<size_t> counts(max_distance + 1);
+  for (const string &name : names) {
+    auto iter = fstdxes_.find(name);
+    if (iter == fstdxes_.end()) {
+      LOG_ERROR("FstdxSearcher: name [{}] not found", name);
+    } else {
+      vector<vector<unique_ptr<string>>> res =
+          iter->second->prefix_distance_search(word, max_distance);
+      for (size_t i = 0; i < res.size(); ++i) {
+        counts[i] += res[i].size();
+        count += res[i].size();
+      }
+      results.emplace_back(std::move(res));
+    }
+  }
+  return uniq_sort_results(std::move(results), counts, count);
 }
 
 std::vector<std::string> FstdxSearcher::uniq_sort_results(
