@@ -109,9 +109,10 @@ public:
                                                                1);
     if (sv.empty()) { return ret; }
     size_t longest_prefix_len = matcher<output_t>::longest_prefix_len(sv);
+    PrefixDistanceAutomaton atm(sv, max_distance, longest_prefix_len);
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, std::string(), output_t{},
-        PrefixDistanceAutomaton(sv, max_distance, longest_prefix_len),
+        atm,
         [&](const auto &word, const auto &_, const auto &automaton) {
           ret[automaton.distance()].emplace_back(
               std::make_unique<std::string>(word));

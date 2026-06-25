@@ -68,6 +68,8 @@ public:
     }
   }
 
+  size_t get_longest_prefix_len() const { return longest_prefix_len_; }
+
   size_t distance() const {
     return (longest_prefix_len_ - common_prefix_len_) + prefix_distance_;
   }

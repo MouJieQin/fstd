@@ -218,8 +218,9 @@ std::vector<std::string> FstdxSearcher::uniq_sort_results(
       for (auto &ptr : result[i]) {
         result_ptrs[i].emplace_back(std::move(ptr));
       }
-      std::sort(result_ptrs[i].begin(), result_ptrs[i].end(),
-                [&](auto &x, auto &y) { return *x < *y; });
+      std::sort(
+          result_ptrs[i].begin(), result_ptrs[i].end(),
+          [&](auto &x, auto &y) { return same_prefix_distance_cmp(*x, *y); });
     }
   }
   for (auto &res_ptr : result_ptrs) {
@@ -230,6 +231,33 @@ std::vector<std::string> FstdxSearcher::uniq_sort_results(
   return result;
 }
 
+bool FstdxSearcher::has_prior_suffix(const std::string &word) const {
+  for (size_t len : prior_suf_lens_) {
+    if (word.size() >= len) {
+      string suf = word.substr(word.size() - len, len);
+      if (prior_suffixes_.contains(suf)) { return true; }
+    }
+  }
+  return false;
+}
+
+bool FstdxSearcher::same_prefix_distance_cmp(const std::string &x,
+                                             const std::string &y) const {
+  if (has_prior_suffix(x) != 0) {
+    if (!has_prior_suffix(y) != 0) {
+      return true;
+    } else {
+      return x.size() == y.size() ? x < y : x.size() > y.size();
+    }
+  } else {
+    if (has_prior_suffix(y) != 0) {
+      return false;
+    } else {
+      return x.size() == y.size() ? x < y : x.size() > y.size();
+    }
+  }
+}
+
 std::vector<std::string>
 FstdxSearcher::prefix_distance_search(std::string_view word,
                                       const std::vector<std::string> &names,
@@ -238,12 +266,13 @@ FstdxSearcher::prefix_distance_search(std::string_view word,
   results.reserve(names.size());
   size_t count = 0;
   vector<size_t> counts(max_distance + 1);
+
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
       LOG_ERROR("FstdxSearcher: name [{}] not found", name);
     } else {
-      vector<vector<unique_ptr<string>>> res =
+      std::vector<std::vector<std::unique_ptr<std::string>>> res =
           iter->second->prefix_distance_search(word, max_distance);
       for (size_t i = 0; i < res.size(); ++i) {
         counts[i] += res[i].size();
@@ -252,6 +281,7 @@ FstdxSearcher::prefix_distance_search(std::string_view word,
       results.emplace_back(std::move(res));
     }
   }
+
   return uniq_sort_results(std::move(results), counts, count);
 }
 
@@ -403,6 +433,28 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
     if (!insert(name, path)) {
       LOG_ERROR("Failed to insert fstdx with name {} and path {}", name, path);
       return false;
+    }
+  }
+
+  if (meta_json_.contains("prior_suffix")) {
+    const json &priori_suf_obj = meta_json_["prior_suffix"];
+    if (!priori_suf_obj.is_object()) {
+      LOG_ERROR("Meta JSON contain a valid 'prior_suffix' but it is not an "
+                "object.");
+      return false;
+    }
+    for (auto it = priori_suf_obj.begin(); it != priori_suf_obj.end(); ++it) {
+      const string &lang = it.key();
+      const auto &suffixes = it.value();
+      if (!suffixes.is_array()) {
+        LOG_ERROR("The prior suffexes of language: {} is not an array.", lang);
+        return false;
+      }
+      for (auto &s : suffixes) {
+        std::string suf(s);
+        prior_suffixes_.insert(suf);
+        prior_suf_lens_.insert(suf.size());
+      }
     }
   }
   return true;

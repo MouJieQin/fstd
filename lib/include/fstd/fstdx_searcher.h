@@ -79,6 +79,11 @@ private:
           &&results,
       size_t count) const;
 
+  bool has_prior_suffix(const std::string &word) const;
+
+  bool same_prefix_distance_cmp(const std::string &x,
+                                const std::string &y) const;
+
   std::vector<std::string> uniq_sort_results(
       std::vector<std::vector<std::vector<std::unique_ptr<std::string>>>>
           &&results,
@@ -86,6 +91,8 @@ private:
 
 private:
   bool is_valid_;
+  std::set<std::string> prior_suffixes_;
+  std::set<size_t> prior_suf_lens_;
   std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes_;
   std::unordered_map<std::string, std::vector<std::shared_ptr<FstddReader>>>
       fstdds_;
