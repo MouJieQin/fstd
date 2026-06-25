@@ -25,10 +25,7 @@ public:
                           const size_t longest_prefix_len)
       : s_(decode(sv)), max_distance_(max_distance),
         longest_prefix_len_(calc_c_len(sv.substr(0, longest_prefix_len))),
-        common_prefix_len_(0), prefix_distance_(0), word_("") {
-    std::cout << "orginal world: " << sv << " practical len: " << calc_c_len(sv)
-              << std::endl;
-  }
+        common_prefix_len_(0), prefix_distance_(0), word_("") {}
 
   PrefixDistanceAutomaton(const PrefixDistanceAutomaton &rhs) = default;
 
@@ -201,8 +198,8 @@ public:
         pcre2_match_data_create_from_pattern(re_.get(), nullptr),
         [](pcre2_match_data *m) { pcre2_match_data_free(m); });
 
-    // // Evaluate the empty string initially to handle cases like "^$" or "^a?$"
-    // evaluate();
+    // // Evaluate the empty string initially to handle cases like "^$" or
+    // "^a?$" evaluate();
   }
 
   // FSTs copy the automaton to explore different branches.

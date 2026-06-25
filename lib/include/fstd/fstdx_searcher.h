@@ -65,16 +65,10 @@ public:
 
   bool save_to_disk(const std::string &meta_json_path);
 
-  bool build_fst_index(const std::string &fst_index_path = "");
-
 private:
   bool load_file(const std::string &meta_json_path);
 
   std::vector<std::string> find_fstdd(const std::string &target_dir) const;
-
-  bool save_fst_index_to_disk(const std::string &fst_index_path);
-
-  bool load_fst_index(const std::string &fst_index_path);
 
   std::vector<std::string> uniq_sort_results(
       std::vector<std::vector<std::unique_ptr<std::string>>> &&results,
@@ -90,18 +84,8 @@ private:
           &&results,
       std::vector<size_t> counts, size_t count) const;
 
-  std::vector<std::string>
-  search_impl(std::string_view word, const std::vector<std::string> &names,
-              std::function<std::vector<std::unique_ptr<std::string>>(
-                  std::shared_ptr<FstdxReader> &, std::string_view)>
-                  search_func) const;
-
 private:
   bool is_valid_;
-  FstMapSearcher<fst::uint64bit> fst_indexes_searcher_;
-  size_t fst_indexes_size_;
-  std::vector<std::string> fst_indexes_names_;
-  std::set<std::string> fst_indexes_names_set_;
   std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes_;
   std::unordered_map<std::string, std::vector<std::shared_ptr<FstddReader>>>
       fstdds_;

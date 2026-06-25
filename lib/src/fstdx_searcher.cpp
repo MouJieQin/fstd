@@ -130,29 +130,6 @@ FstdxSearcher::edit_distance_search(std::string_view word,
   return uniq_sort_results(std::move(results), count);
 }
 
-// std::vector<std::string> FstdxSearcher::search_impl(
-//     std::string_view word, const std::vector<std::string> &names,
-//     std::function<std::vector<std::unique_ptr<std::string>>(
-//         std::shared_ptr<FstdxReader> &, std::string_view)>
-//         search_func) const {
-//   vector<string> result;
-//   vector<vector<unique_ptr<string>>> results;
-//   results.reserve(names.size());
-//   size_t count = 0;
-//   for (const string &name : names) {
-//     auto iter = fstdxes_.find(name);
-//     if (iter == fstdxes_.end()) {
-//       LOG_ERROR("FstdxSearcher:: name [{}] not found", name);
-//     } else {
-//       vector<unique_ptr<string>> res = search_func(iter->second, word);
-//       iter->second->predictive_search(word);
-//       count += res.first.size();
-//       results.emplace_back(std::move(res.first));
-//     }
-//   }
-//   return {uniq_sort_results(std::move(results), count), ""};
-// }
-
 std::vector<std::string>
 FstdxSearcher::predictive_search(std::string_view word,
                                  const std::vector<std::string> &names) const {
@@ -347,15 +324,6 @@ bool FstdxSearcher::insert(const std::string &name,
   }
 
   shared_ptr<FstdxReader> ptr = make_shared<FstdxReader>(fstdx_path);
-
-  // shared_ptr<FstdxReader> ptr = nullptr;
-  // if (fst_indexes_names_set_.find(name) != fst_indexes_names_set_.end()) {
-  //   ptr = std::static_pointer_cast<FstdxReader>(
-  //       std::make_shared<FstdxHashReader>(fstdx_path));
-  // } else {
-  //   ptr = make_shared<FstdxReader>(fstdx_path);
-  // }
-
   if (!(*ptr)) {
     LOG_ERROR("Insert fstdx failed, as path {} is not a valid fstdx file",
               fstdx_path);
@@ -406,73 +374,6 @@ bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
   return true;
 }
 
-bool FstdxSearcher::build_fst_index(const std::string &fst_index_path) {
-  if (fstdxes_.size() > 64) {
-    LOG_ERROR("Build fst index failed, as fstdx count {} is greater than 64",
-              fstdxes_.size());
-    return false;
-  }
-  std::unordered_map<std::string, fst::uint64bit> unordered_input;
-  uint64_t index = 1;
-  for (const auto &item : fstdxes_) {
-    fst_indexes_names_.emplace_back(item.first);
-    fst_indexes_names_set_.emplace(item.first);
-    std::vector<std::pair<std::string, uint64_t>> key_value =
-        item.second->enumerate();
-    std::cout << "key_value size: " << key_value.size() << std::endl;
-    for (auto &p : key_value) {
-      auto iter = unordered_input.find(p.first);
-      if (iter == unordered_input.end()) {
-        unordered_input.emplace(std::move(p.first), index);
-      } else {
-        iter->second.bits |= index;
-      }
-    }
-    index <<= 1;
-  }
-  meta_json_["fst_index"]["names"] = fst_indexes_names_;
-  ostringstream fst_str_stream;
-  vector<pair<string, fst::uint64bit>> v_input(unordered_input.begin(),
-                                               unordered_input.end());
-  {
-    unordered_map<string, fst::uint64bit> tmp;
-    unordered_input.swap(tmp);
-  }
-  vector<size_t> indices(v_input.size());
-  iota(indices.begin(), indices.end(), 0);
-  sort(indices.begin(), indices.end(),
-       [&](size_t i, size_t j) { return v_input[i].first < v_input[j].first; });
-  vector<pair<string, fst::uint64bit>> sorted_input;
-  sorted_input.reserve(v_input.size());
-  for (size_t i : indices) {
-    sorted_input.emplace_back(std::move(v_input[i].first), v_input[i].second);
-  }
-
-  ofstream of("view_index.txt");
-  for (const auto &p : sorted_input) {
-    of << p.first << ": " << p.second.bits << endl;
-  }
-  DyBlockProgBars dy_bars;
-  auto refresh_bar = dy_bars.push_back(
-      sorted_input.size(), "Compiling FST index:", indicators::Color::white);
-  if (!fstd::compile_fst(sorted_input, fst_str_stream, true, true,
-                         refresh_bar)) {
-    return false;
-  }
-  string fst_str = fst_str_stream.str();
-  std::vector<char> key_fst_byte_code(fst_str.begin(), fst_str.end());
-  fst_indexes_searcher_ =
-      FstMapSearcher<fst::uint64bit>(std::move(key_fst_byte_code));
-  fst_indexes_size_ = sorted_input.size();
-  meta_json_["fst_index"]["size"] = fst_indexes_size_;
-  std::cout << "FST index built, size: " << sorted_input.size() << std::endl;
-
-  if (!fst_index_path.empty()) {
-    return save_fst_index_to_disk(fst_index_path);
-  }
-  return true;
-}
-
 bool FstdxSearcher::load_file(const std::string &meta_json_path) {
   ifstream ifs(meta_json_path);
   if (!ifs) {
@@ -495,25 +396,6 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
     return false;
   }
 
-  try {
-    const std::string fst_index_path =
-        meta_json_["fst_index"]["path"].get<std::string>();
-    if (!load_fst_index(fst_index_path)) {
-      LOG_ERROR("Failed to load FST index file {}", fst_index_path);
-      return false;
-    }
-    fst_indexes_size_ = meta_json_["fst_index"]["size"].get<size_t>();
-    fst_indexes_names_ = meta_json_["fst_index"]["names"].get<vector<string>>();
-    fst_indexes_names_set_ = std::set<std::string>(fst_indexes_names_.begin(),
-                                                   fst_indexes_names_.end());
-  } catch (const json::exception &e) {
-    LOG_ERROR("Meta JSON format error: {}", e.what());
-    return false;
-  } catch (const std::exception &e) {
-    LOG_ERROR("Meta JSON processing error: {}", e.what());
-    return false;
-  }
-
   const json &fstdx_obj = meta_json_["fstdx"];
   for (auto it = fstdx_obj.begin(); it != fstdx_obj.end(); ++it) {
     const string &name = it.key();
@@ -526,112 +408,4 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
   return true;
 }
 
-bool FstdxSearcher::save_fst_index_to_disk(const std::string &fst_index_path) {
-  std::ofstream ofs(fst_index_path, std::ios::binary);
-  if (!ofs) {
-    LOG_ERROR("Cannot open the file: {}", fst_index_path);
-    return false;
-  }
-  auto ptr = fst_indexes_searcher_.get_fst_byte_code();
-  meta_json_["fst_index"]["byte_size"] = ptr->size();
-  std::vector<char> dst;
-  if (!compress_to_buffer(ptr->data(), ptr->size(), dst, 5)) { return false; }
-  ofs.write(dst.data(), dst.size());
-  meta_json_["fst_index"]["path"] = fs::absolute(fst_index_path).string();
-  return true;
-}
-
-bool FstdxSearcher::load_fst_index(const std::string &fst_index_path) {
-  if (!fs::exists(fst_index_path)) {
-    LOG_ERROR("FST index file {} does not exist", fst_index_path);
-    return false;
-  }
-  std::ifstream ifs(fst_index_path, std::ios::binary | std::ios::ate);
-  if (!ifs) {
-    LOG_ERROR("Cannot open the file: {}", fst_index_path);
-    return false;
-  }
-  size_t file_size = ifs.tellg();
-  std::vector<char> src(file_size);
-  ifs.seekg(0);
-  ifs.read(src.data(), file_size);
-  if (!ifs) {
-    LOG_ERROR("Read FST index file {} failed", fst_index_path);
-    return false;
-  }
-  size_t original_size = meta_json_["fst_index"]["byte_size"].get<size_t>();
-  std::vector<char> dst;
-  if (!decompress_to_buffer(src.data(), src.size(), original_size, dst)) {
-    return false;
-  }
-  fst_indexes_searcher_ = FstMapSearcher<fst::uint64bit>(std::move(dst));
-  return true;
-}
-
 } // namespace fstd
-
-// int main(int argc, char *argv[]) {
-//   if (argc < 2) {
-//     LOG_ERROR("Usage: {} <meta_json_path>", argv[0]);
-//     return 1;
-//   }
-//   std::cout << "argv[1]: " << argv[1] << std::endl;
-//   if (string(argv[1]) == "load") {
-//     bool is_valid = false;
-//     fstd::FstdxSearcher view("searcher_meta.json", is_valid);
-//     if (!is_valid) {
-//       LOG_ERROR("Failed to load FstdxSearcher from meta JSON file");
-//       return 1;
-//     }
-//     while (true) {
-//       std::string word;
-//       std::string cmd;
-//       std::cout << "Enter command (search/predict/exit): " << std::endl;
-//       std::cin >> cmd;
-
-//       if (cmd == "search") {
-//         std::cin >> word;
-//         std::string name;
-//         std::vector<std::string> names;
-//         while (std::cin >> name) {
-//           if (name == "end") { break; }
-//           names.emplace_back(name);
-//         }
-//         std::unordered_map<std::string, std::vector<std::string>> results =
-//             view.search(word, names);
-//         for (const auto &p : results) {
-//           std::cout << "name: " << p.first << "\n";
-//           for (const auto &item : p.second) {
-//             std::cout << item << "\n";
-//           }
-//         }
-//       } else if (cmd == "predict") {
-//         std::cin >> word;
-//         std::string name;
-//         std::vector<std::string> names;
-//         while (std::cin >> name) {
-//           if (name == "end") { break; }
-//           names.emplace_back(name);
-//         }
-//         std::vector<std::string> results = view.predictive_search(word,
-//         names); std::cout << "predictive search result:\n"; for (const auto
-//         &item : results) {
-//           std::cout << item << "\n";
-//         }
-//       } else if (cmd == "exit") {
-//         break;
-//       } else {
-//         LOG_ERROR("Unknown command: {}", word);
-//       }
-//       if (cmd == "exit") { break; }
-//     }
-//   } else {
-//     fstd::FstdxSearcher view;
-//     for (int i = 1; i < argc; ++i) {
-//       view.insert(std::to_string(i), argv[i]);
-//     }
-//     view.build_fst_index("searcher_fst_index.fstdxidx");
-//     view.save_to_disk("searcher_meta.json");
-//     return 0;
-//   }
-// }
