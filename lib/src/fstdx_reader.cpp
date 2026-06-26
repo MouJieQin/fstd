@@ -1,5 +1,4 @@
 #include <fstd/fstdx_reader.h>
-#include <fstd/hash_index.h>
 #include <fstd/logger.h>
 namespace fstd {
 
@@ -57,13 +56,7 @@ bool FstdxHashReader::parse_fstdx(const std::string &fstdx_path) {
 
   key_size_ = mx_json_header_["meta"]["Record"];
   comp_text_offset_ = mx_json_header_["comp_blocks"]["offset"];
-  bucket_size_ = mx_json_header_["hash_index"]["bucket_size"];
-  hash_bucket_offset_ = mx_json_header_["hash_buckets"]["offset"];
-  hash_index_offset_ = mx_json_header_["hash_index"]["offset"];
   entry_indexes_offset_ = mx_json_header_["entry_indexes"]["offset"];
-  for (auto &idx : mx_json_header_["hash_index"]["dup_idxes"]) {
-    dup_idxes_.insert(idx.get<size_t>());
-  }
   return true;
 }
 
@@ -122,16 +115,16 @@ bool FstdxHashReader::exact_match_search_by_index_code(
   return true;
 }
 
-bool FstdxHashReader::hash_exact_match_search(
-    std::string_view word, std::vector<std::string> &result) const {
-  uint64_t index_res = 0;
-  string key(word);
-  if (!read_hash_index(fstdx_path_, key, index_res, dup_idxes_, bucket_size_,
-                       hash_bucket_offset_, hash_index_offset_)) {
-    return false;
-  }
-  return exact_match_search_by_index_code(index_res, result);
-}
+// bool FstdxHashReader::hash_exact_match_search(
+//     std::string_view word, std::vector<std::string> &result) const {
+//   uint64_t index_res = 0;
+//   string key(word);
+//   if (!read_hash_index(fstdx_path_, key, index_res, dup_idxes_, bucket_size_,
+//                        hash_bucket_offset_, hash_index_offset_)) {
+//     return false;
+//   }
+//   return exact_match_search_by_index_code(index_res, result);
+// }
 
 std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
   std::ifstream comp_in(fstdx_path_, std::ios::binary);

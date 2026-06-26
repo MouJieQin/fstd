@@ -58,7 +58,7 @@ std::vector<std::string> FstdxSearcher::search(std::string_view word,
   std::vector<std::string> result;
   auto iter = fstdxes_.find(name);
   if (iter != fstdxes_.end()) {
-    iter->second->hash_exact_match_search(word, result);
+    iter->second->exact_match_search(word, result);
   }
   return result;
 }
@@ -71,7 +71,7 @@ FstdxSearcher::search(std::string_view word,
     vector<string> result;
     auto iter = fstdxes_.find(name);
     if (iter != fstdxes_.end()) {
-      bool res = iter->second->hash_exact_match_search(word, result);
+      bool res = iter->second->exact_match_search(word, result);
       if (res) { results.emplace(name, std::move(result)); }
     }
   }

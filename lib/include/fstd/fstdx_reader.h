@@ -11,6 +11,7 @@
 
 namespace fstd {
 
+// hash table have been removed from fstdx, but we keep the structure
 class FstdxHashReader {
 public:
   FstdxHashReader(const std::string &fstdx_path);
@@ -30,8 +31,8 @@ public:
   std::vector<std::string>
   extract_values(DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const;
 
-  bool hash_exact_match_search(std::string_view word,
-                               std::vector<std::string> &result) const;
+  // bool hash_exact_match_search(std::string_view word,
+  //                              std::vector<std::string> &result) const;
 
 protected:
   bool exact_match_search_by_index_code(uint64_t idx_code,
@@ -61,10 +62,6 @@ protected:
   ZSTD_DDict *ddict_;
   std::vector<BlockIndex> block_indexes_;
   uint64_t comp_text_offset_;
-  std::set<size_t> dup_idxes_;
-  size_t bucket_size_;
-  uint64_t hash_bucket_offset_;
-  uint64_t hash_index_offset_;
   uint64_t entry_indexes_offset_;
 };
 

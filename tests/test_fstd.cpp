@@ -43,11 +43,13 @@ protected:
         key = keys[idx];
       }
       vector<string> result;
-      if (fst_search) {
-        ASSERT_TRUE(reader.exact_match_search(key, result));
-      } else {
-        ASSERT_TRUE(reader.hash_exact_match_search(key, result));
-      }
+      ASSERT_TRUE(reader.exact_match_search(key, result));
+      // hash table has been removed from fstdx file
+      // if (fst_search) {
+      //   ASSERT_TRUE(reader.exact_match_search(key, result));
+      // } else {
+      //   ASSERT_TRUE(reader.hash_exact_match_search(key, result));
+      // }
       for (size_t j = 0; j < result.size(); j++) {
         ASSERT_EQ(result[j], values[idx + j]);
       }

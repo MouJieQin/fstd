@@ -4,7 +4,6 @@
 #include <fstd/fstdx_compressor.h>
 #include <fstd/fstdx_reader.h>
 #include <fstd/fstdx_writer.h>
-#include <fstd/hash_index.h>
 #include <fstd/logger.h>
 #include <fstd/thread_pool.h>
 
@@ -98,10 +97,6 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
       meta_default.push_back(single_obj);
     }
     if (!handle_meta(meta, meta_default, header)) { return 5; }
-    size_t hash_offset = header["hash_buckets"]["offset"].get<size_t>();
-    size_t hash_size = header["key_fst"]["offset"].get<size_t>() - hash_offset;
-    size_t bucket_data_size =
-        header["hash_index"]["offset"].get<size_t>() - hash_offset;
     if (compress_level == header["meta"]["Compressionlevel"].get<size_t>() &&
         zstd_dict_size_kb * 1024 ==
             header["comp_dict"]["original_size"].get<size_t>() &&
@@ -123,12 +118,6 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
               dynamic_bars)) {
         return 3;
       }
-      if (!copy_file(fin, hash_offset, hash_size, fout)) { return 6; }
-      header["hash_buckets"]["offset"] =
-          header["entry_indexes"]["offset"].get<size_t>() +
-          header["meta"]["Record"].get<size_t>() * sizeof(EntryIndex);
-      header["hash_index"]["offset"] =
-          header["hash_buckets"]["offset"].get<size_t>() + bucket_data_size;
     }
     std::vector<char> key_fst_byte_code;
     if (!decompress(fin, "key_fst", reader.get_header(), key_fst_byte_code)) {
@@ -139,8 +128,7 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
     header["meta"]["Compressionlevel"] = compress_level;
     ostringstream oss_key_fst_out(ios_base::binary);
     oss_key_fst_out.write(key_fst_byte_code.data(), key_fst_byte_code.size());
-    return write_fst_header(fout, hash_size, oss_key_fst_out, header,
-                            compress_level);
+    return write_fst_header(fout, oss_key_fst_out, header, compress_level);
   }
 }
 
@@ -204,39 +192,10 @@ int FstdxWriter::compile_fstdx_impl(
     return 3;
   }
 
-  LOG_INFO("Hash index computing...");
-  ostringstream oss_hash_index_out(ios_base::binary);
-  std::set<size_t> dup_hash_idxes;
-  size_t bucket_size, bucket_data_size;
-  auto write_hash_res = thread_pool.enqueue([&]() {
-    auto res_p = write_hash_index(oss_hash_index_out, input, dup_hash_idxes);
-    bucket_size = res_p.first;
-    bucket_data_size = res_p.second;
-  });
-  write_hash_res.get();
-
-  if (!compile_res.get()) { return 2; }
-
-  size_t hash_data_size = 0;
-  {
-    const string hash_data(oss_hash_index_out.str());
-    hash_data_size = hash_data.size();
-    fout << hash_data;
-    header["hash_buckets"]["offset"] =
-        header["entry_indexes"]["offset"].get<size_t>() +
-        header["meta"]["Record"].get<size_t>() * sizeof(EntryIndex);
-    header["hash_index"]["offset"] =
-        header["hash_buckets"]["offset"].get<size_t>() + bucket_data_size;
-    header["hash_index"]["dup_idxes"] =
-        vector<size_t>(dup_hash_idxes.begin(), dup_hash_idxes.end());
-    header["hash_index"]["bucket_size"] = bucket_size;
-  }
-
-  return write_fst_header(fout, hash_data_size, oss_key_fst_out, header,
-                          compress_level);
+  return write_fst_header(fout, oss_key_fst_out, header, compress_level);
 }
 
-int FstdxWriter::write_fst_header(std::ostream &fout, size_t hash_data_size,
+int FstdxWriter::write_fst_header(std::ostream &fout,
                                   std::ostringstream &oss_key_fst_out,
                                   DxJsonHeader &header,
                                   uint8_t compress_level) {
@@ -252,7 +211,8 @@ int FstdxWriter::write_fst_header(std::ostream &fout, size_t hash_data_size,
     header["key_fst"]["compressed_size"] = comp_key_fst_dst.size();
     fout.write(comp_key_fst_dst.data(), comp_key_fst_dst.size());
     header["key_fst"]["offset"] =
-        header["hash_buckets"]["offset"].get<size_t>() + hash_data_size;
+        header["entry_indexes"]["offset"].get<size_t>() +
+        header["meta"]["Record"].get<size_t>() * sizeof(EntryIndex);
   }
 
   {

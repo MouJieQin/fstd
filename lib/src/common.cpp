@@ -53,7 +53,6 @@ bool copy_file(std::istream &ins, const size_t offset, size_t size,
       ins.read(buff, size);
     }
     size_t read_size = ins.gcount();
-    LOG_INFO("read_size: {}", read_size);
     out.write(buff, read_size);
     size -= read_size;
   }
