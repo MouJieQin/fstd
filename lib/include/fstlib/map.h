@@ -68,7 +68,7 @@ public:
     return prefix_len;
   }
 
-  size_t longest_common_prefix_search(std::string_view sv) const {
+  size_t longest_prefix_len(std::string_view sv) const {
     return matcher<output_t>::longest_prefix_len(sv);
   }
 
@@ -103,13 +103,14 @@ public:
     return ret;
   }
 
-  std::vector<std::vector<std::unique_ptr<std::string>>>
-  prefix_distance_search(std::string_view sv, size_t max_distance) const {
+  std::vector<std::vector<std::unique_ptr<std::string>>> prefix_distance_search(
+      std::string_view sv, size_t max_distance, const size_t longest_prefix_len,
+      const std::shared_ptr<std::set<std::string>> &prior_suffixes) const {
     std::vector<std::vector<std::unique_ptr<std::string>>> ret(max_distance +
                                                                1);
     if (sv.empty()) { return ret; }
-    size_t longest_prefix_len = matcher<output_t>::longest_prefix_len(sv);
-    PrefixDistanceAutomaton atm(sv, max_distance, longest_prefix_len);
+    PrefixDistanceAutomaton atm(sv, max_distance, longest_prefix_len,
+                                prior_suffixes);
     matcher<output_t>::depth_first_visit(
         matcher<output_t>::header_.start_address, std::string(), output_t{},
         atm,

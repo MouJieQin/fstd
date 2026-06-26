@@ -265,8 +265,8 @@ FstdxReader::common_prefix_search(std::string_view word) const {
   return fst_map_searcher_.common_prefix_search(word);
 }
 
-size_t FstdxReader::longest_common_prefix_search(std::string_view word) const {
-  return fst_map_searcher_.longest_common_prefix_search(word);
+size_t FstdxReader::longest_prefix_len(std::string_view word) const {
+  return fst_map_searcher_.longest_prefix_len(word);
 }
 
 std::vector<std::unique_ptr<std::string>>
@@ -281,9 +281,11 @@ FstdxReader::edit_distance_search(std::string_view word,
 }
 
 std::vector<std::vector<std::unique_ptr<std::string>>>
-FstdxReader::prefix_distance_search(std::string_view sv,
-                                    size_t max_distance) const {
-  return fst_map_searcher_.prefix_distance_search(sv, max_distance);
+FstdxReader::prefix_distance_search(
+    std::string_view sv, size_t max_distance, const size_t longest_prefix_len,
+    const std::shared_ptr<std::set<std::string>> &prior_suffixes) const {
+  return fst_map_searcher_.prefix_distance_search(
+      sv, max_distance, longest_prefix_len, prior_suffixes);
 }
 
 std::vector<std::unique_ptr<std::pair<double, std::string>>>

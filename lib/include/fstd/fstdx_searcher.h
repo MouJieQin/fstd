@@ -87,12 +87,12 @@ private:
   std::vector<std::string> uniq_sort_results(
       std::vector<std::vector<std::vector<std::unique_ptr<std::string>>>>
           &&results,
-      std::vector<size_t> counts, size_t count) const;
+      const std::vector<size_t> &counts, size_t count) const;
 
 private:
   bool is_valid_;
-  std::set<std::string> prior_suffixes_;
-  std::set<size_t> prior_suf_lens_;
+  std::shared_ptr<std::set<std::string>> prior_suffixes_;
+  std::shared_ptr<std::set<size_t>> prior_suf_lens_;
   std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes_;
   std::unordered_map<std::string, std::vector<std::shared_ptr<FstddReader>>>
       fstdds_;

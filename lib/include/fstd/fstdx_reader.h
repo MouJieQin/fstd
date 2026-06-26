@@ -80,7 +80,7 @@ public:
   std::vector<std::unique_ptr<std::string>>
   common_prefix_search(std::string_view word) const;
 
-  size_t longest_common_prefix_search(std::string_view word) const;
+  size_t longest_prefix_len(std::string_view word) const;
 
   std::vector<std::unique_ptr<std::string>>
   predictive_search(std::string_view word) const;
@@ -88,8 +88,9 @@ public:
   std::vector<std::unique_ptr<std::string>>
   edit_distance_search(std::string_view word, size_t edit_distance = 1) const;
 
-  std::vector<std::vector<std::unique_ptr<std::string>>>
-  prefix_distance_search(std::string_view sv, size_t max_distance) const;
+  std::vector<std::vector<std::unique_ptr<std::string>>> prefix_distance_search(
+      std::string_view sv, size_t max_distance, const size_t longest_prefix_len,
+      const std::shared_ptr<std::set<std::string>> &prior_suffixes) const;
 
   std::vector<std::unique_ptr<std::pair<double, std::string>>>
   suggest(std::string_view word) const;

@@ -8,6 +8,7 @@
 #pragma once
 #include <iostream>
 #include <numeric>
+#include <set>
 
 #include <fstlib/matcher_utility.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
@@ -21,11 +22,24 @@ namespace fst {
 
 class PrefixDistanceAutomaton {
 public:
-  PrefixDistanceAutomaton(std::string_view sv, const size_t max_distance,
-                          const size_t longest_prefix_len)
+  PrefixDistanceAutomaton(
+      std::string_view sv, const size_t max_distance,
+      const size_t longest_prefix_len,
+      const std::shared_ptr<std::set<std::string>> &prior_suffixes = nullptr)
       : s_(decode(sv)), max_distance_(max_distance),
         longest_prefix_len_(calc_c_len(sv.substr(0, longest_prefix_len))),
-        common_prefix_len_(0), prefix_distance_(0), word_("") {}
+        common_prefix_len_(0), prefix_distance_(0), word_(""),
+        prior_suffixes_(prior_suffixes), prior_suf_lens_(nullptr),
+        max_prior_suf_len_(0) {
+    if (prior_suffixes_) {
+      prior_suf_lens_ = std::make_shared<std::set<size_t>>();
+      for (const auto &suf : *prior_suffixes_) {
+        prior_suf_lens_->insert(suf.size());
+        size_t u8_len = calc_c_len(suf);
+        if (u8_len > max_prior_suf_len_) { max_prior_suf_len_ = u8_len; }
+      }
+    }
+  }
 
   PrefixDistanceAutomaton(const PrefixDistanceAutomaton &rhs) = default;
 
@@ -63,15 +77,37 @@ public:
       if (common_prefix_len_ == 0) {
         return false;
       } else {
-        return distance() < max_distance_;
+        return real_distance() < max_distance_ + max_prior_suf_len_;
       }
     }
   }
 
   size_t get_longest_prefix_len() const { return longest_prefix_len_; }
 
-  size_t distance() const {
+  size_t real_distance() const {
     return (longest_prefix_len_ - common_prefix_len_) + prefix_distance_;
+  }
+
+  size_t distance() const {
+    size_t real_d = real_distance();
+    size_t prior_suf_len = has_prior_suffix(word_);
+    if (real_d > prior_suf_len) {
+      return real_d - prior_suf_len;
+    } else {
+      return 0;
+    }
+  }
+
+private:
+  size_t has_prior_suffix(const std::string &word) const {
+    for (auto it = prior_suf_lens_->crbegin();it!=prior_suf_lens_->crend();++it) {
+      auto len = *it;
+      if (word.size() >= len) {
+        std::string suf = word.substr(word.size() - len, len);
+        if (prior_suffixes_->contains(suf)) { return calc_c_len(suf); }
+      }
+    }
+    return 0;
   }
 
 private:
@@ -82,6 +118,9 @@ private:
   size_t prefix_distance_;
   std::string u8code_;
   std::string word_;
+  const std::shared_ptr<std::set<std::string>> prior_suffixes_;
+  std::shared_ptr<std::set<size_t>> prior_suf_lens_;
+  size_t max_prior_suf_len_;
 };
 
 //-----------------------------------------------------------------------------
