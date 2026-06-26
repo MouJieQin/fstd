@@ -176,6 +176,7 @@ bool parse_header(std::ifstream &ins, const size_t file_size,
     LOG_INFO("{}", header.dump());
   } catch (const json::exception &e) {
     LOG_ERROR("解析 header 失败: {}", e.what());
+    LOG_ERROR("header_json_raw_str: {}", string(header_json_raw_str.data()));
     return false;
   } catch (...) {
     LOG_ERROR("解析 header 失败: 未知异常");

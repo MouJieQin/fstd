@@ -125,7 +125,8 @@ private:
         bars[bar_idx].set_option(indicators::option::PostfixText{
             std::to_string(count) + " " + postfix_text});
         auto now = std::chrono::steady_clock::now();
-        // auto diff_ms = duration_cast<milliseconds>(now - last_update).count();
+        // auto diff_ms = duration_cast<milliseconds>(now -
+        // last_update).count();
         auto diff_sec = duration_cast<seconds>(now - last_update).count();
         if (diff_sec >= 1 && last_progresses[bar_idx] < 99) {
           last_progresses[bar_idx] += 1;
@@ -266,31 +267,4 @@ sort_indexes(const std::vector<std::pair<T1, T2>> &input) {
   return indices;
 }
 
-// ------------------------------
-// Sort container by first pair element
-// ------------------------------
-template <typename T1, typename T2>
-inline std::vector<std::string>
-sort_container(std::vector<std::pair<T1, T2>> &&input) {
-  auto indices = sort_indexes(input);
-  std::vector<std::string> res;
-  res.reserve(indices.size());
-
-  for (size_t i : indices) {
-    res.emplace_back(std::move(input[i].first));
-  }
-  return res;
-}
-
-inline std::vector<std::string>
-sort_container(std::vector<std::string> &&input) {
-  auto indices = sort_indexes(input);
-  std::vector<std::string> res;
-  res.reserve(indices.size());
-
-  for (size_t i : indices) {
-    res.emplace_back(std::move(input[i]));
-  }
-  return res;
-}
 } // namespace fstd

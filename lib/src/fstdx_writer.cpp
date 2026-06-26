@@ -191,6 +191,7 @@ int FstdxWriter::compile_fstdx_impl(
           compress_level, thread_pool, dynamic_bars)) {
     return 3;
   }
+  if (!compile_res.get()) { return 1; }
 
   return write_fst_header(fout, oss_key_fst_out, header, compress_level);
 }
@@ -219,12 +220,12 @@ int FstdxWriter::write_fst_header(std::ostream &fout,
     header["meta"]["Creationdate"] = get_current_date();
     std::vector<char> comp_header_dst;
     std::string header_str = header.dump();
-    comp_res = compress_to_buffer(header_str.c_str(), header_str.size(),
+    comp_res = compress_to_buffer(header_str.c_str(), header_str.size() + 1,
                                   comp_header_dst, compress_level);
     if (!comp_res) { return 4; }
     fout.write(comp_header_dst.data(), comp_header_dst.size());
 
-    HeaderSizeRecord header_size_record(header_str.size(),
+    HeaderSizeRecord header_size_record(header_str.size() + 1,
                                         comp_header_dst.size());
     LOG_DEBUG("{},{}", header_size_record.original_size,
               header_size_record.compressed_size);
