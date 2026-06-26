@@ -175,11 +175,11 @@ bool parse_header(std::ifstream &ins, const size_t file_size,
     header = json::parse(string(header_json_raw_str.data()));
     LOG_INFO("{}", header.dump());
   } catch (const json::exception &e) {
-    LOG_ERROR("解析 header 失败: {}", e.what());
+    LOG_ERROR("Parse header failed: {}", e.what());
     LOG_ERROR("header_json_raw_str: {}", string(header_json_raw_str.data()));
     return false;
   } catch (...) {
-    LOG_ERROR("解析 header 失败: 未知异常");
+    LOG_ERROR("Parse header failed: unknown exception");
     return false;
   }
   return true;

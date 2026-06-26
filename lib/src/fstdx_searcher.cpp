@@ -428,10 +428,10 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
   try {
     ifs >> meta_json;
   } catch (const json::exception &e) {
-    LOG_ERROR("JSON元数据文件 {} 格式错误：{}", meta_json_path, e.what());
+    LOG_ERROR("Meta JSON file {} format error: {}", meta_json_path, e.what());
     return false;
   } catch (const std::exception &e) {
-    LOG_ERROR("JSON元数据文件 {} 读取错误：{}", meta_json_path, e.what());
+    LOG_ERROR("Meta JSON file {} read error: {}", meta_json_path, e.what());
     return false;
   }
   meta_json_ = std::move(meta_json);

@@ -6,10 +6,10 @@ set(DEBUG_POSTFIX "d" CACHE STRING "Postfix for debug build binaries")
 set(COVERAGE_POSTFIX "" CACHE STRING "Postfix for coverage build binaries")
 set(GPERF_POSTFIX "" CACHE STRING "Postfix for gperf build binaries")
 
-# 统一转小写
+# to lower case
 string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 
-# 设置构建类型标识
+# build type postfix
 if (CMAKE_BUILD_TYPE_LOWER STREQUAL "release")
     set(BUILD_TYPE ${RELEASE_POSTFIX})
 elseif (CMAKE_BUILD_TYPE_LOWER STREQUAL "debug")
@@ -24,30 +24,29 @@ else()
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
 
-# 项目配置
+# project configuration
 project (fstd LANGUAGES CXX)
 set(fstd_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-# C++20 强制标准
+# C++20 standard required
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 标准安装路径（兼容所有系统）
+# standard install path (compatible with all systems)
 include(GNUInstallDirs)
 
-# 开启测试
 enable_testing()
 
-# ===================== 库文件配置（核心：静态库 + 动态库） =====================
-# 自动收集库源码
+# ===================== library configuration =====================
+# automatically collect library source files
 aux_source_directory(${fstd_ROOT_DIR}/lib/src DIR_LIB_SRCS)
 
-# 库头文件路径
+# library header path
 set(FSTD_INCLUDE_DIR ${fstd_ROOT_DIR}/lib/include)
 include_directories(${FSTD_INCLUDE_DIR})
 
-# 1. 编译动态库
+# 1. compile shared library
 add_library(fstd_shared SHARED ${DIR_LIB_SRCS})
 set_target_properties(fstd_shared PROPERTIES
     OUTPUT_NAME fstd${BUILD_TYPE}
@@ -56,14 +55,14 @@ set_target_properties(fstd_shared PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
 
-# 2. 编译静态库
+# 2. compile static library
 add_library(fstd_static STATIC ${DIR_LIB_SRCS})
 set_target_properties(fstd_static PROPERTIES
     OUTPUT_NAME fstd${BUILD_TYPE}
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
 
-# 给库设置头文件属性（安装时自动关联）
+# set library header path
 target_include_directories(fstd_shared PUBLIC
     $<BUILD_INTERFACE:${FSTD_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -74,23 +73,23 @@ target_include_directories(fstd_static PUBLIC
 )
 # ============================================================================
 
-# ===================== 可执行文件配置 =====================
+# ===================== executable configuration =====================
 add_executable(fstd ${fstd_ROOT_DIR}/src/main.cpp)
-target_link_libraries(fstd PRIVATE fstd_static)  # 可执行文件链接静态库
+target_link_libraries(fstd PRIVATE fstd_static)  # executable links static library
 # ==========================================================
 
-# 编译宏定义
+# compile macro definitions
 target_compile_definitions(fstd PRIVATE
     SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
 )
 
-# 通用编译警告
+# common compile warnings
 set(COMMON_COMPILE_OPTIONS
     -W
     -Wall
 )
 
-# 按构建类型设置编译选项（库 + 可执行文件统一配置）
+# set compile options for each target
 set(TARGETS fstd fstd_shared fstd_static)
 foreach(TARGET ${TARGETS})
     target_compile_options(${TARGET} PRIVATE ${COMMON_COMPILE_OPTIONS})
@@ -105,7 +104,7 @@ foreach(TARGET ${TARGETS})
     endif()
 endforeach()
 
-# 第三方库链接（库 + 可执行文件统一链接）
+# link third-party libraries
 find_package(nlohmann_json REQUIRED)
 foreach(TARGET ${TARGETS})
     target_link_libraries(${TARGET} PRIVATE
@@ -117,7 +116,7 @@ foreach(TARGET ${TARGETS})
     )
 endforeach()
 
-# ===================== GTest 混合模式：优先系统/brew，失败则自动下载 =====================
+# ===================== GTest configuration =====================
 find_package(GTest QUIET)
 
 if(GTest_FOUND)
@@ -129,22 +128,22 @@ else()
       googletest
       GIT_REPOSITORY https://github.com/google/googletest.git
       GIT_TAG        v1.17.0
-      # 禁止 gtest 安装，避免和系统库冲突
+      # disable installing gtest library
       EXCLUDE_FROM_ALL
     )
-    # 关闭 gtest 自身测试，加快编译
+    # disable gtest self-tests
     set(gtest_build_tests OFF CACHE BOOL "" FORCE)
     set(gmock_build_tests OFF CACHE BOOL "" FORCE)
-    # 新增：关闭 gtest 内部依赖检查（进一步防重复）
+    # disable gtest internal dependencies
     set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 endif()
 
-# 加载测试子目录
+# load test subdirectory
 add_subdirectory(tests)
 # ========================================================================================
 
-# 覆盖率链接配置
+# coverage report
 if (CMAKE_BUILD_TYPE_LOWER STREQUAL "coverage")
     foreach(TARGET ${TARGETS})
         target_link_libraries(${TARGET} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
@@ -173,26 +172,26 @@ if (CMAKE_BUILD_TYPE_LOWER STREQUAL "gperf")
     endforeach()
 endif()
 
-# ===================== 安装配置（核心） =====================
-# 1. 安装可执行文件
+# ===================== install configuration =====================
+# 1. install executable file
 install(TARGETS fstd
     DESTINATION ${CMAKE_INSTALL_BINDIR}
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 
-# 2. 安装库文件（静态 + 动态）
+# 2. install library files (static + dynamic)
 install(TARGETS fstd_shared fstd_static
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}  # 动态库
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  # 静态库
 )
 
-# 3. 安装头文件（安装后路径：/usr/local/include/fstd/xxx.hpp）
+# 3. install header files
 install(DIRECTORY ${FSTD_INCLUDE_DIR}/fstd ${FSTD_INCLUDE_DIR}/fstlib
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
 )
 
-# ===================== 卸载配置（make uninstall） =====================
+# ===================== uninstall configuration =====================
 if(NOT TARGET uninstall)
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"

@@ -90,6 +90,7 @@ public:
 
   size_t distance() const {
     size_t real_d = real_distance();
+    if(prefix_distance_ == 0) { return real_d; }
     size_t prior_suf_len = has_prior_suffix(word_);
     if (real_d > prior_suf_len) {
       return real_d - prior_suf_len;
