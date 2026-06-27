@@ -1,6 +1,5 @@
 cmake_minimum_required (VERSION 3.10)
 
-# 构建类型后缀配置
 set(RELEASE_POSTFIX "" CACHE STRING "Postfix for release build binaries")
 set(DEBUG_POSTFIX "d" CACHE STRING "Postfix for debug build binaries")
 set(COVERAGE_POSTFIX "" CACHE STRING "Postfix for coverage build binaries")
