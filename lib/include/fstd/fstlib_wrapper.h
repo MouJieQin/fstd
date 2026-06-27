@@ -62,6 +62,10 @@ public:
     return byte_code_ptr_;
   }
 
+  bool contains(std::string_view sv) const {
+    return matcher_ptr_->contains(sv);
+  }
+
   bool exact_match_search(std::string_view word, output_t &output) const {
     return matcher_ptr_->exact_match_search(word, output);
   }
@@ -118,19 +122,23 @@ public:
         sv, max_distance, longest_prefix_len, prior_suffixes);
   }
 
-  // std::vector<std::unique_ptr<std::pair<double, std::string>>>
-  // spellcheck_word(std::string_view word, size_t n = 10) const {
-  //   std::vector<std::tuple<double, std::string, output_t>> result;
-  //   for (const auto &item : matcher_ptr_->suggest(word)) {
-  //     if (n == 0) { break; }
-  //     auto similarity = std::get<0>(item);
-  //     const std::string &candidate = std::get<1>(item);
-  //     const output_t &output = std::get<2>(item);
-  //     result.emplace_back(similarity, candidate, output);
-  //     n--;
-  //   }
-  //   return result;
-  // }
+  std::vector<std::unique_ptr<std::pair<double, std::string>>>
+  spellcheck_word(std::string_view word, size_t n = 10) const {
+    std::vector<std::unique_ptr<std::pair<double, std::string>>> result;
+    result.reserve(n);
+    std::vector<std::unique_ptr<std::pair<double, std::string>>> suggestions =
+        matcher_ptr_->suggest(word);
+    std::sort(suggestions.begin(), suggestions.end(),
+              [](const auto &x, const auto &y) { return x->first > y->first; });
+
+    for (auto &item : suggestions) {
+      if (n == 0) { break; }
+      result.emplace_back(std::move(item));
+      n--;
+    }
+
+    return result;
+  }
 
   std::vector<std::pair<std::string, output_t>>
   enumerate(const size_t predictive_fst_key_size = 0,
@@ -138,11 +146,18 @@ public:
     std::vector<std::pair<std::string, output_t>> result;
     result.reserve(predictive_fst_key_size);
     matcher_ptr_->enumerate(
-        [&](const std::string &word, const output_t output) {
-          result.emplace_back(std::move(word), output);
+        [&](const std::string &word, const output_t &output) {
+          result.emplace_back(word, output);
           if (progress) { progress(result.size()); }
         });
     return result;
+  }
+
+  void enumerate_print() const {
+    matcher_ptr_->enumerate([&](const std::string &word, const output_t &_) {
+      std::cout << word << "\n";
+    });
+    std::cout << std::flush;
   }
 
 private:

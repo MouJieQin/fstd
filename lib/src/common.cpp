@@ -41,6 +41,14 @@ std::string change_ext(const std::string &file_path, const std::string &ext) {
   }
 }
 
+bool read_file(const std::string &file_path, std::string &content) {
+  std::ifstream file_stream(file_path);
+  if (!file_stream) { return false; }
+  content = std::string((std::istreambuf_iterator<char>(file_stream)),
+                        std::istreambuf_iterator<char>());
+  return true;
+}
+
 bool copy_file(std::istream &ins, const size_t offset, size_t size,
                std::ostream &out) {
   ins.seekg(offset, ios::beg);

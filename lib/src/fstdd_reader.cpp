@@ -50,7 +50,35 @@ bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
   return true;
 }
 
-bool FstddReader::extract_all(const std::string &dst_dir_str) {
+bool FstddReader::contains(const std::string &key) const {
+  ValueBlockPosIndex vbp_idx;
+  if (!read_hash_index(fstdd_path_, key, vbp_idx, dup_idxes_, bucket_size_,
+                       hash_bucket_offset_, hash_index_offset_)) {
+    return false;
+  }
+  return true;
+}
+
+bool FstddReader::extract_all_key(std::vector<std::string> &all_keys) const {
+  std::vector<char> keys_buff;
+  if (!decompress(fstdd_path_, "keys", md_json_header_, keys_buff)) {
+    return false;
+  }
+  std::vector<std::string> temp_keys;
+  temp_keys.reserve(key_size_);
+  size_t start_idx = 0;
+  for (size_t i = 0; i < keys_buff.size(); ++i) {
+    if (keys_buff[i] == '\0') {
+      string key(keys_buff.data() + start_idx, i - start_idx);
+      temp_keys.emplace_back(std::move(key));
+      start_idx = i + 1;
+    }
+  }
+  all_keys.swap(temp_keys);
+  return true;
+}
+
+bool FstddReader::extract_all(const std::string &dst_dir_str) const {
   std::vector<char> keys_buff;
   if (!decompress(fstdd_path_, "keys", md_json_header_, keys_buff)) {
     return false;
@@ -71,7 +99,7 @@ bool FstddReader::extract_all(const std::string &dst_dir_str) {
 }
 
 bool FstddReader::extract(const std::string &key,
-                          const std::string &dst_dir_str) {
+                          const std::string &dst_dir_str) const {
   fs::path dst_dir(dst_dir_str);
   if (fs::exists(dst_dir)) {
     if (!fs::is_directory(dst_dir)) {
@@ -88,7 +116,8 @@ bool FstddReader::extract(const std::string &key,
   return extract_impl(key, output_path.string());
 }
 
-bool FstddReader::extract_impl(const string &key, const string &output_path) {
+bool FstddReader::extract_impl(const string &key,
+                               const string &output_path) const {
   std::ifstream ins(fstdd_path_, std::ios::binary);
   if (!ins) {
     LOG_ERROR("Cannot open the file: {}", fstdd_path_);

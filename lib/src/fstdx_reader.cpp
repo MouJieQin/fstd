@@ -246,6 +246,10 @@ FstdxReader::FstdxReader(const std::string &fstdx_path)
 
 size_t FstdxReader::get_fst_key_size() const { return fst_key_size_; }
 
+bool FstdxReader::contains(std::string_view sv) const {
+  return fst_map_searcher_.contains(sv);
+}
+
 bool FstdxReader::exact_match_search(std::string_view word,
                                      std::vector<std::string> &result) const {
   uint64_t index_res = 0;
@@ -297,10 +301,14 @@ FstdxReader::regex_search(std::string_view pattern,
   return fst_map_searcher_.regex_search(pattern, thread_pool);
 }
 
-// std::vector<std::tuple<double, std::string, uint64_t>>
-// FstdxReader::spellcheck_word(std::string_view word, const size_t n) const {
-//   return fst_map_searcher_.spellcheck_word(word, n);
-// }
+std::vector<std::unique_ptr<std::pair<double, std::string>>>
+FstdxReader::spellcheck_word(std::string_view word, const size_t n) const {
+  return fst_map_searcher_.spellcheck_word(word, n);
+}
+
+void FstdxReader::enumerate_print() const {
+  fst_map_searcher_.enumerate_print();
+}
 
 std::vector<std::pair<std::string, uint64_t>> FstdxReader::enumerate() const {
   return fst_map_searcher_.enumerate(fst_key_size_);

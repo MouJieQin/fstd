@@ -69,6 +69,8 @@ public:
 
   std::shared_ptr<spdlog::logger> get_logger() const;
 
+  void set_level(spdlog::level::level_enum l);
+
   Logger(const Logger &) = delete;
   Logger &operator=(const Logger &) = delete;
 

@@ -7,6 +7,8 @@ Logger &Logger::instance() {
 
 std::shared_ptr<spdlog::logger> Logger::get_logger() const { return logger_; }
 
+void Logger::set_level(spdlog::level::level_enum l) { logger_->set_level(l); }
+
 Logger::Logger() {
   try {
     // 1. Create two sinks: color terminal + rotating file sink

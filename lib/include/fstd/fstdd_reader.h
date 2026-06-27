@@ -16,9 +16,14 @@ public:
 
   operator bool() const;
 
-  bool extract(const std::string &key, const std::string &dst_dir = "data");
+  bool contains(const std::string &key) const;
 
-  bool extract_all(const std::string &dst_dir = "data");
+  bool extract_all_key(std::vector<std::string> &all_keys) const;
+
+  bool extract(const std::string &key,
+               const std::string &dst_dir = "data") const;
+
+  bool extract_all(const std::string &dst_dir = "data") const;
 
   const DdJsonHeader &get_header() const;
 
@@ -27,7 +32,7 @@ public:
 private:
   bool parse_fstdd(const std::string &fstdd_path);
 
-  bool extract_impl(const std::string &key, const std::string &dst_dir);
+  bool extract_impl(const std::string &key, const std::string &dst_dir) const;
 
 private:
   const std::string fstdd_path_;

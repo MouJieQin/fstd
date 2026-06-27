@@ -71,6 +71,8 @@ public:
 
   size_t get_fst_key_size() const;
 
+  bool contains(std::string_view sv) const;
+
   bool exact_match_search(std::string_view word,
                           std::vector<std::string> &result) const;
 
@@ -98,8 +100,10 @@ public:
   std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
   regex_search(std::string_view pattern, ThreadPool &thread_pool) const;
 
-  std::vector<std::tuple<double, std::string, uint64_t>>
+  std::vector<std::unique_ptr<std::pair<double, std::string>>>
   spellcheck_word(std::string_view word, const size_t n = 10) const;
+
+  void enumerate_print()const;
 
   std::vector<std::pair<std::string, uint64_t>> enumerate() const;
 

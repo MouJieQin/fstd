@@ -31,6 +31,10 @@ public:
 
   output_t operator[](const char *s) const { return at(s); }
 
+  bool contains(std::string_view sv) const {
+    return matcher<output_t>::contains(sv);
+  }
+
   output_t at(std::string_view sv) const {
     auto output = output_t{};
     auto ret = matcher<output_t>::match(sv.data(), sv.size(),
