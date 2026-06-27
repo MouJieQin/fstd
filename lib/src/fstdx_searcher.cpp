@@ -49,15 +49,31 @@ bool FstdxSearcher::extract(const std::string &name,
   auto iter = fstdx_obj.find(name);
   if (iter == fstdx_obj.end()) { return false; }
 
-  fs::path default_dst_dir = fs::path(*iter).parent_path() / "data";
+  fs::path default_dst_dir =
+      fs::absolute(fs::path(*iter)).parent_path() / "data";
   return extract(name, file_path, default_dst_dir.string());
 }
 
+bool FstdxSearcher::contains(std::string_view word,
+                             const std::vector<std::string> &names) const {
+  for (const string &name : names) {
+    auto iter = fstdxes_.find(name);
+    if (iter == fstdxes_.end()) {
+      LOG_ERROR("FstdxSearcher: name [{}] not found", name);
+    } else {
+      if (iter->second->contains(word)) { return true; }
+    }
+  }
+  return false;
+}
+
 std::vector<std::string> FstdxSearcher::search(std::string_view word,
-                                               const std::string &name) {
+                                               const std::string &name) const {
   std::vector<std::string> result;
   auto iter = fstdxes_.find(name);
-  if (iter != fstdxes_.end()) {
+  if (iter == fstdxes_.end()) {
+    LOG_ERROR("FstdxSearcher: name [{}] not found", name);
+  } else {
     iter->second->exact_match_search(word, result);
   }
   return result;
@@ -70,7 +86,9 @@ FstdxSearcher::search(std::string_view word,
   for (const string &name : names) {
     vector<string> result;
     auto iter = fstdxes_.find(name);
-    if (iter != fstdxes_.end()) {
+    if (iter == fstdxes_.end()) {
+      LOG_ERROR("FstdxSearcher: name [{}] not found", name);
+    } else {
       bool res = iter->second->exact_match_search(word, result);
       if (res) { results.emplace(name, std::move(result)); }
     }
@@ -376,7 +394,8 @@ bool FstdxSearcher::insert(const std::string &name,
   fstdxes_[name] = ptr;
   meta_json_["fstdx"][name] = fs::absolute(fstdx_path).string();
 
-  const vector<string> fstdds = find_fstdd(fs::path(fstdx_path).parent_path());
+  const vector<string> fstdds =
+      find_fstdd(fs::absolute(fs::path(fstdx_path)).parent_path());
   fstdds_[name] = std::vector<std::shared_ptr<FstddReader>>();
   for (const string &fstdd : fstdds) {
     auto ptr = std::make_shared<FstddReader>(fstdd);

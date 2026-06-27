@@ -23,8 +23,10 @@ public:
 
   bool extract(const std::string &name, const std::string &file_path) const;
 
+  bool contains(std::string_view word, const std::vector<std::string>&names) const;
+
   std::vector<std::string> search(std::string_view word,
-                                  const std::string &name);
+                                  const std::string &name) const;
 
   std::unordered_map<std::string, std::vector<std::string>>
   search(std::string_view word, const std::vector<std::string> &names) const;

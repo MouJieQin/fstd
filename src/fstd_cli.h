@@ -6,6 +6,7 @@
 #include <fstd/fstdd_reader.h>
 #include <fstd/fstdd_writer.h>
 #include <fstd/fstdx_reader.h>
+#include <fstd/fstdx_searcher.h>
 #include <fstd/fstdx_writer.h>
 #include <fstd/logger.h>
 
@@ -144,6 +145,20 @@ private:
       for (const auto &p : results) {
         std::cout << *p << std::endl;
       }
+    } else if (suggest) {
+      std::vector<std::unique_ptr<pair<double, std::string>>> result =
+          fstdx_reader.suggest(word);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      std::sort(
+          result.begin(), result.end(),
+          [&](const auto &x, const auto &y) { return x->first > y->first; });
+      for (const auto &p : result) {
+        std::cout << p->second << " -> " << p->first << "\n";
+      }
+      std::cout << std::flush;
     } else if (spellcheck) {
       std::vector<std::unique_ptr<pair<double, std::string>>> result =
           fstdx_reader.spellcheck_word(word);
@@ -175,14 +190,116 @@ private:
     return 0;
   }
 
-  int search() {
-    if (ends_with(file_path, ".fstdd")) {
-      return fstdd_search();
-    } else if (ends_with(file_path, ".fstdx")) {
-      return fstdx_search();
+  int fstdxes_search() {
+    fstd::FstdxSearcher fstdx_searcher(search_worker_num);
+    if (!fstdx_searcher) { return 1; }
+    for (const auto &fstdx : fstdxes) {
+      if (!fstdx_searcher.insert(fstdx, fstdx)) { return 1; }
+    }
+
+    if (contains) {
+      std::cout << "word: " << word << std::endl;
+      if (fstdx_searcher.contains(word, fstdxes)) {
+        std::cout << "yes" << std::endl;
+        return 0;
+      } else {
+        std::cout << "no" << std::endl;
+        return 1;
+      }
+    } else if (common_prefix) {
+      auto result = fstdx_searcher.common_prefix_search(word, fstdxes);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      for (const auto &p : result) {
+        std::cout << p << std::endl;
+      }
+    } else if (longest_common_prefix) {
+      size_t len = fstdx_searcher.longest_common_prefix_search(word, fstdxes);
+      if (len == 0) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      std::cout << word.substr(0, len) << std::endl;
+    } else if (predictive) {
+      auto result = fstdx_searcher.predictive_search(word, fstdxes);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      for (const auto &p : result) {
+        std::cout << p << std::endl;
+      }
+    } else if (edit_distance != 0) {
+      auto result =
+          fstdx_searcher.edit_distance_search(word, fstdxes, edit_distance);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      for (const auto &p : result) {
+        std::cout << p << std::endl;
+      }
+    } else if (regex) {
+      auto p_results = fstdx_searcher.regex_search(word, fstdxes);
+      const auto &results = p_results.first;
+      const auto &error_message = p_results.second;
+      if (!error_message.empty()) {
+        LOG_ERROR("regex error: {}", error_message);
+        return 1;
+      }
+      if (results.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      for (const auto &p : results) {
+        std::cout << p << std::endl;
+      }
+    } else if (suggest) {
+      std::vector<std::string> result = fstdx_searcher.suggest(word, fstdxes);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      for (const auto &s : result) {
+        std::cout << s << "\n";
+      }
+      std::cout << std::flush;
     } else {
-      LOG_ERROR("[{}] is not a fstdx or fstdd to search", file_path);
-      return 1;
+      // exact match search
+      std::unordered_map<std::string, std::vector<std::string>> results =
+          fstdx_searcher.search(word, fstdxes);
+      bool has_matched = false;
+      for (const auto &p : results) {
+        std::cout << p.first << ":\n";
+        if (!p.second.empty()) { has_matched = true; }
+        for (const std::string &s : p.second) {
+          std::cout << "------------------------------" << std::endl;
+          std::cout << s << std::endl;
+          std::cout << "------------------------------" << std::endl;
+        }
+      }
+      if (!has_matched) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+    }
+    return 0;
+  }
+
+  int search() {
+    if (!fstdxes.empty()) {
+      return fstdxes_search();
+    } else {
+      if (ends_with(file_path, ".fstdd")) {
+        return fstdd_search();
+      } else if (ends_with(file_path, ".fstdx")) {
+        return fstdx_search();
+      } else {
+        LOG_ERROR("[{}] is not a fstdx or fstdd to search", file_path);
+        return 1;
+      }
     }
     return 0;
   }
@@ -251,7 +368,7 @@ private:
       }
     } else if (fs::is_regular_file(write_input_file)) {
       if (output_file.empty()) {
-        output_file = change_ext(write_input_file, ".fstdx");
+        output_file = change_ext(write_input_file, "fstdx");
       }
       print_write_info();
       fstd::FstdxWriter fstdx_writer;
@@ -336,7 +453,7 @@ private:
   }
 
   void search_setup() {
-    search_cmd = app.add_subcommand("search", "search words");
+    search_cmd = app.add_subcommand("search", "search key");
 
     // bool search_word = false;
     // search_cmd->add_option("-s,--search", search_word, "exact match search");
@@ -352,6 +469,8 @@ private:
 
     search_cmd->add_flag("-s,--spellcheck", spellcheck, "spellcheck word");
 
+    search_cmd->add_flag("-g,--suggest", suggest, "suggest word");
+
     search_cmd->add_flag("--common-prefix", common_prefix,
                          "search common prefix");
 
@@ -362,8 +481,15 @@ private:
 
     search_cmd->add_flag("-m,--meta", query_meta, "query metadata");
 
-    search_cmd->add_option("file_path", file_path, "input file path")
-        ->required();
+    search_cmd
+        ->add_option("-w,--worker", search_worker_num,
+                     "the number of thread workers.")
+        ->default_val(0);
+
+    search_cmd->add_option("-f,--fstdx", fstdxes,
+                           "Add fstdxes: -f a.fstdx -f b.fstdx");
+
+    search_cmd->add_option("file_path", file_path, "input file path");
 
     search_cmd->add_option("word", word, "word");
   }
@@ -440,12 +566,15 @@ private:
   size_t edit_distance = 0;
   bool regex = false;
   bool spellcheck = false;
+  bool suggest = false;
   bool common_prefix = false;
   bool longest_common_prefix = false;
   bool enumerate = false;
   bool query_meta = false;
+  size_t search_worker_num = 0;
   std::string file_path;
   std::string word;
+  std::vector<std::string> fstdxes;
   //-----------------------------------------------------------------------------
   //   write
   //-----------------------------------------------------------------------------
