@@ -178,8 +178,6 @@ std::string get_current_date();
 
 bool ends_with(std::string const &value, std::string const &ending);
 
-std::string change_ext(const std::string &file_path, const std::string &ext);
-
 bool read_file(const std::string &file_path, std::string &content);
 
 bool copy_file(std::istream &ins, const size_t offset, size_t size,

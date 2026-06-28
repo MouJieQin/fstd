@@ -140,7 +140,7 @@ FstdxSearcher::edit_distance_search(std::string_view word,
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
-      LOG_ERROR("FstdxSearcher::edit_distance_search, name [{}] not found",
+      LOG_ERROR("FstdxSearcher: name [{}] not found",
                 name);
     } else {
       vector<unique_ptr<string>> res =
@@ -381,13 +381,13 @@ void FstdxSearcher::insert_if_not_exists(const std::string &name,
 bool FstdxSearcher::insert(const std::string &name,
                            const std::string &fstdx_path) {
   if (fstdxes_.find(name) != fstdxes_.end()) {
-    LOG_ERROR("Insert fstdx failed, as name {} already exists", name);
+    LOG_ERROR("Insert fstdx failed, as name [{}] already exists", name);
     return false;
   }
 
   shared_ptr<FstdxReader> ptr = make_shared<FstdxReader>(fstdx_path);
   if (!(*ptr)) {
-    LOG_ERROR("Insert fstdx failed, as path {} is not a valid fstdx file",
+    LOG_ERROR("Insert fstdx failed. Invalid or corrupted .fstdx file: {}",
               fstdx_path);
     return false;
   }

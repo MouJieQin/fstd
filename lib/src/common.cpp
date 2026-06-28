@@ -32,15 +32,6 @@ bool ends_with(std::string const &value, std::string const &ending) {
   return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
 }
 
-std::string change_ext(const std::string &file_path, const std::string &ext) {
-  size_t pos = file_path.find_last_of('.');
-  if (pos == file_path.npos) {
-    return file_path + "." + ext;
-  } else {
-    return file_path.substr(0, pos + 1) + ext;
-  }
-}
-
 bool read_file(const std::string &file_path, std::string &content) {
   std::ifstream file_stream(file_path);
   if (!file_stream) { return false; }

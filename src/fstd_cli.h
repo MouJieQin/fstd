@@ -1,5 +1,8 @@
+#include <algorithm>
 #include <iostream>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <CLI/CLI.hpp>
@@ -8,130 +11,294 @@
 #include <fstd/fstdx_reader.h>
 #include <fstd/fstdx_searcher.h>
 #include <fstd/fstdx_writer.h>
-#include <fstd/logger.h>
 
 using namespace std;
 using namespace fstd;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+/**
+ * @brief FSTD Command-Line Interface for dictionary engine operations
+ * Supports search, write, extract for .fstdd and .fstdx files
+ */
 class FstdCli {
 public:
+  /**
+   * @brief Constructor initializes CLI app and arguments
+   */
   FstdCli(int argc, char **argv)
-      : argc(argc), argv(argv), app{"fstd - a dictionary engine"} {}
+      : argc_(argc), argv_(argv),
+        app_("fstd - A high-performance dictionary engine") {
+    // ✅ FIXED: Enable full help for ALL subcommands in main -h
+    app_.set_help_all_flag();
+    app_.require_subcommand(); // Force user to select a subcommand
+  }
 
+  /**
+   * @brief Main run entry: parse CLI and execute command
+   * @return exit code (0 = success)
+   */
   int run() {
-    int ret = setup();
-    if (ret != 0) { return ret; }
-    Logger::instance().set_level(spdlog::level::level_enum(log_level));
+    int ret = setup_cli();
+    if (ret != 0) return ret;
 
-    if (version) {
-      std::cout << "fstd version " << FSTD_VERSION << std::endl;
+    // Set global log level
+    Logger::instance().set_level(
+        static_cast<spdlog::level::level_enum>(log_level_));
+
+    if (show_version_) {
+      cout << "fstd version " << FSTD_VERSION << endl;
       return 0;
-    } else if (*search_cmd) {
-      return search();
-    } else if (*write_cmd) {
-      return write();
-    } else if (*extract_cmd) {
-      return extract();
-    } else {
-      LOG_ERROR("Unknown Subcommand");
-      return 1;
     }
-    return 0;
+
+    return execute_selected_command();
   }
 
 private:
-  int fstdd_search() {
-    fstd::FstddReader fstdd_reader(file_path);
-    if (!fstdd_reader) {
-      LOG_ERROR("file {} is not a valid fstdd file", file_path);
-      return 1;
-    }
-    if (query_meta) {
-      json meta = fstdd_reader.get_meta();
-      std::cout << meta.dump(2) << std::endl;
-      return 0;
-    } else if (contains) {
-      if (fstdd_reader.contains(word)) {
-        std::cout << "yes" << std::endl;
-        return 0;
-      } else {
-        std::cout << "no" << std::endl;
-        return 1;
+  //-------------------------------------------------------------------------
+  // CLI Setup (Modular, Clean)
+  //-------------------------------------------------------------------------
+  void setup_common_options() {
+    app_.footer("Powered by Finite State Transducer Technology");
+
+    app_.add_flag("--verbose", verbose_, "Enable verbose debug logging");
+    app_.add_flag("-v,--version", show_version_, "Show application version");
+    app_.add_option("-l,--log-level", log_level_,
+                    "Set log level [0=trace, 6=off]")
+        ->default_val(4);
+  }
+
+  void setup_extract_subcommand() {
+    extract_cmd_ =
+        app_.add_subcommand("extract", "Extract data from .fstdx/.fstdd files");
+
+    extract_cmd_
+        ->add_option("input", extract_input_path_,
+                     "Input .fstdx/.fstdd file path")
+        ->required();
+
+    extract_cmd_->add_option("-k,--key-file", key_file_path_,
+                             "Path to file existig in .fstdd");
+    extract_cmd_->add_option("-o,--output", extract_output_path_,
+                             "Output directory or file path");
+  }
+
+  void setup_search_subcommand() {
+    search_cmd_ =
+        app_.add_subcommand("search", "Search keywords in .fstdx/.fstdd files");
+
+    // Search modes
+    search_cmd_->add_flag("-c,--contains", contains_,
+                          "Check if key exists in dictionary");
+    search_cmd_->add_flag("-p,--predictive", predictive_,
+                          "Perform predictive search");
+    search_cmd_->add_flag("-r,--regex", regex_search_,
+                          "Run regex pattern search");
+    search_cmd_->add_flag("-s,--spellcheck", spellcheck_, "Spell-check a word");
+    search_cmd_->add_flag("-g,--suggest", suggest_, "Get word suggestions");
+    search_cmd_->add_flag("--common-prefix", common_prefix_,
+                          "Search common prefix matches");
+    search_cmd_->add_flag("-l,--longest-prefix", longest_prefix_,
+                          "Find longest common prefix");
+    search_cmd_->add_flag("-u,--enumerate", enumerate_,
+                          "List all keys in the dictionary");
+    search_cmd_->add_flag("-m,--meta", show_meta_,
+                          "Display file metadata (JSON)");
+
+    // Parameters
+    search_cmd_
+        ->add_option("-e,--edit-distance", edit_distance_,
+                     "Max edit distance for fuzzy search")
+        ->default_val(0);
+    search_cmd_
+        ->add_option("-w,--worker-threads", search_workers_,
+                     "Number of search worker threads")
+        ->default_val(0);
+    search_cmd_
+        ->add_option("-f,--dictionary", dict_files_,
+                     "Add multiple .fstdx files for batch search")
+        ->delimiter(',');
+
+    // ✅ FIXED: Make positional args optional when using -f (batch search)
+    search_cmd_->add_option("key", search_key_, "Key or pattern to search")
+        ->required(false);
+    search_cmd_
+        ->add_option("file", file_path_, "Single input dictionary file path")
+        ->required(false);
+  }
+
+  void setup_write_subcommand() {
+    write_cmd_ =
+        app_.add_subcommand("write", "Compile text/directory to .fstdx/.fstdd");
+
+    write_cmd_
+        ->add_option("-f,--input", write_input_path_,
+                     "Input text file or directory path")
+        ->required();
+
+    write_cmd_
+        ->add_option("-t,--title", dict_title_,
+                     "Dictionary title (string or file path)")
+        ->default_val("");
+    write_cmd_
+        ->add_option("-d,--desc", dict_description_,
+                     "Dictionary description (string or file path)")
+        ->default_val("");
+    write_cmd_
+        ->add_option("-m,--meta", meta_file_path_, "JSON metadata file path")
+        ->default_val("");
+    write_cmd_->add_option("-o,--output", output_path_,
+                           "Output .fstdx/.fstdd file path");
+
+    // Advanced options
+    write_cmd_
+        ->add_option("-b,--block-size", block_size_kb_, "Block size in KB")
+        ->default_val(8);
+    write_cmd_
+        ->add_option("-c,--compress-level", compress_level_,
+                     "Zstd compression level [0-22]")
+        ->default_val(5);
+    write_cmd_
+        ->add_option("-z,--zstd-dict-size", zstd_dict_kb_,
+                     "Zstd dictionary size in KB")
+        ->default_val(100);
+    write_cmd_
+        ->add_flag("-s,--sorted", pre_sorted_,
+                   "Set to true if input is already sorted")
+        ->default_val(false);
+    write_cmd_
+        ->add_option("-w,--worker-threads", write_workers_,
+                     "Number of compression worker threads")
+        ->default_val(0);
+  }
+
+  /**
+   * @brief Initialize all CLI structures and parse input
+   */
+  int setup_cli() {
+    setup_common_options();
+    setup_extract_subcommand();
+    setup_search_subcommand();
+    setup_write_subcommand();
+
+    try {
+      CLI11_PARSE(app_, argc_, argv_);
+      if(file_path_.empty()){
+        file_path_ = search_key_;
       }
-    } else if (enumerate) {
-      vector<string> all_keys;
-      if (!fstdd_reader.extract_all_key(all_keys)) {
-        return 1;
-      } else {
-        for (const auto &key : all_keys) {
-          std::cout << key << "\n";
-        }
-        cout << all_keys.size() << endl;
-        return 0;
-      }
-    } else {
-      LOG_ERROR("fstdd does not support this search command.");
-      return 1;
-    }
+    } catch (const CLI::ParseError &e) { return app_.exit(e); }
     return 0;
   }
 
-  int fstdx_search() {
-    fstd::FstdxReader fstdx_reader(file_path);
-    if (!fstdx_reader) {
-      LOG_ERROR("file {} is not a valid fstdx file", file_path);
+  //-------------------------------------------------------------------------
+  // Command Execution
+  //-------------------------------------------------------------------------
+  int execute_selected_command() {
+    if (*search_cmd_) return run_search();
+    if (*write_cmd_) return run_write();
+    if (*extract_cmd_) return run_extract();
+
+    LOG_ERROR("No valid subcommand selected. Use -h for help.");
+    return 1;
+  }
+
+  //-------------------------------------------------------------------------
+  // Search Implementations (Cleaned Logic)
+  //-------------------------------------------------------------------------
+  int run_fstdd_search() {
+    FstddReader reader(file_path_);
+    if (!reader) {
+      LOG_ERROR("Invalid or corrupted .fstdd file: {}", file_path_);
       return 1;
     }
 
-    if (query_meta) {
-      json meta = fstdx_reader.get_meta();
-      std::cout << meta.dump(2) << std::endl;
-    } else if (contains) {
-      if (fstdx_reader.contains(word)) {
-        std::cout << "yes" << std::endl;
+    if (show_meta_) {
+      cout << reader.get_meta().dump(2) << endl;
+      return 0;
+    }
+    if (contains_) {
+      cout << (reader.contains(search_key_) ? "yes" : "no") << endl;
+      return reader.contains(search_key_) ? 0 : 1;
+    }
+    if (enumerate_) {
+      vector<string> keys;
+      if (!reader.extract_all_key(keys)) { return 1; }
+      for (const auto &k : keys) {
+        cout << k << "\n";
+      }
+      cout << "Total files: " << keys.size() << endl;
+      return 0;
+    }
+
+    LOG_ERROR("Unsupported operation for .fstdd files");
+    return 1;
+  }
+
+  int run_fstdx_search() {
+    FstdxReader reader(file_path_);
+    if (!reader) {
+      LOG_ERROR("Invalid or corrupted .fstdx file: {}", file_path_);
+      return 1;
+    }
+
+    if (show_meta_) {
+      cout << reader.get_meta().dump(2) << endl;
+      return 0;
+    }
+    if (contains_) {
+
+      if (reader.contains(search_key_)) {
+        cout << "yes" << endl;
         return 0;
       } else {
-        std::cout << "no" << std::endl;
+        cout << "no" << endl;
         return 1;
       }
-    } else if (common_prefix) {
-      auto result = fstdx_reader.common_prefix_search(word);
+    }
+    if (common_prefix_) {
+      auto result = reader.common_prefix_search(search_key_);
       if (result.empty()) {
         LOG_INFO("no match found");
         return 1;
       }
       for (const auto &p : result) {
-        std::cout << *p << std::endl;
+        cout << *p << endl;
       }
-    } else if (longest_common_prefix) {
-      size_t len = fstdx_reader.longest_prefix_len(word);
+      return 0;
+    }
+    if (longest_prefix_) {
+      size_t len = reader.longest_prefix_len(search_key_);
       if (len == 0) {
         LOG_INFO("no match found");
         return 1;
       }
-      std::cout << word.substr(0, len) << std::endl;
-    } else if (predictive) {
-      auto result = fstdx_reader.predictive_search(word);
+      cout << search_key_.substr(0, len) << endl;
+      return 0;
+    }
+    if (predictive_) {
+      auto result = reader.predictive_search(search_key_);
       if (result.empty()) {
         LOG_INFO("no match found");
         return 1;
       }
       for (const auto &p : result) {
-        std::cout << *p << std::endl;
+        cout << *p << endl;
       }
-    } else if (edit_distance != 0) {
-      auto result = fstdx_reader.edit_distance_search(word, edit_distance);
+      return 0;
+    }
+    if (edit_distance_ != 0) {
+      auto result = reader.edit_distance_search(search_key_, edit_distance_);
       if (result.empty()) {
         LOG_INFO("no match found");
         return 1;
       }
       for (const auto &p : result) {
-        std::cout << *p << std::endl;
+        cout << *p << endl;
       }
-    } else if (regex) {
-      auto p_results = fstdx_reader.regex_search(word);
+      return 0;
+    }
+    if (regex_search_) {
+      auto p_results = reader.regex_search(search_key_);
       const auto &results = p_results.first;
       const auto &error_message = p_results.second;
       if (!error_message.empty()) {
@@ -143,106 +310,122 @@ private:
         return 1;
       }
       for (const auto &p : results) {
-        std::cout << *p << std::endl;
+        cout << *p << endl;
       }
-    } else if (suggest) {
-      std::vector<std::unique_ptr<pair<double, std::string>>> result =
-          fstdx_reader.suggest(word);
-      if (result.empty()) {
-        LOG_INFO("no match found");
-        return 1;
-      }
-      std::sort(
-          result.begin(), result.end(),
-          [&](const auto &x, const auto &y) { return x->first > y->first; });
-      for (const auto &p : result) {
-        std::cout << p->second << " -> " << p->first << "\n";
-      }
-      std::cout << std::flush;
-    } else if (spellcheck) {
-      std::vector<std::unique_ptr<pair<double, std::string>>> result =
-          fstdx_reader.spellcheck_word(word);
-      if (result.empty()) {
-        LOG_INFO("no match found");
-        return 1;
-      }
-      for (const auto &p : result) {
-        std::cout << p->second << " -> " << p->first << "\n";
-      }
-      std::cout << std::flush;
-    } else if (enumerate) {
-      fstdx_reader.enumerate_print();
       return 0;
-    } else {
-      // exact match search
-      std::vector<std::string> result;
-      bool res = fstdx_reader.exact_match_search(word, result);
+    }
+    if (suggest_) {
+      vector<unique_ptr<pair<double, string>>> result =
+          reader.suggest(search_key_);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      sort(result.begin(), result.end(),
+           [&](const auto &x, const auto &y) { return x->first > y->first; });
+      for (const auto &p : result) {
+        cout << p->second << " -> " << p->first << "\n";
+      }
+      cout << flush;
+      return 0;
+    }
+    if (spellcheck_) {
+      vector<unique_ptr<pair<double, string>>> result =
+          reader.spellcheck_word(search_key_);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      for (const auto &p : result) {
+        cout << p->second << " -> " << p->first << "\n";
+      }
+      cout << flush;
+      return 0;
+    }
+    if (enumerate_) {
+      reader.enumerate_print();
+      return 0;
+    }
+
+    {
+      // default to exact match search
+      vector<string> result;
+      bool res = reader.exact_match_search(search_key_, result);
       if (!res) {
         LOG_INFO("no match found");
         return 1;
       }
-      for (const std::string &s : result) {
-        std::cout << "------------------------------" << std::endl;
-        std::cout << s << std::endl;
-        std::cout << "------------------------------" << std::endl;
+      for (const string &s : result) {
+        cout << "------------------------------" << endl;
+        cout << s << endl;
+        cout << "------------------------------" << endl;
       }
+      return 0;
     }
     return 0;
   }
 
-  int fstdxes_search() {
-    fstd::FstdxSearcher fstdx_searcher(search_worker_num);
-    if (!fstdx_searcher) { return 1; }
-    for (const auto &fstdx : fstdxes) {
-      if (!fstdx_searcher.insert(fstdx, fstdx)) { return 1; }
+  int run_batch_search() {
+    FstdxSearcher searcher(search_workers_);
+    for (const auto &f : dict_files_) {
+      if (!searcher.insert(f, f)) { return 1; }
     }
-
-    if (contains) {
-      std::cout << "word: " << word << std::endl;
-      if (fstdx_searcher.contains(word, fstdxes)) {
-        std::cout << "yes" << std::endl;
+    if (contains_) {
+      cout << "search_key_: " << search_key_ << endl;
+      if (searcher.contains(search_key_, dict_files_)) {
+        cout << "yes" << endl;
         return 0;
       } else {
-        std::cout << "no" << std::endl;
+        cout << "no" << endl;
         return 1;
       }
-    } else if (common_prefix) {
-      auto result = fstdx_searcher.common_prefix_search(word, fstdxes);
+    }
+    if (common_prefix_) {
+      auto result = searcher.common_prefix_search(search_key_, dict_files_);
       if (result.empty()) {
         LOG_INFO("no match found");
         return 1;
       }
       for (const auto &p : result) {
-        std::cout << p << std::endl;
+        cout << p << endl;
       }
-    } else if (longest_common_prefix) {
-      size_t len = fstdx_searcher.longest_common_prefix_search(word, fstdxes);
+      return 0;
+    }
+    if (longest_prefix_) {
+      size_t len =
+          searcher.longest_common_prefix_search(search_key_, dict_files_);
       if (len == 0) {
         LOG_INFO("no match found");
         return 1;
       }
-      std::cout << word.substr(0, len) << std::endl;
-    } else if (predictive) {
-      auto result = fstdx_searcher.predictive_search(word, fstdxes);
+      cout << search_key_.substr(0, len) << endl;
+      return 0;
+    }
+    if (predictive_) {
+      auto result = searcher.predictive_search(search_key_, dict_files_);
       if (result.empty()) {
         LOG_INFO("no match found");
         return 1;
       }
       for (const auto &p : result) {
-        std::cout << p << std::endl;
+        cout << p << endl;
       }
-    } else if (edit_distance != 0) {
-      auto result =
-          fstdx_searcher.edit_distance_search(word, fstdxes, edit_distance);
+      return 0;
+    }
+    if (edit_distance_ != 0) {
+      auto result = searcher.edit_distance_search(search_key_, dict_files_,
+                                                  edit_distance_);
       if (result.empty()) {
         LOG_INFO("no match found");
         return 1;
       }
       for (const auto &p : result) {
-        std::cout << p << std::endl;
+        cout << p << endl;
       }
-    } else if (regex) {
-      auto p_results = fstdx_searcher.regex_search(word, fstdxes);
+      return 0;
+    }
+    if (regex_search_) {
+      auto p_results = searcher.regex_search(search_key_, dict_files_);
       const auto &results = p_results.first;
       const auto &error_message = p_results.second;
       if (!error_message.empty()) {
@@ -254,339 +437,202 @@ private:
         return 1;
       }
       for (const auto &p : results) {
-        std::cout << p << std::endl;
+        cout << p << endl;
       }
-    } else if (suggest) {
-      std::vector<std::string> result = fstdx_searcher.suggest(word, fstdxes);
+      return 0;
+    }
+    if (suggest_) {
+      vector<string> result = searcher.suggest(search_key_, dict_files_);
       if (result.empty()) {
         LOG_INFO("no match found");
         return 1;
       }
       for (const auto &s : result) {
-        std::cout << s << "\n";
+        cout << s << "\n";
       }
-      std::cout << std::flush;
-    } else {
-      // exact match search
-      std::unordered_map<std::string, std::vector<std::string>> results =
-          fstdx_searcher.search(word, fstdxes);
+      cout << flush;
+      return 0;
+    }
+
+    {
+      // default to exact match search
+      unordered_map<string, vector<string>> results =
+          searcher.search(search_key_, dict_files_);
       bool has_matched = false;
       for (const auto &p : results) {
-        std::cout << p.first << ":\n";
+        cout <<"# "<< p.first << ":\n";
         if (!p.second.empty()) { has_matched = true; }
-        for (const std::string &s : p.second) {
-          std::cout << "------------------------------" << std::endl;
-          std::cout << s << std::endl;
-          std::cout << "------------------------------" << std::endl;
+        for (const string &s : p.second) {
+          cout << "------------------------------" << endl;
+          cout << s << endl;
+          cout << "------------------------------" << endl;
         }
       }
       if (!has_matched) {
         LOG_INFO("no match found");
         return 1;
       }
+      return 0;
     }
     return 0;
   }
 
-  int search() {
-    if (!fstdxes.empty()) {
-      return fstdxes_search();
-    } else {
-      if (ends_with(file_path, ".fstdd")) {
-        return fstdd_search();
-      } else if (ends_with(file_path, ".fstdx")) {
-        return fstdx_search();
-      } else {
-        LOG_ERROR("[{}] is not a fstdx or fstdd to search", file_path);
-        return 1;
-      }
-    }
-    return 0;
+  int run_search() {
+    if (!dict_files_.empty()) return run_batch_search();
+    if (file_path_.ends_with(".fstdd")) return run_fstdd_search();
+    if (file_path_.ends_with(".fstdx")) return run_fstdx_search();
+
+    LOG_ERROR("Unsupported file type for search: {}", file_path_);
+    return 1;
   }
 
-  void print_write_info() {
-    std::cout << "input file path: " << write_input_file << "\n";
-    std::cout << "output file path: " << output_file << "\n";
-    std::cout << "block size: " << block_size << " KB\n";
-    std::cout << "compress level: " << static_cast<int>(compress_level) << "\n";
-    std::cout << "zstd dict size: " << zstd_dict_size << " KB\n";
-    std::cout << "sorted false: " << (opt_sorted ? "true" : "false") << "\n";
-    std::cout << "verbose: " << (verbose ? "true" : "false") << "\n";
+  //-------------------------------------------------------------------------
+  // Write Command (Cleaned + Fixed Duplicates)
+  //-------------------------------------------------------------------------
+  void print_write_config() {
+    cout << "\n=== Compile Configuration ===" << endl;
+    cout << "Input path:     " << write_input_path_ << endl;
+    cout << "Output path:    " << output_path_ << endl;
+    cout << "Block size:     " << block_size_kb_ << " KB" << endl;
+    cout << "Compression:    " << static_cast<int>(compress_level_) << endl;
+    cout << "Zstd dict size: " << zstd_dict_kb_ << " KB" << endl;
+    cout << "Pre-sorted:     " << boolalpha << pre_sorted_ << endl;
+    cout << "============================\n" << endl;
   }
 
-  int write() {
-    json meta_json;
-    meta_json["Version"] = FSTD_VERSION;
-    if (!meta_json_file.empty()) {
-      std::string content;
-      if (!read_file(meta_json_file, content)) {
-        LOG_ERROR("Cannot open the file: {}", meta_json_file);
+  int run_write() {
+    json meta = {{"Version", FSTD_VERSION}};
+    if (!meta_file_path_.empty()) {
+      string content;
+      if (!read_file(meta_file_path_, content)) {
+        LOG_ERROR("Cannot open the file: {}", meta_file_path_);
         return 1;
       } else {
         try {
-          meta_json = json::parse(content);
+          meta = json::parse(content);
         } catch (const json::exception &e) {
-          LOG_ERROR("file {} format error: {}", meta_json_file, e.what());
+          LOG_ERROR("file {} format error: {}", meta_file_path_, e.what());
           return 1;
-        } catch (const std::exception &e) {
-          LOG_ERROR("file {} read error: {}", meta_json_file, e.what());
+        } catch (const exception &e) {
+          LOG_ERROR("file {} read error: {}", meta_file_path_, e.what());
           return 1;
         }
       }
     }
-
-    if (!title.empty()) {
+    if (!dict_title_.empty()) {
       string content;
-      if (read_file(title, content)) {
-        meta_json["Title"] = content;
-      } else {
-        meta_json["Title"] = title;
-      }
+      meta["Title"] = read_file(dict_title_, content) ? content : dict_title_;
+    }
+    if (!dict_description_.empty()) {
+      string content;
+      meta["Description"] =
+          read_file(dict_description_, content) ? content : dict_description_;
     }
 
-    if (!description.empty()) {
-      string content;
-      if (read_file(description, content)) {
-        meta_json["Description"] = content;
-      } else {
-        meta_json["Description"] = description;
-      }
-    }
-
-    if (!description.empty()) { meta_json["description"] = description; }
-
-    if (fs::is_directory(write_input_file)) {
-      if (output_file.empty()) { output_file = write_input_file + ".fstdd"; }
-      print_write_info();
-      fstd::FstddWriter fstdd_writer;
-      int ret = fstdd_writer.compile_fstdd(
-          write_input_file, output_file, meta_json, block_size, compress_level,
-          write_worker_num, verbose);
+    if (fs::is_directory(write_input_path_)) {
+      if (output_path_.empty()) output_path_ = write_input_path_ + ".fstdd";
+      print_write_config();
+      FstddWriter writer;
+      int ret = writer.compile_fstdd(write_input_path_, output_path_, meta,
+                                     block_size_kb_, compress_level_,
+                                     write_workers_, verbose_);
       if (ret != 0) {
-        LOG_ERROR("compile failed, return code: {}", ret);
+        LOG_ERROR("Compilation failed");
         return ret;
       }
-    } else if (fs::is_regular_file(write_input_file)) {
-      if (output_file.empty()) {
-        output_file = change_ext(write_input_file, "fstdx");
-      }
-      print_write_info();
-      fstd::FstdxWriter fstdx_writer;
-      int ret = fstdx_writer.compile_fstdx(
-          write_input_file, output_file, meta_json, block_size, compress_level,
-          zstd_dict_size, write_worker_num, opt_sorted, verbose);
+    } else if (fs::is_regular_file(write_input_path_)) {
+      if (output_path_.empty())
+        output_path_ =
+            fs::path(write_input_path_).replace_extension("fstdx").string();
+      print_write_config();
+      FstdxWriter writer;
+      int ret =
+          writer.compile_fstdx(write_input_path_, output_path_, meta,
+                               block_size_kb_, compress_level_, zstd_dict_kb_,
+                               write_workers_, pre_sorted_, verbose_);
       if (ret != 0) {
-        LOG_ERROR("compile failed, return code: {}", ret);
+        LOG_ERROR("Compilation failed");
         return ret;
       }
     } else {
-      LOG_ERROR("{} is not a valid directory or file.", write_input_file);
+      LOG_ERROR("Input path is not a valid file or directory");
       return 1;
     }
-    LOG_INFO("compile success");
+
+    LOG_INFO("Compilation completed successfully");
     return 0;
   }
 
-  int extract() {
-    if (ends_with(extract_input_file, ".fstdx")) {
-      fstd::FstdxReader fstdx_reader(extract_input_file);
-      if (!fstdx_reader) { return 1; }
-      if (extract_output_path.empty()) {
-        extract_output_path = change_ext(extract_input_file, "txt");
-      } else {
-        if (fs ::is_directory(extract_output_path)) {
-          extract_input_file = (fs::path(extract_output_path) /
-                                change_ext(extract_input_file, "txt"))
-                                   .string();
-        }
-      }
-      if (!fstdx_reader.extract(extract_output_path)) { return 1; }
-    } else if (ends_with(extract_input_file, ".fstdd")) {
-      fstd::FstddReader fstdd_reader(extract_input_file);
-      if (!fstdd_reader) { return 1; }
-      if (extract_output_path.empty()) {
-        extract_output_path = "data";
-      } else {
-        if (fs::exists(extract_output_path) &&
-            !fs::is_directory(extract_output_path)) {
-          LOG_ERROR("{} is not a directory.", extract_output_path);
-          return 1;
-        }
-      }
-      if (key_file_path.empty()) {
-        if (!fstdd_reader.extract_all(extract_output_path)) { return 1; }
-      } else {
-        if (!fstdd_reader.extract(key_file_path, extract_output_path)) {
-          return 1;
-        }
-      }
-    } else {
-      LOG_ERROR("Only support fstdd/fstdx to extract");
-      return 1;
+  //-------------------------------------------------------------------------
+  // Extract Command
+  //-------------------------------------------------------------------------
+  int run_extract() {
+    const string &path = extract_input_path_;
+    if (path.ends_with(".fstdx")) {
+      FstdxReader reader(path);
+      if (!reader) { return 1; }
+      string out = extract_output_path_.empty()
+                       ? fs::path(path).replace_extension("txt").string()
+                       : extract_output_path_;
+      return reader.extract(out) ? 0 : 1;
     }
-    return 0;
+    if (path.ends_with(".fstdd")) {
+      FstddReader reader(path);
+      if (!reader) return 1;
+      string out = extract_output_path_.empty() ? "data" : extract_output_path_;
+      return key_file_path_.empty() ? reader.extract_all(out) ? 0 : 1
+             : reader.extract(key_file_path_, out) ? 0
+                                                   : 1;
+    }
+
+    LOG_ERROR("Extract only supports .fstdx and .fstdd files");
+    return 1;
   }
 
 private:
-  void common_setup() {
-    app.footer(" based on Finite State Transducer");
+  // CLI Core
+  int argc_;
+  char **argv_;
+  CLI::App app_;
 
-    app.add_flag("--verbose", verbose, "enable verbose logging");
+  // Common Options
+  bool verbose_ = false;
+  bool show_version_ = false;
+  uint8_t log_level_ = 4;
 
-    app.add_flag("-v,--version", version, "show version");
+  // Extract Subcommand
+  CLI::App *extract_cmd_ = nullptr;
+  string extract_input_path_;
+  string key_file_path_;
+  string extract_output_path_;
 
-    app.add_option("-l,--log-level", log_level, "log level [0-6]")
-        ->default_val(4);
-  }
+  // Search Subcommand
+  CLI::App *search_cmd_ = nullptr;
+  bool contains_ = false;
+  bool predictive_ = false;
+  size_t edit_distance_ = 0;
+  bool regex_search_ = false;
+  bool spellcheck_ = false;
+  bool suggest_ = false;
+  bool common_prefix_ = false;
+  bool longest_prefix_ = false;
+  bool enumerate_ = false;
+  bool show_meta_ = false;
+  size_t search_workers_ = 0;
+  string file_path_;
+  string search_key_;
+  vector<string> dict_files_;
 
-  void extract_setup() {
-    extract_cmd = app.add_subcommand("extract", "extract fstdx/fstdd");
-
-    extract_cmd->add_option("input", extract_input_file, "input file path")
-        ->required();
-
-    extract_cmd->add_option("-k,--key-file-path", key_file_path,
-                            "key file path");
-
-    extract_cmd->add_option("-o,--output", extract_output_path,
-                            "output file path");
-  }
-
-  void search_setup() {
-    search_cmd = app.add_subcommand("search", "search key");
-
-    // bool search_word = false;
-    // search_cmd->add_option("-s,--search", search_word, "exact match search");
-
-    search_cmd->add_flag("-c,--contains", contains, "contains key");
-
-    search_cmd->add_flag("-p,--predictive", predictive, "predictive search");
-
-    search_cmd->add_option("-e,--edit-distance", edit_distance,
-                           "edit distance");
-
-    search_cmd->add_flag("-r,--regex", regex, "regex search");
-
-    search_cmd->add_flag("-s,--spellcheck", spellcheck, "spellcheck word");
-
-    search_cmd->add_flag("-g,--suggest", suggest, "suggest word");
-
-    search_cmd->add_flag("--common-prefix", common_prefix,
-                         "search common prefix");
-
-    search_cmd->add_flag("-l,--longest-common-prefix", longest_common_prefix,
-                         "search longest common prefix");
-
-    search_cmd->add_flag("-u,--enumerate", enumerate, "enumerate all words");
-
-    search_cmd->add_flag("-m,--meta", query_meta, "query metadata");
-
-    search_cmd
-        ->add_option("-w,--worker", search_worker_num,
-                     "the number of thread workers.")
-        ->default_val(0);
-
-    search_cmd->add_option("-f,--fstdx", fstdxes,
-                           "Add fstdxes: -f a.fstdx -f b.fstdx");
-
-    search_cmd->add_option("file_path", file_path, "input file path");
-
-    search_cmd->add_option("word", word, "word");
-  }
-
-  void write_setup() {
-    write_cmd = app.add_subcommand("write", "write words to fstdx/fstdd");
-    write_cmd->add_option("-f,--file", write_input_file, "input file path")
-        ->required();
-    write_cmd->add_option("-t,--title", title, "title, [string/file]")
-        ->default_val("");
-    write_cmd
-        ->add_option("-d,--description", description,
-                     "description, [string/file]")
-        ->default_val("");
-    write_cmd
-        ->add_option("-m,--meta", meta_json_file, "JSON metadata file path")
-        ->default_val("");
-    write_cmd->add_option("-o,--output", output_file, "output file path");
-
-    write_cmd
-        ->add_option("-b,--block-size", block_size,
-                     "default block size 8, unit KB")
-        ->default_val(8);
-    write_cmd
-        ->add_option("-l,--compress-level", compress_level,
-                     "default compress level 5")
-        ->default_val(5);
-    write_cmd
-        ->add_option("--zstd-dict-size", zstd_dict_size,
-                     "default zstd dict size 100, unit KB")
-        ->default_val(32);
-    write_cmd->add_flag("-s,--sorted", opt_sorted, "default sorted false");
-
-    write_cmd
-        ->add_option("-w,--worker", write_worker_num,
-                     "the number of thread workers.")
-        ->default_val(0);
-  }
-
-  int setup() {
-    common_setup();
-    extract_setup();
-    search_setup();
-    write_setup();
-    try {
-      CLI11_PARSE(app, argc, argv);
-    } catch (const CLI::ParseError &e) { return app.exit(e); }
-    return 0;
-  }
-
-private:
-  //-----------------------------------------------------------------------------
-  //   common
-  //-----------------------------------------------------------------------------
-  int argc;
-  char **argv;
-  CLI::App app;
-  bool verbose = false;
-  bool version = false;
-  uint8_t log_level = 4;
-  //-----------------------------------------------------------------------------
-  //   extract
-  //-----------------------------------------------------------------------------
-  std::string extract_input_file;
-  CLI::App *extract_cmd = nullptr;
-  std::string key_file_path;
-  std::string extract_output_path;
-  //-----------------------------------------------------------------------------
-  //   search
-  //-----------------------------------------------------------------------------
-  CLI::App *search_cmd = nullptr;
-  bool contains = false;
-  bool predictive = false;
-  size_t edit_distance = 0;
-  bool regex = false;
-  bool spellcheck = false;
-  bool suggest = false;
-  bool common_prefix = false;
-  bool longest_common_prefix = false;
-  bool enumerate = false;
-  bool query_meta = false;
-  size_t search_worker_num = 0;
-  std::string file_path;
-  std::string word;
-  std::vector<std::string> fstdxes;
-  //-----------------------------------------------------------------------------
-  //   write
-  //-----------------------------------------------------------------------------
-  CLI::App *write_cmd = nullptr;
-  std::string write_input_file;
-  std::string title = "";
-  std::string description = "";
-  std::string meta_json_file = "";
-  std::string output_file;
-  uint16_t block_size = 8;
-  uint8_t compress_level = 5;
-  uint16_t zstd_dict_size = 100;
-  bool opt_sorted = false;
-  size_t write_worker_num = 0;
+  // Write Subcommand
+  CLI::App *write_cmd_ = nullptr;
+  string write_input_path_;
+  string dict_title_;
+  string dict_description_;
+  string meta_file_path_;
+  string output_path_;
+  uint16_t block_size_kb_ = 8;
+  uint8_t compress_level_ = 5;
+  uint16_t zstd_dict_kb_ = 32;
+  bool pre_sorted_ = false;
+  size_t write_workers_ = 0;
 };
