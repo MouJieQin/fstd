@@ -140,8 +140,7 @@ FstdxSearcher::edit_distance_search(std::string_view word,
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
-      LOG_ERROR("FstdxSearcher: name [{}] not found",
-                name);
+      LOG_ERROR("FstdxSearcher: name [{}] not found", name);
     } else {
       vector<unique_ptr<string>> res =
           iter->second->edit_distance_search(word, edit_distance);
@@ -370,6 +369,13 @@ FstdxSearcher::regex_search(std::string_view pattern,
     }
   }
   return {uniq_sort_results(std::move(results), count), ""};
+}
+
+void FstdxSearcher::insert_prior_suffix(const std::vector<std::string> &sufs) {
+  for (const string &suf : sufs) {
+    prior_suffixes_->insert(suf);
+    prior_suf_lens_->insert(suf.size());
+  }
 }
 
 void FstdxSearcher::insert_if_not_exists(const std::string &name,

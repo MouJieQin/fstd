@@ -23,7 +23,8 @@ public:
 
   bool extract(const std::string &name, const std::string &file_path) const;
 
-  bool contains(std::string_view word, const std::vector<std::string>&names) const;
+  bool contains(std::string_view word,
+                const std::vector<std::string> &names) const;
 
   std::vector<std::string> search(std::string_view word,
                                   const std::string &name) const;
@@ -59,6 +60,8 @@ public:
   std::pair<std::vector<std::string>, std::string>
   regex_search(std::string_view pattern,
                const std::vector<std::string> &names) const;
+
+  void insert_prior_suffix(const std::vector<std::string> &sufs);
 
   void insert_if_not_exists(const std::string &name,
                             const std::string &fstdx_path);

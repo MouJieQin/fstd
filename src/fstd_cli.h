@@ -111,6 +111,10 @@ private:
                      "Max edit distance for fuzzy search")
         ->default_val(0);
     search_cmd_
+        ->add_option("-P,--prefix-distance", prefix_distance_,
+                     "Max distance for prefix distance search")
+        ->default_val(0);
+    search_cmd_
         ->add_option("-w,--worker-threads", search_workers_,
                      "Number of search worker threads")
         ->default_val(0);
@@ -183,9 +187,7 @@ private:
 
     try {
       CLI11_PARSE(app_, argc_, argv_);
-      if(file_path_.empty()){
-        file_path_ = search_key_;
-      }
+      if (file_path_.empty()) { file_path_ = search_key_; }
     } catch (const CLI::ParseError &e) { return app_.exit(e); }
     return 0;
   }
@@ -412,6 +414,21 @@ private:
       }
       return 0;
     }
+    if (prefix_distance_ != 0) {
+      vector<string> prior_sufs{"する", "う", "く", "ぐ", "す",   "つ", "ぬ",
+                                "ぶ",   "む", "る", "い", "하다", "다"};
+      searcher.insert_prior_suffix(prior_sufs);
+      auto result = searcher.prefix_distance_search(search_key_, dict_files_,
+                                                    prefix_distance_);
+      if (result.empty()) {
+        LOG_INFO("no match found");
+        return 1;
+      }
+      for (const auto &p : result) {
+        cout << p << endl;
+      }
+      return 0;
+    }
     if (edit_distance_ != 0) {
       auto result = searcher.edit_distance_search(search_key_, dict_files_,
                                                   edit_distance_);
@@ -460,7 +477,7 @@ private:
           searcher.search(search_key_, dict_files_);
       bool has_matched = false;
       for (const auto &p : results) {
-        cout <<"# "<< p.first << ":\n";
+        cout << "# " << p.first << ":\n";
         if (!p.second.empty()) { has_matched = true; }
         for (const string &s : p.second) {
           cout << "------------------------------" << endl;
@@ -610,6 +627,7 @@ private:
   CLI::App *search_cmd_ = nullptr;
   bool contains_ = false;
   bool predictive_ = false;
+  size_t prefix_distance_ = 0;
   size_t edit_distance_ = 0;
   bool regex_search_ = false;
   bool spellcheck_ = false;
@@ -632,7 +650,7 @@ private:
   string output_path_;
   uint16_t block_size_kb_ = 8;
   uint8_t compress_level_ = 5;
-  uint16_t zstd_dict_kb_ = 32;
+  uint16_t zstd_dict_kb_ = 100;
   bool pre_sorted_ = false;
   size_t write_workers_ = 0;
 };
