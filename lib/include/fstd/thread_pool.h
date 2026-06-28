@@ -1,3 +1,7 @@
+//
+//  Copyright (c) 2026 Moujie Qin. All rights reserved.
+//  MIT License
+//
 #ifndef THREAD_POOL_H
 #define THREAD_POOL_H
 

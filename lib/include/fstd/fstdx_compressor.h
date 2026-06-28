@@ -1,3 +1,7 @@
+//
+//  Copyright (c) 2026 Moujie Qin. All rights reserved.
+//  MIT License
+//
 #pragma once
 #include <string>
 #include <vector>
