@@ -14,11 +14,12 @@ target_link_libraries(run_tests
     fstd_static
     GTest::gmock
     GTest::gmock_main
-    spdlog
-    fmt
-    zstd
-    pcre2-8
+    spdlog::spdlog
+    fmt::fmt
     nlohmann_json::nlohmann_json
+    indicators::indicators
+    zstd$<$<CONFIG:Debug>:d>
+    pcre2-8
 )
 
 add_test(
