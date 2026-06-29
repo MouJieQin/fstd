@@ -208,7 +208,7 @@ if(NOT PCRE2_FOUND)
     message(STATUS "pcre2 not found, downloading...")
     FetchContent_Declare(
         pcre2
-        GIT_REPOSITORY https://github.com
+        GIT_REPOSITORY https://github.com/PhilipHazel/pcre2
         GIT_TAG        pcre2-10.47
     )
     set(PCRE2_BUILD_PCRE2GREP OFF CACHE BOOL "" FORCE)
