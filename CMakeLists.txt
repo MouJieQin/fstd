@@ -6,6 +6,11 @@ set(DEBUG_POSTFIX "d" CACHE STRING "Postfix for debug build binaries")
 set(COVERAGE_POSTFIX "" CACHE STRING "Postfix for coverage build binaries")
 set(GPERF_POSTFIX "" CACHE STRING "Postfix for gperf build binaries")
 
+# Set a default build type if none is provided to avoid empty variable crashes
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
+endif()
+
 # Convert build type to lower case
 string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 
@@ -22,6 +27,7 @@ else()
     message(WARNING "Unknown build type '${CMAKE_BUILD_TYPE}', defaulting to release")
     set(BUILD_TYPE ${RELEASE_POSTFIX})
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+    string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 endif()
 
 # Project configuration
@@ -45,7 +51,6 @@ aux_source_directory(${fstd_ROOT_DIR}/lib/src DIR_LIB_SRCS)
 
 # Library public include directory
 set(FSTD_INCLUDE_DIR ${fstd_ROOT_DIR}/lib/include)
-include_directories(${FSTD_INCLUDE_DIR})
 
 # 1. Build shared library
 add_library(fstd_shared SHARED ${DIR_LIB_SRCS})
@@ -63,7 +68,7 @@ set_target_properties(fstd_static PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
 
-# Set include directories for both library targets
+# Set include directories for both library targets using modern target properties
 target_include_directories(fstd_shared PUBLIC
     $<BUILD_INTERFACE:${FSTD_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -164,15 +169,37 @@ endif()
 
 # 5. zstd (compression)
 find_package(zstd QUIET)
-if(NOT zstd_FOUND)
-    message(STATUS "zstd not found, downloading...")
+if(zstd_FOUND)
+    message(STATUS "Using system installed zstd")
+    # Map whatever the system package manager exposed to a unified target
+    if(TARGET zstd::libzstd_static)
+        set(ZSTD_LIB_TARGET zstd::libzstd_static)
+    elseif(TARGET zstd::libzstd_shared)
+        set(ZSTD_LIB_TARGET zstd::libzstd_shared)
+    elseif(TARGET zstd::zstd)
+        set(ZSTD_LIB_TARGET zstd::zstd)
+    else()
+        # Fallback for systems that only export legacy variables instead of targets
+        add_library(zstd_system_target INTERFACE IMPORTED)
+        target_link_libraries(zstd_system_target INTERFACE ${zstd_LIBRARIES})
+        target_include_directories(zstd_system_target INTERFACE ${zstd_INCLUDE_DIRS})
+        set(ZSTD_LIB_TARGET zstd_system_target)
+    endif()
+else()
+    message(STATUS "zstd not found, building from source via FetchContent")
     FetchContent_Declare(
         zstd
         GIT_REPOSITORY https://github.com/facebook/zstd
         GIT_TAG        v1.5.7
         SOURCE_SUBDIR  build/cmake
     )
+    set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(zstd)
+
+    # Facebook's build system names its target libzstd_static when compiled from source
+    set(ZSTD_LIB_TARGET libzstd_static)
 endif()
 
 # 6. pcre2 (regex)
@@ -181,11 +208,36 @@ if(NOT PCRE2_FOUND)
     message(STATUS "pcre2 not found, downloading...")
     FetchContent_Declare(
         pcre2
-        GIT_REPOSITORY https://github.com/PhilipHazel/pcre2
+        GIT_REPOSITORY https://github.com
         GIT_TAG        pcre2-10.47
     )
+    set(PCRE2_BUILD_PCRE2GREP OFF CACHE BOOL "" FORCE)
+    set(PCRE2_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
     FetchContent_MakeAvailable(pcre2)
+    set(PCRE2_LIB_TARGET pcre2-8)
+else()
+    # Handle variable system layouts safely
+    if(TARGET PCRE2::8BIT)
+        set(PCRE2_LIB_TARGET PCRE2::8BIT)
+    else()
+        set(PCRE2_LIB_TARGET pcre2-8)
+    endif()
 endif()
+
+
+# CLI11 for command line parsing
+find_package(CLI11 QUIET)
+if(NOT CLI11_FOUND)
+    message(STATUS "CLI11 not found, downloading from GitHub...")
+    FetchContent_Declare(
+        cli11
+        GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+        GIT_TAG        v2.6.2
+    )
+    FetchContent_MakeAvailable(cli11)
+endif()
+
 
 # Link cross-platform dependencies
 foreach(TARGET ${TARGETS})
@@ -194,27 +246,12 @@ foreach(TARGET ${TARGETS})
         fmt::fmt
         nlohmann_json::nlohmann_json
         indicators::indicators
-        zstd$<$<CONFIG:Debug>:d>  #debug/release
-        pcre2-8
+        CLI11::CLI11
+        ${ZSTD_LIB_TARGET}
+        ${PCRE2_LIB_TARGET}
     )
 endforeach()
 
-# Link Linux-only libraries (zstd, pcre2-8) only on Linux
-if(UNIX AND NOT APPLE)
-    find_package(zstd QUIET)
-    if(NOT zstd_FOUND)
-        message(STATUS "zstd not found, installing via system package...")
-    endif()
-
-    find_package(Pcre2 QUIET)
-    if(NOT Pcre2_FOUND)
-        message(STATUS "pcre2 not found, installing via system package...")
-    endif()
-
-    foreach(TARGET ${TARGETS})
-        target_link_libraries(${TARGET} PRIVATE zstd pcre2-8)
-    endforeach()
-endif()
 # ============================================================================
 
 # ===================== Google Test Configuration =====================

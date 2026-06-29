@@ -19,7 +19,7 @@ It has only been tested to compile and install in Macos x86 platform now.
 1. Install dependence
 
    ```shell
-   brew install cmake googletest indicators spdlog fmt zstd pcre2 nlohmann-json
+   brew install cmake googletest indicators spdlog fmt zstd pcre2 nlohmann-json cli11
    ```
 
 2. Compile and install

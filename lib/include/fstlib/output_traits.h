@@ -6,6 +6,7 @@
 //
 
 #pragma once
+#include <cstring>
 #include <fstlib/utility.h>
 
 namespace fst {
