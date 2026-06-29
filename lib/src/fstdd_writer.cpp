@@ -28,12 +28,13 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
   std::vector<char> comp_header_dst;
   std::string header_str = header.dump();
   {
-    bool comp_res = compress_to_buffer(header_str.c_str(), header_str.size(),
-                                       comp_header_dst, compress_level);
+    bool comp_res =
+        compress_to_buffer(header_str.c_str(), header_str.size() + 1,
+                           comp_header_dst, compress_level);
     if (!comp_res) { return 4; }
   }
   fout.write(comp_header_dst.data(), comp_header_dst.size());
-  HeaderSizeRecord header_size_record(header_str.size(),
+  HeaderSizeRecord header_size_record(header_str.size() + 1,
                                       comp_header_dst.size());
   LOG_INFO("{}", header.dump(2));
   LOG_DEBUG("{},{}", header_size_record.original_size,
