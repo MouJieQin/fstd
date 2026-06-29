@@ -36,6 +36,8 @@ public:
 private:
   bool parse_fstdd(const std::string &fstdd_path);
 
+  bool check_dst_dir(const std::string &dst_dir_str) const;
+
   bool extract_impl(const std::string &key, const std::string &dst_dir) const;
 
 private:

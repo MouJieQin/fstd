@@ -78,28 +78,7 @@ bool FstddReader::extract_all_key(std::vector<std::string> &all_keys) const {
   return true;
 }
 
-bool FstddReader::extract_all(const std::string &dst_dir_str) const {
-  std::vector<char> keys_buff;
-  if (!decompress(fstdd_path_, "keys", md_json_header_, keys_buff)) {
-    return false;
-  }
-  DyBlockProgBars dynamic_bars;
-  auto refresh_bar = dynamic_bars.push_back(key_size_, "Decompressing files:");
-  size_t start_idx = 0, file_idx = 0;
-  for (size_t i = 0; i < keys_buff.size(); ++i) {
-    if (keys_buff[i] == '\0') {
-      string key(keys_buff.data() + start_idx, i - start_idx);
-      if (!extract(key, dst_dir_str)) { return false; }
-      refresh_bar(file_idx);
-      file_idx += 1;
-      start_idx = i + 1;
-    }
-  }
-  return true;
-}
-
-bool FstddReader::extract(const std::string &key,
-                          const std::string &dst_dir_str) const {
+bool FstddReader::check_dst_dir(const std::string &dst_dir_str) const {
   fs::path dst_dir(dst_dir_str);
   if (fs::exists(dst_dir)) {
     if (!fs::is_directory(dst_dir)) {
@@ -112,7 +91,35 @@ bool FstddReader::extract(const std::string &key,
       return false;
     }
   }
-  fs::path output_path = dst_dir / fs::path(key);
+  return true;
+}
+
+bool FstddReader::extract_all(const std::string &dst_dir_str) const {
+  if (!check_dst_dir(dst_dir_str)) { return false; }
+  std::vector<char> keys_buff;
+  if (!decompress(fstdd_path_, "keys", md_json_header_, keys_buff)) {
+    return false;
+  }
+  DyBlockProgBars dynamic_bars;
+  auto refresh_bar = dynamic_bars.push_back(key_size_, "Decompressing files:");
+  size_t start_idx = 0, file_idx = 0;
+  for (size_t i = 0; i < keys_buff.size(); ++i) {
+    if (keys_buff[i] == '\0') {
+      string key(keys_buff.data() + start_idx, i - start_idx);
+      fs::path output_path = fs::path(dst_dir_str) / fs::path(key);
+      if (!extract_impl(key, output_path.string())) { return false; }
+      refresh_bar(file_idx);
+      file_idx += 1;
+      start_idx = i + 1;
+    }
+  }
+  return true;
+}
+
+bool FstddReader::extract(const std::string &key,
+                          const std::string &dst_dir_str) const {
+  if (!check_dst_dir(dst_dir_str)) { return false; }
+  fs::path output_path = fs::path(dst_dir_str) / fs::path(key);
   return extract_impl(key, output_path.string());
 }
 
