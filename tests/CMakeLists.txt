@@ -12,8 +12,7 @@ target_include_directories(run_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/lib/include
 )
 
-# Link testing, local, and external dependencies
-# Replaced hardcoded zstd/pcre names with parent scope mapped variables
+# Link testing, local, and external dependencies using clean namespaces
 target_link_libraries(run_tests
     PRIVATE
     fstd_static
@@ -24,8 +23,8 @@ target_link_libraries(run_tests
     nlohmann_json::nlohmann_json
     indicators::indicators
     CLI11::CLI11
-    ${ZSTD_LIB_TARGET}
-    ${PCRE2_LIB_TARGET}
+    zstd::zstd        # UPDATED: Changed from variable to uniform namespace
+    pcre2::pcre2      # UPDATED: Changed from variable to uniform namespace
 )
 
 # Register the unit test runner with CTest
