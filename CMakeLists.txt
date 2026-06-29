@@ -157,7 +157,7 @@ if(NOT fmt_FOUND)
     FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG        v12.1.0
+        GIT_TAG        12.1.0
     )
     FetchContent_MakeAvailable(fmt)
 endif()
