@@ -7,7 +7,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
-
+#ifdef _WIN32
+#define SPDLOG_WCHAR_TO_UTF8_SUPPORT
+#endif
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
