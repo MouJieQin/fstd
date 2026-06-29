@@ -145,7 +145,7 @@ if(NOT spdlog_FOUND)
     FetchContent_Declare(
         spdlog
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
-        GIT_TAG        v1.14.1
+        GIT_TAG        v1.17.0
     )
     FetchContent_MakeAvailable(spdlog)
 endif()
@@ -157,7 +157,7 @@ if(NOT fmt_FOUND)
     FetchContent_Declare(
         fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG        11.0.2
+        GIT_TAG        v12.1.0
     )
     FetchContent_MakeAvailable(fmt)
 endif()
@@ -169,7 +169,7 @@ if(NOT zstd_FOUND)
     FetchContent_Declare(
         zstd
         GIT_REPOSITORY https://github.com/facebook/zstd
-        GIT_TAG        v1.5.6
+        GIT_TAG        v1.5.7
         SOURCE_SUBDIR  build/cmake
     )
     FetchContent_MakeAvailable(zstd)
@@ -182,7 +182,7 @@ if(NOT PCRE2_FOUND)
     FetchContent_Declare(
         pcre2
         GIT_REPOSITORY https://github.com/PhilipHazel/pcre2
-        GIT_TAG        PCRE2_10.44
+        GIT_TAG        pcre2-10.47
     )
     FetchContent_MakeAvailable(pcre2)
 endif()
