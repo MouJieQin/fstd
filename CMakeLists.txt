@@ -80,6 +80,10 @@ target_link_libraries(fstd PRIVATE fstd_static)
 
 target_compile_definitions(fstd PRIVATE SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
+if(WIN32)
+    add_compile_definitions(NOMINMAX)
+endif()
+
 if(MSVC)
     set(COMMON_COMPILE_OPTIONS /W4)
 else()
