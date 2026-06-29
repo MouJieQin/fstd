@@ -7,7 +7,7 @@ using namespace indicators;
 using json = nlohmann::json;
 
 FstdxHashReader::FstdxHashReader(const std::string &fstdx_path)
-    : fstdx_path_(fstdx_path), key_size_(0), ddict_(nullptr) {
+    : fstdx_path_(fstdx_path), key_size_(0), ddict_ptr_{nullptr, nullptr} {
   if (!parse_fstdx(fstdx_path_)) {
     is_valid_ = false;
     return;
@@ -15,7 +15,7 @@ FstdxHashReader::FstdxHashReader(const std::string &fstdx_path)
   is_valid_ = true;
 }
 
-FstdxHashReader::~FstdxHashReader() { ZSTD_freeDDict(ddict_); }
+FstdxHashReader::~FstdxHashReader() {}
 
 FstdxHashReader::operator bool() const { return is_valid_; }
 
@@ -47,7 +47,10 @@ bool FstdxHashReader::parse_fstdx(const std::string &fstdx_path) {
   if (!decompress(ins, "comp_dict", mx_json_header_, dictBuffer)) {
     return false;
   }
-  ddict_ = ZSTD_createDDict(dictBuffer.data(), dictBuffer.size());
+
+  ddict_ptr_ = std::unique_ptr<ZSTD_DDict, void (*)(ZSTD_DDict *)>(
+      ZSTD_createDDict(dictBuffer.data(), dictBuffer.size()),
+      [](ZSTD_DDict *p) { ZSTD_freeDDict(p); });
 
   if (!decompress(ins, "block_indexes", mx_json_header_, block_indexes_)) {
     return false;
@@ -151,15 +154,15 @@ std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
 
   unsigned long long decomp_buf_size = block_index.original_block_size;
   std::vector<char> decomp_buf(decomp_buf_size);
-  ZSTD_DCtx *dctx = ZSTD_createDCtx();
-  if (!dctx) {
+  auto dctx_ptr = std::unique_ptr<ZSTD_DCtx, void (*)(ZSTD_DCtx *)>(
+      ZSTD_createDCtx(), [](ZSTD_DCtx *p) { ZSTD_freeDCtx(p); });
+  if (!dctx_ptr) {
     LOG_ERROR("Create Decompression context failed.");
     return "";
   }
-  size_t decomp_size =
-      ZSTD_decompress_usingDDict(dctx, decomp_buf.data(), decomp_buf.size(),
-                                 comp_buf.data(), comp_buf.size(), ddict_);
-  ZSTD_freeDCtx(dctx);
+  size_t decomp_size = ZSTD_decompress_usingDDict(
+      dctx_ptr.get(), decomp_buf.data(), decomp_buf.size(), comp_buf.data(),
+      comp_buf.size(), ddict_ptr_.get());
   if (ZSTD_isError(decomp_size)) {
     LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decomp_size));
     return "";
@@ -178,8 +181,9 @@ std::vector<std::string> FstdxHashReader::extract_comp_blocks(
     return result;
   }
 
-  ZSTD_DCtx *dctx = ZSTD_createDCtx();
-  if (!dctx) {
+  auto dctx_ptr = std::unique_ptr<ZSTD_DCtx, void (*)(ZSTD_DCtx *)>(
+      ZSTD_createDCtx(), [](ZSTD_DCtx *p) { ZSTD_freeDCtx(p); });
+  if (!dctx_ptr) {
     LOG_ERROR("Create Decompression context failed.");
     return result;
   }
@@ -198,11 +202,10 @@ std::vector<std::string> FstdxHashReader::extract_comp_blocks(
     comp_in.read(comp_buf.data(), comp_buf.size());
 
     decomp_buf.resize(block_index.original_block_size);
-    size_t decomp_size =
-        ZSTD_decompress_usingDDict(dctx, decomp_buf.data(), decomp_buf.size(),
-                                   comp_buf.data(), comp_buf.size(), ddict_);
+    size_t decomp_size = ZSTD_decompress_usingDDict(
+        dctx_ptr.get(), decomp_buf.data(), decomp_buf.size(), comp_buf.data(),
+        comp_buf.size(), ddict_ptr_.get());
     if (ZSTD_isError(decomp_size)) {
-      ZSTD_freeDCtx(dctx);
       LOG_ERROR("Decompression failed: {}", ZSTD_getErrorName(decomp_size));
       return {};
     }
@@ -215,7 +218,6 @@ std::vector<std::string> FstdxHashReader::extract_comp_blocks(
       if (refresh_bar) { refresh_bar(idx); }
     }
   }
-  ZSTD_freeDCtx(dctx);
   return result;
 }
 

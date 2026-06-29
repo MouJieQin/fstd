@@ -129,9 +129,12 @@ bool FstdxCompressor::compress_imple(ZSTD_CCtx *cctx, const ZSTD_CDict *cdict,
 }
 
 bool FstdxCompressor::compress_worker(const ZSTD_CDict *cdict) {
+  auto cctx_ptr = std::unique_ptr<ZSTD_CCtx, void (*)(ZSTD_CCtx *)>(
+      ZSTD_createCCtx(), [](ZSTD_CCtx *p) { ZSTD_freeCCtx(p); });
   ZSTD_CCtx *cctx = ZSTD_createCCtx();
-  if (!cctx) { return false; }
-  ZSTD_CCtx_setParameter(cctx, ZSTD_c_checksumFlag, ENABLE_CHECKSUM ? 1 : 0);
+  if (!cctx_ptr) { return false; }
+  ZSTD_CCtx_setParameter(cctx_ptr.get(), ZSTD_c_checksumFlag,
+                         ENABLE_CHECKSUM ? 1 : 0);
   while (true) {
     CompressTask task;
     {
@@ -146,12 +149,8 @@ bool FstdxCompressor::compress_worker(const ZSTD_CDict *cdict) {
       task_queue_.pop();
       task_cv_.notify_one(); // notify next task
     }
-    if (!compress_imple(cctx, cdict, task)) {
-      ZSTD_freeCCtx(cctx);
-      return false;
-    }
+    if (!compress_imple(cctx, cdict, task)) { return false; }
   };
-  ZSTD_freeCCtx(cctx);
   return true;
 }
 
@@ -226,9 +225,10 @@ bool FstdxCompressor::compress_texts_to_stream(
     DxJsonHeader &header, const char *dict_buffer, size_t dict_size,
     size_t block_size, int compression_level, ThreadPool &thread_pool,
     DyBlockProgBars &dy_bars) {
-  ZSTD_CDict *cdict =
-      ZSTD_createCDict(dict_buffer, dict_size, compression_level);
-  if (!cdict) { return false; }
+  auto cdict_ptr = std::unique_ptr<ZSTD_CDict, void (*)(ZSTD_CDict *)>(
+      ZSTD_createCDict(dict_buffer, dict_size, compression_level),
+      [](ZSTD_CDict *p) { ZSTD_freeCDict(p); });
+  if (!cdict_ptr) { return false; }
   std::vector<EntryIndex> entry_indexes;
   entry_indexes.reserve(texts.size());
 
@@ -253,8 +253,8 @@ bool FstdxCompressor::compress_texts_to_stream(
   size_t worker_size = thread_pool.worker_num();
   vector<future<bool>> results;
   for (size_t i = 0; i < worker_size - 1; ++i) {
-    results.emplace_back(
-        thread_pool.enqueue([&]() { return compress_worker(cdict); }));
+    results.emplace_back(thread_pool.enqueue(
+        [&]() { return compress_worker(cdict_ptr.get()); }));
   }
 
   std::vector<BlockIndex> block_indexes;
@@ -277,10 +277,7 @@ bool FstdxCompressor::compress_texts_to_stream(
   }
   writer.join();
 
-  if (!success_) {
-    ZSTD_freeCDict(cdict);
-    return false;
-  }
+  if (!success_) { return false; }
   LOG_DEBUG("Compress done.");
 
   header["comp_blocks"]["compress_level"] = compression_level;
@@ -321,7 +318,6 @@ bool FstdxCompressor::compress_texts_to_stream(
         header["block_indexes"]["offset"].get<size_t>() + comp_block_index_size;
   }
 
-  ZSTD_freeCDict(cdict);
   return true;
 }
 

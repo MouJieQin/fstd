@@ -63,7 +63,7 @@ protected:
   bool is_valid_;
   DxJsonHeader mx_json_header_;
   size_t key_size_;
-  ZSTD_DDict *ddict_;
+  std::unique_ptr<ZSTD_DDict, void (*)(ZSTD_DDict *)> ddict_ptr_;
   std::vector<BlockIndex> block_indexes_;
   uint64_t comp_text_offset_;
   uint64_t entry_indexes_offset_;
@@ -107,7 +107,7 @@ public:
   std::vector<std::unique_ptr<std::pair<double, std::string>>>
   spellcheck_word(std::string_view word, const size_t n = 10) const;
 
-  void enumerate_print()const;
+  void enumerate_print() const;
 
   std::vector<std::pair<std::string, uint64_t>> enumerate() const;
 

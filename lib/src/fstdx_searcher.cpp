@@ -50,7 +50,7 @@ bool FstdxSearcher::extract(const std::string &name,
   if (iter == fstdx_obj.end()) { return false; }
 
   fs::path default_dst_dir =
-      fs::absolute(fs::path(*iter)).parent_path() / "data";
+      fs::absolute(fs::path(iter->get<std::string>())).parent_path() / "data";
   return extract(name, file_path, default_dst_dir.string());
 }
 
@@ -233,10 +233,10 @@ std::vector<std::string> FstdxSearcher::uniq_sort_results(
   size_t distance = results[0].size();
   vector<vector<unique_ptr<string>>> result_ptrs(distance);
   result.reserve(count);
-  for (auto &result : results) {
+  for (auto &res : results) {
     for (size_t i = 0; i < distance; i++) {
       result_ptrs[i].reserve(counts[i]);
-      for (auto &ptr : result[i]) {
+      for (auto &ptr : res[i]) {
         result_ptrs[i].emplace_back(std::move(ptr));
       }
       std::sort(
@@ -401,7 +401,7 @@ bool FstdxSearcher::insert(const std::string &name,
   meta_json_["fstdx"][name] = fs::absolute(fstdx_path).string();
 
   const vector<string> fstdds =
-      find_fstdd(fs::absolute(fs::path(fstdx_path)).parent_path());
+      find_fstdd(fs::absolute(fs::path(fstdx_path)).parent_path().string());
   fstdds_[name] = std::vector<std::shared_ptr<FstddReader>>();
   for (const string &fstdd : fstdds) {
     auto ptr = std::make_shared<FstddReader>(fstdd);
