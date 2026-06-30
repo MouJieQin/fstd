@@ -15,8 +15,8 @@ using json = nlohmann::json;
 namespace fstd {
 
 int FstdxWriter::compile_fstdx(const std::string &output_file,
-                               std::vector<std::string> &keys,
-                               std::vector<std::string> &values,
+                               std::vector<std::string> &&keys,
+                               std::vector<std::string> &&values,
                                const json &meta, uint16_t block_size_kb,
                                uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
@@ -26,13 +26,14 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
     LOG_ERROR("Failed to open file {} for writing.", output_file);
     return 1;
   }
-  return compile_fstdx(fout, keys, values, meta, block_size_kb, compress_level,
-                       zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
+  return compile_fstdx(fout, std::move(keys), std::move(values), meta,
+                       block_size_kb, compress_level, zstd_dict_size_kb,
+                       worker_num, opt_sorted, opt_verbose);
 }
 
 int FstdxWriter::compile_fstdx(const std::string &output_file,
-                               std::vector<std::string> &keys,
-                               std::vector<std::string> &values,
+                               std::vector<std::string> &&keys,
+                               std::vector<std::string> &&values,
                                const std::string &meta_json_str,
                                uint16_t block_size_kb, uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
@@ -48,9 +49,9 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
     LOG_ERROR("JSON string {} read error: {}", meta_json_str, e.what());
     return 1;
   }
-  return compile_fstdx(output_file, keys, values, meta_json, block_size_kb,
-                       compress_level, zstd_dict_size_kb, worker_num,
-                       opt_sorted, opt_verbose);
+  return compile_fstdx(output_file, std::move(keys), std::move(values),
+                       meta_json, block_size_kb, compress_level,
+                       zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
 }
 
 int FstdxWriter::compile_fstdx(const std::string &input_file,
@@ -79,9 +80,9 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
     if (!load_file(fin, keys, values)) { return 1; }
     LOG_INFO("Loaded {} keys and values.", keys.size());
     fin.close();
-    return compile_fstdx(fout, keys, values, meta, block_size_kb,
-                         compress_level, zstd_dict_size_kb, worker_num,
-                         opt_sorted, opt_verbose);
+    return compile_fstdx(fout, std::move(keys), std::move(values), meta,
+                         block_size_kb, compress_level, zstd_dict_size_kb,
+                         worker_num, opt_sorted, opt_verbose);
   } else {
     // Load fstdx file
     FstdxReader reader(input_file);
@@ -133,8 +134,8 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
 }
 
 int FstdxWriter::compile_fstdx(std::ostream &fout,
-                               std::vector<std::string> &keys,
-                               std::vector<std::string> &values,
+                               std::vector<std::string> &&keys,
+                               std::vector<std::string> &&values,
                                const json &meta, uint16_t block_size_kb,
                                uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
@@ -155,14 +156,14 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
     vector<string> tmp;
     keys.swap(tmp);
   }
-  return compile_fstdx_impl(fout, input, values, header, block_size_kb,
-                            compress_level, zstd_dict_size_kb, worker_num,
-                            opt_verbose);
+  return compile_fstdx_impl(fout, input, std::move(values), header,
+                            block_size_kb, compress_level, zstd_dict_size_kb,
+                            worker_num, opt_verbose);
 }
 
 int FstdxWriter::compile_fstdx_impl(
     std::ostream &fout, std::vector<std::pair<std::string, uint64_t>> &input,
-    std::vector<std::string> &values, DxJsonHeader &header,
+    std::vector<std::string> &&values, DxJsonHeader &header,
     uint16_t block_size_kb, uint8_t compress_level, uint16_t zstd_dict_size_kb,
     size_t worker_num, bool opt_verbose) {
 
@@ -187,8 +188,8 @@ int FstdxWriter::compile_fstdx_impl(
   FstdxCompressor compressor;
   LOG_INFO("Compressing values...");
   if (!compressor.compress_texts_to_stream(
-          fout, values, header, zstd_dict_size_kb * 1024, block_size_kb * 1024,
-          compress_level, thread_pool, dynamic_bars)) {
+          fout, std::move(values), header, zstd_dict_size_kb * 1024,
+          block_size_kb * 1024, compress_level, thread_pool, dynamic_bars)) {
     return 3;
   }
   if (!compile_res.get()) { return 1; }

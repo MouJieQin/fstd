@@ -13,8 +13,8 @@ public:
   FstdxWriter() = default;
 
   int compile_fstdx(const std::string &output_file,
-                    std::vector<std::string> &keys,
-                    std::vector<std::string> &values,
+                    std::vector<std::string> &&keys,
+                    std::vector<std::string> &&values,
                     const nlohmann::json &meta, uint16_t block_size_kb,
                     uint8_t compress_level, uint16_t zstd_dict_size_kb,
                     size_t worker_num, bool opt_sorted, bool opt_verbose);
@@ -26,20 +26,17 @@ public:
                     bool opt_sorted, bool opt_verbose);
 
   int compile_fstdx(const std::string &output_file,
-                    std::vector<std::string> &keys,
-                    std::vector<std::string> &values,
+                    std::vector<std::string> &&keys,
+                    std::vector<std::string> &&values,
                     const std::string &meta_json_str, uint16_t block_size_kb,
                     uint8_t compress_level, uint16_t zstd_dict_size_kb,
                     size_t worker_num, bool opt_sorted, bool opt_verbose);
 
-  int compile_fstdx(std::ostream &fout, std::vector<std::string> &keys,
-                    std::vector<std::string> &values,
+  int compile_fstdx(std::ostream &fout, std::vector<std::string> &&keys,
+                    std::vector<std::string> &&values,
                     const nlohmann::json &meta, uint16_t block_size_kb,
                     uint8_t compress_level, uint16_t zstd_dict_size_kb,
                     size_t worker_num, bool opt_sorted, bool opt_verbose);
-
-  bool extract_fstdx(const std::string &input_file,
-                     const std::string &output_file);
 
   bool load_file(const std::string &file_path, std::vector<std::string> &keys,
                  std::vector<std::string> &values);
@@ -69,10 +66,10 @@ private:
 
   int compile_fstdx_impl(std::ostream &fout,
                          std::vector<std::pair<std::string, uint64_t>> &input,
-                         std::vector<std::string> &values, DxJsonHeader &header,
-                         uint16_t block_size_kb, uint8_t compress_level,
-                         uint16_t zstd_dict_size_kb, size_t worker_num,
-                         bool opt_verbose);
+                         std::vector<std::string> &&values,
+                         DxJsonHeader &header, uint16_t block_size_kb,
+                         uint8_t compress_level, uint16_t zstd_dict_size_kb,
+                         size_t worker_num, bool opt_verbose);
 
   int write_fst_header(std::ostream &fout, std::ostringstream &oss_key_fst_out,
                        DxJsonHeader &header, uint8_t compress_level);
