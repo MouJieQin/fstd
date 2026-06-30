@@ -6,7 +6,7 @@ A dictionary engine powered by Finite State Transducers, a data structure that e
 * Multiple threads are supported to offer  high-performance search and dictionary compilation.
 * Regex search.
 * Fuzzy search: suggest candidates sorted by the similarity calculated by edit distance to input keyword.
-* Prefix distance search: provide candidates sorted by the distance calculated by common prefix and prior suffix. By providing prior suffix, it can top the candidates that has a longer common prefix with input keyword and has a prior suffix. It's useful to help us find the simple form of the verb in a language whose verb has some constant suffix, such as Japanese ("する", "う", "く", "ぐ", "す",  "つ", "ぬ", "ぶ",  "む", "る", "い") or Korean ("하다", "다"). However, it's not always effective in all cases.
+* Prefix distance search: provide candidates sorted by the distance calculated by common prefix and prior suffix. By providing prior suffix, it can top the candidates that has a longer common prefix with input keyword and has a prior suffix. It's useful to help us find the simple form of an verb in a language whose verb has some constant suffix, such as Japanese ("する", "う", "く", "ぐ", "す",  "つ", "ぬ", "ぶ",  "む", "る", "い") or Korean ("하다", "다"). However, it's not always effective in all cases.
 * Prefix search(predictive), a way as the same as traditional dictionaries can provide.
 * Esay to convert from mdx/mdd to fstdx/fstdd.
 * Data related to dictionaries is compressed to reduce disk usage.
@@ -14,7 +14,9 @@ A dictionary engine powered by Finite State Transducers, a data structure that e
 
 ## Install
 
-It has only been tested to compile and install in Macos x86 platform now.
+>  It has been tested on Macos and Linux platform now. On Windows platform, there might be a bug when launching a thread pool. It's not convenient to fix it because I don't have a windows machine. Pull a request to me if you can fix it.
+
+### Install from source code
 
 1. Install dependence
 
@@ -44,15 +46,34 @@ It has only been tested to compile and install in Macos x86 platform now.
 1. Compile fstdx/fstdd
 
    ```shell
+   # go to the project directory
    cd fstd
    # use default configure to compile a fstdx
    fstd write -f tests/dict/dict.txt -o dict.fstdx
    # use default configure to compile a fstdd. Note: fstdd normally include resource data, such as pictures and audios, but we use the project lib directory for test.
    fstd write -f lib -o dict.fstdd
    ```
+The raw content of tests/dict/dict.txt :
+> 1. The first entry requires no preceding delimiter: write the entry word (key) directly, followed by its corresponding definition (value). Definitions can span multiple lines, but entry words must stay on a single line.
+> 2. Starting from the second entry, each entry word (key) must be preceded by the delimiter `</>`. Entry words must still be written on one line, while definitions can span multiple lines.
+> 3. The end of each complete entry (entry word + corresponding definition) must be marked with the delimiter `</>` as a closing tag.
+
+
+````
+Ab
+The definition of Ab
+</>
+Ababdeh
+The definition of Ababdeh
+</>
+Abby
+The definition of Abby
+</>
+...
+````
 
 2. Search in a fstdx
-  
+
    ```shell
    # show meta data
    > fstd search -m dict.fstdx
@@ -70,6 +91,12 @@ It has only been tested to compile and install in Macos x86 platform now.
      "Title": "",
      "Version": "0.1.0"
    }
+
+   # exact match search
+   > fstd search 'Ababdeh'  dict.fstdx
+   ------------------------------
+   The definition of Ababdeh
+   ------------------------------
    
    # regex search
    > fstd search -r 'di.*na.*y' dict.fstdx
@@ -109,54 +136,54 @@ It has only been tested to compile and install in Macos x86 platform now.
    Acarus
    ...
    ```
-   
+
 3. Search in multiple fstdx
-  
+
    > It's just an example of showing how to search in multiple fstdx dictionaries. The project does not provide the following fstdx files.
+
+   ```shell
+   # Prefix distance search in multiple fstdx dicionaries
+   >  fstd search -P 2 振り返ってみます -f lj.fstdx -f dcq.fstdx -f hgy.fstdx
+   振り返る
+   振り
+   振り乱す
+   振り仰ぐ
+   振り出す
+   振り切る
+   振り合う
+   ...
    
-      ```shell
-      # Prefix distance search in multiple fstdx dicionaries
-      >  fstd search -P 2 振り返ってみます -f lj.fstdx -f dcq.fstdx -f hgy.fstdx
-      振り返る
-      振り
-      振り乱す
-      振り仰ぐ
-      振り出す
-      振り切る
-      振り合う
-      ...
-      
-      > fstd search -P 2 알아보겠습 -f lj.fstdx -f dcq.fstdx -f hgy.fstdx
-      알아보다
-      알아보
-      알아보-
-      알아내다
-      알아듣다
-      알아먹다
-      알아주다
-      알아채다
-      알다
-      ...
-      
-      ```
+   > fstd search -P 2 알아보겠습 -f lj.fstdx -f dcq.fstdx -f hgy.fstdx
+   알아보다
+   알아보
+   알아보-
+   알아내다
+   알아듣다
+   알아먹다
+   알아주다
+   알아채다
+   알다
+   ...
    
+   ```
+
 4. Extract a file from a fstdd
-  
-         ``` shell
-         # list all keys of a fstdd
-         > fstd search -u dict.fstdd
-         include/fstd/common.h
-         include/fstd/fstdd_compressor.h
-         include/fstd/fstdd_reader.h
-         include/fstd/fstdd_writer.h
-         ...
-         
-         # extract include/fstd/common.h from the fstdd to the data directory
-         > fstd extract -k include/fstd/common.h -o data dict.fstdd
-         ```
+
+   ``` shell
+   # list all keys of a fstdd
+   > fstd search -u dict.fstdd
+   include/fstd/common.h
+   include/fstd/fstdd_compressor.h
+   include/fstd/fstdd_reader.h
+   include/fstd/fstdd_writer.h
+   ...
    
-    
-    ​     
+   # extract include/fstd/common.h from the fstdd to the data directory
+   > fstd extract -k include/fstd/common.h -o data dict.fstdd
+   ```
+
+
+​         
 
 ### API reference
 

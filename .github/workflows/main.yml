@@ -21,21 +21,32 @@ jobs:
                 os: [ubuntu-latest, macos-latest]
                 build_type: [Release]
                 c_compiler: [gcc, clang]
+                # Add a custom architecture property to the matrix tracker
+                arch: [x86_64, arm64]
                 include:
                     - os: ubuntu-latest
                       c_compiler: gcc
                       cpp_compiler: g++
+                      arch: x86_64 # Linux stays x86_64
                     - os: ubuntu-latest
                       c_compiler: clang
                       cpp_compiler: clang++
+                      arch: x86_64
                     - os: macos-latest
                       c_compiler: clang
                       cpp_compiler: clang++
+                      arch: arm64 # macOS Native M-series target
+                    - os: macos-latest
+                      c_compiler: clang
+                      cpp_compiler: clang++
+                      arch: x86_64 # macOS Intel cross-compile target
                 exclude:
                     - os: windows-latest
                       c_compiler: clang
                     - os: ubuntu-latest
                       c_compiler: cl
+                    - os: ubuntu-latest
+                      arch: arm64
                     - os: macos-latest
                       c_compiler: gcc
                     - os: macos-latest
@@ -62,6 +73,7 @@ jobs:
                   -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
                   -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
                   -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+                  -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} 
                   -S ${{ github.workspace }}
 
             - name: Build
@@ -91,7 +103,7 @@ jobs:
               shell: bash
               run: |
                   # Define a consistent cross-platform naming convention
-                  ARCHIVE_NAME="fstd-${{ matrix.os }}-${{ matrix.c_compiler }}.tar.gz"
+                  ARCHIVE_NAME="fstd-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.c_compiler }}.tar.gz"
 
                   # Move inside the staging directory and zip up its internal structure (bin, lib, include)
                   cd install_stage
