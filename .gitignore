@@ -74,5 +74,5 @@ Testing/
 # vscode
 .vscode/
 
-
+# python egg info
 *.egg-info/
