@@ -1,4 +1,4 @@
-name: CMake on multiple platforms
+name: Build and publish release on multiple platforms
 
 on:
     push:
@@ -68,18 +68,33 @@ jobs:
                   sudo apt-get install -y libzstd-dev libpcre2-dev lcov
 
             - name: Configure CMake
-              run: >
-                  cmake -B ${{ steps.strings.outputs.build-output-dir }}
-                  -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-                  -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-                  -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-                  -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} 
+              shell: bash
+              run: |
+                  EXTRA_FLAGS=""
+                  # If cross-compiling on macOS, isolate environment from host Homebrew architectures
+                  if [ "${{ matrix.os }}" = "macos-latest" ]; then
+                    EXTRA_FLAGS="-DCMAKE_FIND_FRAMEWORK=LAST -DCMAKE_FIND_APPBUNDLE=LAST"
+                    # Remove homebrew binary pathways from active search hint pools
+                    export CMAKE_PREFIX_PATH=""
+                    export CPATH=""
+                    export LIBRARY_PATH=""
+                  fi
+
+                  cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+                  -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+                  -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+                  -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+                  -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+                  $EXTRA_FLAGS \
                   -S ${{ github.workspace }}
 
             - name: Build
               run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
             - name: Test
+              # Only run tests if the compiled architecture matches the host runner architecture
+              # (The macOS runner is arm64, so it cannot run x86_64 target binaries natively without Rosetta)
+              if: (matrix.os == 'macos-latest' && matrix.arch == 'arm64') || (matrix.os == 'ubuntu-latest')
               working-directory: ${{ steps.strings.outputs.build-output-dir }}
               run: ctest --build-config ${{ matrix.build_type }}
 
@@ -90,7 +105,6 @@ jobs:
                   limit-access-to-actor: false
 
             # STEP 1: Use CMake to stage the installation outputs to a local "dist" folder
-            # This automatically matches your CMAKE_INSTALL_BINDIR, LIBDIR, and INCLUDEDIR structures.
             - name: Install and Stage Artifacts
               if: startsWith(github.ref, 'refs/tags/v')
               shell: bash
@@ -117,12 +131,11 @@ jobs:
               if: startsWith(github.ref, 'refs/tags/v')
               uses: actions/upload-artifact@v4
               with:
-                  name: release-package-${{ matrix.os }}-${{ matrix.c_compiler }}
+                  name: release-package-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.c_compiler }}
                   path: ${{ env.ARCHIVE_PATH }}
                   retention-days: 1
 
     publish:
-        # This job will only execute if the 'build' matrix passes and a tag was pushed
         needs: build
         if: startsWith(github.ref, 'refs/tags/v')
         runs-on: ubuntu-latest
@@ -144,4 +157,4 @@ jobs:
                   files: ./dist/*.tar.gz
                   draft: false
                   prerelease: false
-                  generate_release_notes: true # Auto-generates release change logs based on commit messages
+                  generate_release_notes: true
