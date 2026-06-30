@@ -70,18 +70,14 @@ jobs:
               run: |
                   EXTRA_FLAGS=""
 
-                  # CRITICAL FIX FOR MACOS INTEL CROSS-COMPILATION:
-                  # If we are building x86_64 on an arm64 macOS host runner, we force CMake 
-                  # to completely skip system searches (find_package/find_library) for our problem targets.
-                  # This forces your custom macro to instantly drop down to FetchContent source compilation.
+                  # IF CROSS-COMPILING x86_64 ON macOS ARM64:
+                  # Force CMake to ignore system libraries without breaking the system PATH.
                   if [ "${{ matrix.os }}" = "macos-latest" ] && [ "${{ matrix.arch }}" = "x86_64" ]; then
-                    EXTRA_FLAGS="-DCMAKE_FIND_FRAMEWORK=NEVER -DCMAKE_FIND_APPBUNDLE=NEVER -Dzstd_RESOLVED=FALSE -Dpcre2_RESOLVED=FALSE"
-                    
-                    # Unset all homebrew environment parameters completely
-                    unset HOMEBREW_PREFIX
-                    unset HOMEBREW_CELLAR
-                    unset HOMEBREW_REPOSITORY
-                    export PATH=$(echo $PATH | tr ':' '\n' | grep -v "homebrew" | tr '\n' ':')
+                    EXTRA_FLAGS="-DCMAKE_FIND_FRAMEWORK=NEVER \
+                                 -DCMAKE_FIND_APPBUNDLE=NEVER \
+                                 -DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew \
+                                 -Dzstd_RESOLVED=FALSE \
+                                 -Dpcre2_RESOLVED=FALSE"
                   fi
 
                   cmake -B ${{ steps.strings.outputs.build-output-dir }} \
