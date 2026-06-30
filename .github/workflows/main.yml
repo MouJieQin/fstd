@@ -3,11 +3,10 @@ name: Build and publish release on multiple platforms
 on:
     push:
         branches: ["main"]
-        tags: ["v*"] # Triggers the release process when you push a version tag like v1.0.0
+        tags: ["v*"]
     pull_request:
         branches: ["main"]
 
-# Grants the workflow permission to write releases and read contents
 permissions:
     contents: write
 
@@ -21,13 +20,12 @@ jobs:
                 os: [ubuntu-latest, macos-latest]
                 build_type: [Release]
                 c_compiler: [gcc, clang]
-                # Add a custom architecture property to the matrix tracker
                 arch: [x86_64, arm64]
                 include:
                     - os: ubuntu-latest
                       c_compiler: gcc
                       cpp_compiler: g++
-                      arch: x86_64 # Linux stays x86_64
+                      arch: x86_64
                     - os: ubuntu-latest
                       c_compiler: clang
                       cpp_compiler: clang++
@@ -35,11 +33,11 @@ jobs:
                     - os: macos-latest
                       c_compiler: clang
                       cpp_compiler: clang++
-                      arch: arm64 # macOS Native M-series target
+                      arch: arm64
                     - os: macos-latest
                       c_compiler: clang
                       cpp_compiler: clang++
-                      arch: x86_64 # macOS Intel cross-compile target
+                      arch: x86_64
                 exclude:
                     - os: windows-latest
                       c_compiler: clang
@@ -71,13 +69,19 @@ jobs:
               shell: bash
               run: |
                   EXTRA_FLAGS=""
-                  # If cross-compiling on macOS, isolate environment from host Homebrew architectures
-                  if [ "${{ matrix.os }}" = "macos-latest" ]; then
-                    EXTRA_FLAGS="-DCMAKE_FIND_FRAMEWORK=LAST -DCMAKE_FIND_APPBUNDLE=LAST"
-                    # Remove homebrew binary pathways from active search hint pools
-                    export CMAKE_PREFIX_PATH=""
-                    export CPATH=""
-                    export LIBRARY_PATH=""
+
+                  # CRITICAL FIX FOR MACOS INTEL CROSS-COMPILATION:
+                  # If we are building x86_64 on an arm64 macOS host runner, we force CMake 
+                  # to completely skip system searches (find_package/find_library) for our problem targets.
+                  # This forces your custom macro to instantly drop down to FetchContent source compilation.
+                  if [ "${{ matrix.os }}" = "macos-latest" ] && [ "${{ matrix.arch }}" = "x86_64" ]; then
+                    EXTRA_FLAGS="-DCMAKE_FIND_FRAMEWORK=NEVER -DCMAKE_FIND_APPBUNDLE=NEVER -Dzstd_RESOLVED=FALSE -Dpcre2_RESOLVED=FALSE"
+                    
+                    # Unset all homebrew environment parameters completely
+                    unset HOMEBREW_PREFIX
+                    unset HOMEBREW_CELLAR
+                    unset HOMEBREW_REPOSITORY
+                    export PATH=$(echo $PATH | tr ':' '\n' | grep -v "homebrew" | tr '\n' ':')
                   fi
 
                   cmake -B ${{ steps.strings.outputs.build-output-dir }} \
@@ -92,8 +96,8 @@ jobs:
               run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
             - name: Test
-              # Only run tests if the compiled architecture matches the host runner architecture
-              # (The macOS runner is arm64, so it cannot run x86_64 target binaries natively without Rosetta)
+              # GitHub Actions' modern Apple Silicon runners cannot natively run x86_64 binaries
+              # unless Rosetta 2 is explicitly configured. We skip tests for non-native targets.
               if: (matrix.os == 'macos-latest' && matrix.arch == 'arm64') || (matrix.os == 'ubuntu-latest')
               working-directory: ${{ steps.strings.outputs.build-output-dir }}
               run: ctest --build-config ${{ matrix.build_type }}
@@ -104,29 +108,22 @@ jobs:
               with:
                   limit-access-to-actor: false
 
-            # STEP 1: Use CMake to stage the installation outputs to a local "dist" folder
             - name: Install and Stage Artifacts
               if: startsWith(github.ref, 'refs/tags/v')
               shell: bash
               run: |
                   cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ./install_stage --config ${{ matrix.build_type }}
 
-            # STEP 2: Compress the staged folder into a clean architecture bundle
             - name: Prepare Package Archive
               if: startsWith(github.ref, 'refs/tags/v')
               shell: bash
               run: |
-                  # Define a consistent cross-platform naming convention
                   ARCHIVE_NAME="fstd-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.c_compiler }}.tar.gz"
-
-                  # Move inside the staging directory and zip up its internal structure (bin, lib, include)
                   cd install_stage
                   tar -czf "../$ARCHIVE_NAME" *
-
                   echo "ARCHIVE_PATH=${{ github.workspace }}/$ARCHIVE_NAME" >> "$GITHUB_ENV"
                   echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> "$GITHUB_ENV"
 
-            # STEP 3: Stash the compressed package in GitHub's upload buffer
             - name: Upload Intermediary Artifacts
               if: startsWith(github.ref, 'refs/tags/v')
               uses: actions/upload-artifact@v4
@@ -142,7 +139,6 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
-            # STEP 3: Download all matrix zipped files collected in Step 2
             - name: Gather All Packages
               uses: actions/download-artifact@v4
               with:
@@ -150,7 +146,6 @@ jobs:
                   pattern: release-package-*
                   merge-multiple: true
 
-            # STEP 4: Create a GitHub Release and attach the files
             - name: Generate GitHub Release
               uses: softprops/action-gh-release@v2
               with:
