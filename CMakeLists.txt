@@ -31,6 +31,10 @@ endif()
 project (fstd LANGUAGES CXX)
 set(fstd_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
+# ================= Python Binding Switch =================
+option(BUILD_PYTHON_BINDING "Build pybind11 python extension module" OFF)
+# =========================================================
+
 # CRITICAL FOR LINUX DYNAMIC LIBRARIES:
 # Forces compiled modules from FetchContent (spdlog, fmt, zstd, pcre2) to use -fPIC 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -131,18 +135,24 @@ macro(find_shared_or_fetch NAME REPO TAG SUBDIR)
 
     if(USE_SYSTEM_LIB)
         message(STATUS "--> Using system-provided shared library for: ${NAME}")
-        if(NOT TARGET ${NAME}::${NAME} AND TARGET ${NAME})
-            # If the system target is an ALIAS, unpack the real target behind it
-            get_target_property(REAL_SYS_TARGET ${NAME} ALIASED_TARGET)
-            if(REAL_SYS_TARGET)
-                add_library(${NAME}::${NAME} ALIAS ${REAL_SYS_TARGET})
-            else()
-                add_library(${NAME}::${NAME} ALIAS ${NAME})
+        if(${NAME} STREQUAL "pybind11")
+            if(NOT TARGET pybind11::pybind11)
+                add_library(pybind11::pybind11 ALIAS pybind11)
             endif()
-        elseif(NOT TARGET ${NAME}::${NAME})
-            add_library(${NAME}_system INTERFACE IMPORTED)
-            target_link_libraries(${NAME}_system INTERFACE ${${NAME}_SYSTEM_SHARED})
-            add_library(${NAME}::${NAME} ALIAS ${NAME}_system)
+        else()
+            if(NOT TARGET ${NAME}::${NAME} AND TARGET ${NAME})
+                # If the system target is an ALIAS, unpack the real target behind it
+                get_target_property(REAL_SYS_TARGET ${NAME} ALIASED_TARGET)
+                if(REAL_SYS_TARGET)
+                    add_library(${NAME}::${NAME} ALIAS ${REAL_SYS_TARGET})
+                else()
+                    add_library(${NAME}::${NAME} ALIAS ${NAME})
+                endif()
+            elseif(NOT TARGET ${NAME}::${NAME})
+                add_library(${NAME}_system INTERFACE IMPORTED)
+                target_link_libraries(${NAME}_system INTERFACE ${${NAME}_SYSTEM_SHARED})
+                add_library(${NAME}::${NAME} ALIAS ${NAME}_system)
+            endif()
         endif()
     else()
         message(STATUS "--> System library missing or lacks -fPIC for ${NAME}. Compiling via FetchContent from GitHub...")
@@ -154,6 +164,11 @@ macro(find_shared_or_fetch NAME REPO TAG SUBDIR)
         FetchContent_MakeAvailable(${NAME})
     endif()
 endmacro()
+
+# pybind11 for python binding
+if(BUILD_PYTHON_BINDING)
+    find_shared_or_fetch(pybind11 "https://github.com/pybind/pybind11.git" "v3.0.4" "")
+endif()
 
 # 1. indicators (progress bar)
 find_shared_or_fetch(indicators "https://github.com/p-ranav/indicators.git" "v2.3" "")
@@ -352,6 +367,12 @@ install(DIRECTORY ${FSTD_INCLUDE_DIR}/fstd ${FSTD_INCLUDE_DIR}/fstlib
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
 )
+
+# ================= Build Python Binding =================
+if(BUILD_PYTHON_BINDING)
+    add_subdirectory(python)
+endif()
+# =========================================================
 
 # ===================== Uninstall Target =====================
 if(NOT TARGET uninstall)

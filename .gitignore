@@ -70,3 +70,9 @@ Testing/
 
 # macOS specific
 .DS_Store
+
+# vscode
+.vscode/
+
+
+*.egg-info/
