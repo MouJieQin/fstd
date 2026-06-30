@@ -51,7 +51,7 @@ set(FSTD_INCLUDE_DIR ${fstd_ROOT_DIR}/lib/include)
 add_library(fstd_shared SHARED ${DIR_LIB_SRCS})
 set_target_properties(fstd_shared PROPERTIES
     OUTPUT_NAME fstd${BUILD_TYPE}
-    VERSION 1.0.0
+    VERSION 0.1.0
     SOVERSION 1
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
