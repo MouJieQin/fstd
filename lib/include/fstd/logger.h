@@ -7,9 +7,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
-#ifdef _WIN32
-#define SPDLOG_WCHAR_TO_UTF8_SUPPORT
-#endif
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
@@ -17,7 +14,7 @@
 // Cross-platform check: standard output is terminal
 #ifdef _WIN32
 #include <windows.h>
-bool is_terminal() {
+inline bool is_terminal() {
   return GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), nullptr) != 0;
 }
 #else

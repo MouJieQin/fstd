@@ -13,8 +13,9 @@ Logger::Logger() {
   try {
     // 1. Create two sinks: color terminal + rotating file sink
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto app_log_path = (get_app_log_dir() / LOG_FILE_NAME).native();
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        get_app_log_dir() / LOG_FILE_NAME, LOG_MAX_SIZE, LOG_MAX_FILES);
+        app_log_path, LOG_MAX_SIZE, LOG_MAX_FILES);
 
     // 2. Set log pattern
     console_sink->set_pattern(LOG_PATTERN);
