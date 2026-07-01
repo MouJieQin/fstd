@@ -67,7 +67,7 @@ bool FstdxSearcher::contains(std::string_view word,
   return false;
 }
 
-std::vector<std::string> FstdxSearcher::search(std::string_view word,
+std::vector<std::string> FstdxSearcher::single_exact_match_search(std::string_view word,
                                                const std::string &name) const {
   std::vector<std::string> result;
   auto iter = fstdxes_.find(name);
@@ -80,7 +80,7 @@ std::vector<std::string> FstdxSearcher::search(std::string_view word,
 }
 
 std::unordered_map<std::string, std::vector<std::string>>
-FstdxSearcher::search(std::string_view word,
+FstdxSearcher::exact_match_search(std::string_view word,
                       const std::vector<std::string> &names) const {
   std::unordered_map<std::string, std::vector<std::string>> results;
   for (const string &name : names) {

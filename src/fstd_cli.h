@@ -474,7 +474,7 @@ private:
     {
       // default to exact match search
       unordered_map<string, vector<string>> results =
-          searcher.search(search_key_, dict_files_);
+          searcher.exact_match_search(search_key_, dict_files_);
       bool has_matched = false;
       for (const auto &p : results) {
         cout << "# " << p.first << ":\n";

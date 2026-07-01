@@ -74,9 +74,28 @@ PYBIND11_MODULE(_native, m) {
       .def(py::init<const std::string &, size_t>(), py::arg("meta_json_path"),
            py::arg("worker_num") = 0,
            R"(Initialize the searcher with meta_json_path and worker_num.
-            :param meta_json_path: the path to the meta json file
-            :param worker_num: the number of threads to use for search
-            :default worker_num is 0, automatically use all the current threads
+              :param meta_json_path: the path to the meta json file
+              :param worker_num: the number of threads to use for search
+              :default worker_num is 0, automatically use all the current
+              threads
+             )")
+      .def("is_valid", &fstd::FstdxSearcher::operator bool,
+           R"(Check if the searcher is valid.
+            :return: True if the searcher is valid, False otherwise
+           )")
+      .def(
+          "extract",
+          [](fstd::FstdxSearcher &self, const std::string &name,
+             const std::string &file_path, const std::string &dst_dir) {
+            if (dst_dir.empty()) { return self.extract(name, file_path); }
+            return self.extract(name, file_path, dst_dir);
+          },
+          py::arg("name"), py::arg("file_path"), py::arg("dst_dir") = "",
+          R"(Extract the fstdx file.
+            :param name: the name of the dictionary
+            :param file_path: the path(key) to the file to extract
+            :param dst_dir: the destination directory to extract the files, if empty, will extract to the default directory
+            :return: True if the extraction is successful, False otherwise
            )")
       .def("contains", &fstd::FstdxSearcher::contains, py::arg("word"),
            py::arg("names"),
@@ -84,6 +103,100 @@ PYBIND11_MODULE(_native, m) {
             :param word: the word to check
             :param names: the names of dictionaries to check
             :return: True if the word is in the dictionaries, False otherwise
+           )")
+      .def("single_exact_match_search",
+           &fstd::FstdxSearcher::single_exact_match_search, py::arg("word"),
+           py::arg("name"),
+           R"(Search the word in the dictionary.
+            :param word: the word to search
+            :param name: the name of the dictionary to search
+            :return: the results of the search
+           )")
+      .def("exact_match_search", &fstd::FstdxSearcher::exact_match_search,
+           py::arg("word"), py::arg("names"),
+           R"(Search the word in the dictionaries.
+            :param word: the word to search
+            :param names: the names of dictionaries to search
+            :return: the results of the search
+           )")
+      .def("common_prefix_search", &fstd::FstdxSearcher::common_prefix_search,
+           py::arg("word"), py::arg("names"),
+           R"(Search the common prefix of the word in the dictionaries.
+            :param word: the word to search
+            :param names: the names of dictionaries to search
+            :return: the results of the search
+           )")
+      .def("longest_common_prefix_search",
+           &fstd::FstdxSearcher::longest_common_prefix_search, py::arg("word"),
+           py::arg("names"),
+           R"(Search the longest common prefix of the word in the dictionaries.
+            :param word: the word to search
+            :param names: the names of dictionaries to search
+            :return: the results of the search
+           )")
+      .def("edit_distance_search", &fstd::FstdxSearcher::edit_distance_search,
+           py::arg("word"), py::arg("names"), py::arg("edit_distance") = 1,
+           R"(Search the word in the dictionaries with edit distance.
+            :param word: the word to search
+            :param names: the names of dictionaries to search
+            :param edit_distance: the maximum edit distance
+            :return: the results of the search
+           )")
+      .def("predictive_search", &fstd::FstdxSearcher::predictive_search,
+           py::arg("word"), py::arg("names"),
+           R"(Perform predictive search for the word in the dictionaries.
+            :param word: the word to search
+            :param names: the names of dictionaries to search
+            :return: the results of the search
+           )")
+      .def("suggest", &fstd::FstdxSearcher::suggest, py::arg("word"),
+           py::arg("names"),
+           R"(Provide suggestions for the word in the dictionaries.
+            :param word: the word to search
+            :param names: the names of dictionaries to search
+            :return: the suggested words
+           )")
+      .def("prefix_distance_search",
+           &fstd::FstdxSearcher::prefix_distance_search, py::arg("word"),
+           py::arg("names"), py::arg("max_distance") = 1,
+           R"(Search the word in the dictionaries with prefix distance.
+            :param word: the word to search
+            :param names: the names of dictionaries to search
+            :param max_distance: the maximum prefix distance
+            :return: the results of the search
+           )")
+      .def("regex_search", &fstd::FstdxSearcher::regex_search,
+           py::arg("pattern"), py::arg("names"),
+           R"(Search the word in the dictionaries with regex.
+            :param pattern: the regex pattern to search
+            :param names: the names of dictionaries to search
+            :return: the results of the search
+           )")
+      .def("insert_prior_suffix", &fstd::FstdxSearcher::insert_prior_suffix,
+           py::arg("sufs"),
+           R"(Insert prior suffixes for the dictionaries.
+            :param sufs: the prior suffixes to insert
+            :return: None
+           )")
+      .def("insert_if_not_exists", &fstd::FstdxSearcher::insert_if_not_exists,
+           py::arg("name"), py::arg("fstdx_path"),
+           R"(Insert the fstdx file if it does not exist.
+            :param name: the name of the dictionary
+            :param fstdx_path: the path to the fstdx file
+            :return: True if the insertion is successful, False otherwise
+           )")
+      .def("insert", &fstd::FstdxSearcher::insert, py::arg("name"),
+           py::arg("fstdx_path"),
+           R"(Insert the fstdx file.
+            :param name: the name of the dictionary
+            :param fstdx_path: the path to the fstdx file
+            :return: True if the insertion is successful, False otherwise
+           )")
+      .def("save_to_disk", &fstd::FstdxSearcher::save_to_disk,
+           py::arg("meta_json_path"),
+           R"(Save the meta json to disk.
+            :param meta_json_path: the path to save the meta json
+            :return: True if the save is successful, False otherwise
            )");
 
   m.def("get_version", []() { return "0.1.0"; }, "Get fstd library version");

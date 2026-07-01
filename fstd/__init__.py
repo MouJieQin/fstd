@@ -1,4 +1,4 @@
-from ._native import FstdxReader, get_version
+from ._native import get_version, FstdxReader, FstdxSearcher, FstdxWriter
 
 __version__ = "0.1.0"
-__all__ = ["FstdxReader", "get_version"]
+__all__ = ["FstdxReader", "get_version", "FstdxSearcher", "FstdxWriter"]
