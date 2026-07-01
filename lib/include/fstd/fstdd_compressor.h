@@ -53,6 +53,10 @@ private:
   std::vector<char> zstd_compress_block(const char *data, size_t size,
                                         int level);
 
+  void read_file_imple(std::istream &ifs, std::string &&key,
+                       std::vector<char> &disk_buf, size_t &buf_size,
+                       uint64_t &block_index, size_t block_size);
+
   void read_files(const std::vector<std::string> &data_paths,
                   DdJsonHeader &header, size_t block_size_kb, bool opt_verbose);
 

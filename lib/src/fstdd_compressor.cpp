@@ -105,13 +105,58 @@ FstddCompressor::recursive_directory(
   return files_paths;
 }
 
+void FstddCompressor::read_file_imple(std::istream &ifs, std::string &&key,
+                                      std::vector<char> &disk_buf,
+                                      size_t &buf_size, uint64_t &block_index,
+                                      size_t block_size) {
+  size_t start_count = buf_size / block_size;
+  uint64_t start_offset = buf_size % block_size;
+  uint64_t start_block_index = block_index + start_count;
+  while (true) {
+    if (!success) { return; }
+    size_t expect_read_size = disk_read_size - buf_size;
+    ifs.read(disk_buf.data() + buf_size, expect_read_size);
+    streamsize bytes_read = ifs.gcount();
+    buf_size += bytes_read;
+    if (static_cast<size_t>(bytes_read) < expect_read_size) {
+      size_t end_count = buf_size / block_size;
+      uint64_t end_offset = buf_size % block_size;
+      uint64_t end_block_index = block_index + end_count;
+      LOG_DEBUG("{} : {}, {}, {}, {}", key, start_block_index, start_offset,
+                end_block_index, end_offset);
+      index_record.emplace_back(
+          std::move(key), ValueBlockPosIndex(start_block_index, start_offset,
+                                             end_block_index, end_offset));
+      break;
+    }
+
+    // split disk_buf into blocks
+    size_t offset = 0;
+    while (offset < buf_size) {
+      size_t current_block_size = block_size;
+
+      CompressTask task;
+      task.src_data.assign(disk_buf.begin() + offset,
+                           disk_buf.begin() + offset + current_block_size);
+      task.index = task_seq.fetch_add(1);
+
+      // wait for task queue to reduce memory usage
+      unique_lock<mutex> lock(task_mtx);
+      task_cv.wait(lock, [&] { return task_queue.size() < max_queue_size; });
+
+      task_queue.push(std::move(task));
+      task_cv.notify_one();
+      block_index += 1;
+      offset += current_block_size;
+    }
+    buf_size = 0;
+  }
+}
+
 // -------------------- read files with single thread --------------------
 void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
                                  DdJsonHeader &header, size_t block_size,
                                  bool opt_verbose) {
-  vector<char> disk_buf(disk_read_size);
-  size_t buf_size = 0;
-  uint64_t block_index = 0;
   DyBlockProgBars dy_bars;
   std::function<void(size_t, const std::string &)> refresh_file_bar = nullptr;
   if (!opt_verbose) {
@@ -120,10 +165,13 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
   vector<pair<string, size_t>> files_paths =
       recursive_directory(data_paths, opt_verbose, refresh_file_bar);
   size_t record = 0;
+  size_t buf_size = 0;
+  uint64_t block_index = 0;
+  vector<char> disk_buf(disk_read_size);
   auto refresh_bar =
       dy_bars.push_back(files_paths.size(), "Compressing files:");
   for (size_t i = 0; i < files_paths.size(); ++i) {
-    string key = files_paths[i].first;
+    string &key = files_paths[i].first;
     fs::path file_path =
         fs::path(data_paths[files_paths[i].second]) / fs::path(key);
     ifstream ifs(file_path.string(), ios::binary);
@@ -132,48 +180,8 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
       continue;
     }
     if (!success) { return; }
-    size_t start_count = buf_size / block_size;
-    uint64_t start_offset = buf_size % block_size;
-    uint64_t start_block_index = block_index + start_count;
-    while (true) {
-      if (!success) { return; }
-      size_t expect_read_size = disk_read_size - buf_size;
-      ifs.read(disk_buf.data() + buf_size, expect_read_size);
-      streamsize bytes_read = ifs.gcount();
-      buf_size += bytes_read;
-      if (static_cast<size_t>(bytes_read) < expect_read_size) {
-        size_t end_count = buf_size / block_size;
-        uint64_t end_offset = buf_size % block_size;
-        uint64_t end_block_index = block_index + end_count;
-        LOG_DEBUG("{} : {}, {}, {}, {}", key, start_block_index, start_offset,
-                  end_block_index, end_offset);
-        index_record.emplace_back(
-            std::move(key), ValueBlockPosIndex(start_block_index, start_offset,
-                                               end_block_index, end_offset));
-        break;
-      }
-
-      // split disk_buf into blocks
-      size_t offset = 0;
-      while (offset < buf_size) {
-        size_t current_block_size = block_size;
-
-        CompressTask task;
-        task.src_data.assign(disk_buf.begin() + offset,
-                             disk_buf.begin() + offset + current_block_size);
-        task.index = task_seq.fetch_add(1);
-
-        // wait for task queue to reduce memory usage
-        unique_lock<mutex> lock(task_mtx);
-        task_cv.wait(lock, [&] { return task_queue.size() < max_queue_size; });
-
-        task_queue.push(std::move(task));
-        task_cv.notify_one();
-        block_index += 1;
-        offset += current_block_size;
-      }
-      buf_size = 0;
-    }
+    read_file_imple(ifs, std::move(key), disk_buf, buf_size, block_index,
+                    block_size);
     record += 1;
     refresh_bar(i);
   }
