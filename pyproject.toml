@@ -1,9 +1,33 @@
 [build-system]
 requires = [
-    "setuptools>=64",
+    "setuptools>=77.0.3", # Upgraded to officially match PEP 639 support
     "cmake>=3.24",
-    "pybind11>=2.12",
+    "pybind11>=2.13",
     "wheel",
     "ninja"
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "fstd"
+version = "0.1.0"
+authors = [{ name = "Moujie Qin", email = "moujieqin@gmail.com" }]
+description = "High-performance dictionary engine based on FST"
+requires-python = ">=3.9"
+license = "MIT"                  # Modern string format (PEP 639)
+license-files = ["LICENSE"]      # MOVED HERE: Now directly under [project]
+
+classifiers = [
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+]
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+# The old [tool.setuptools] block is completely deleted

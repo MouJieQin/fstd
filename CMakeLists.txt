@@ -27,6 +27,9 @@ else()
     string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 endif()
 
+set(PYBIND11_FINDPYTHON ON CACHE BOOL "Use FindPython instead of deprecated modules")
+cmake_policy(SET CMP0148 NEW)
+
 # Project configuration
 project (fstd LANGUAGES CXX)
 set(fstd_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
