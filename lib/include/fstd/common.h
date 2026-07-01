@@ -178,6 +178,14 @@ struct CompressResult {
   size_t index;
 };
 
+struct FileStream {
+  FileStream() = default;
+  FileStream(const std::string &file_path, std::string_view stream)
+      : file_path(file_path), iss(std::string(stream)) {}
+  std::string file_path;
+  std::istringstream iss;
+};
+
 std::string get_current_date();
 
 bool ends_with(std::string const &value, std::string const &ending);

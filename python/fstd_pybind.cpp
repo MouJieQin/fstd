@@ -28,6 +28,50 @@ PYBIND11_MODULE(_native, m) {
             :return: True if the word is in the dictionary, False otherwise
            )");
 
+  py::class_<fstd::FstddWriter>(m, "FstddWriter")
+      .def(py::init<>())
+      .def(
+          "push_file_stream",
+          [](fstd::FstddWriter &self, const std::string &file_path,
+             py::bytes data) {
+            std::string_view buf(data);
+            return self.push_file_stream(file_path, buf);
+          },
+          py::arg("file_path"), py::arg("data"),
+          R"(Push a file stream to the writer.
+            :param file_path: the path(key) to the file to push
+            :param data: the data of the file to push
+            :return: True if the push is successful, False otherwise
+           )")
+      .def(
+          "compile_fstdd",
+          [](fstd::FstddWriter &self, size_t file_stream_num,
+             const std::string &output_file, const std::string &meta_json_str,
+             size_t block_size_kb, size_t compress_level, size_t worker_num,
+             bool opt_verbose) {
+            py::gil_scoped_release
+                release; // Release the GIL to allow other Python
+                         // threads to run while compiling
+            std::vector<std::string> data_paths;
+            return self.compile_fstdd(data_paths, output_file, meta_json_str,
+                                      block_size_kb, compress_level, worker_num,
+                                      opt_verbose, file_stream_num);
+          },
+          py::arg("file_stream_num"), py::arg("output_file"),
+          py::arg("meta_json_str"), py::arg("block_size_kb"),
+          py::arg("compress_level"), py::arg("worker_num"),
+          py::arg("opt_verbose"),
+          R"(Compile the fstd file from pushed file streams.
+            :param file_stream_num: the number of file streams to compile
+            :param output_file: the path to the output fstd file
+            :param meta_json_str: the meta json string
+            :param block_size_kb: the block size in kb
+            :param compress_level: the compress level [0, 22]
+            :param worker_num: the number of threads to use for compile
+            :param opt_verbose: whether to print verbose info
+            :return: True if the compilation is successful, False otherwise
+           )");
+
   py::class_<fstd::FstdxWriter>(m, "FstdxWriter")
       .def(py::init<>())
       .def(
@@ -57,7 +101,7 @@ PYBIND11_MODULE(_native, m) {
               :param values: the values to compile
               :param meta_json_str: the meta json string
               :param block_size_kb: the block size in kb
-              :param compress_level: the compress level
+              :param compress_level: the compress level [0, 22]
               :param zstd_dict_size_kb: the zstd dict size in kb
               :param worker_num: the number of threads to use for compile
               :param opt_sorted: whether to sort the values

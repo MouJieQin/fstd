@@ -43,7 +43,10 @@ class FstddCompressor {
 public:
   bool compress(const std::vector<std::string> &data_paths, std::ofstream &out,
                 DdJsonHeader &header, size_t block_size_kb,
-                size_t compress_level, size_t worker_num, bool opt_verbose);
+                size_t compress_level, size_t worker_num, bool opt_verbose,
+                size_t file_stream_num = 0);
+
+  bool push_file_stream(const std::string &file_path, std::string_view stream);
 
   static std::vector<std::pair<std::string, size_t>> recursive_directory(
       const std::vector<std::string> &data_paths, bool opt_verbose = false,
@@ -58,7 +61,8 @@ private:
                        uint64_t &block_index, size_t block_size);
 
   void read_files(const std::vector<std::string> &data_paths,
-                  DdJsonHeader &header, size_t block_size_kb, bool opt_verbose);
+                  DdJsonHeader &header, size_t block_size_kb, bool opt_verbose,
+                  size_t file_stream_num);
 
   void compress_worker(size_t compress_level);
 
@@ -68,10 +72,13 @@ private:
 private:
   std::queue<CompressTask> task_queue;
   std::queue<CompressResult> result_queue;
+  std::queue<FileStream> file_stream_queue;
   std::mutex task_mtx;
   std::mutex res_mtx;
+  std::mutex file_stream_mtx;
   std::condition_variable task_cv;
   std::condition_variable res_cv;
+  std::condition_variable fs_cv;
   std::vector<std::pair<std::string, ValueBlockPosIndex>> index_record;
 
   std::atomic<size_t> task_seq{0}; // assign task sequence number

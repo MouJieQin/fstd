@@ -8,9 +8,32 @@ using namespace std;
 
 int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
                                const std::string &output_file,
+                               const std::string &meta_json_str,
+                               size_t block_size_kb, size_t compress_level,
+                               size_t worker_num, bool opt_verbose,
+                               size_t file_stream_num) {
+
+  using json = nlohmann::json;
+  json meta_json;
+  try {
+    meta_json = json::parse(meta_json_str);
+  } catch (const json::exception &e) {
+    LOG_ERROR("JSON string {} format error: {}", meta_json_str, e.what());
+    return 1;
+  } catch (const std::exception &e) {
+    LOG_ERROR("JSON string {} read error: {}", meta_json_str, e.what());
+    return 1;
+  }
+  return compile_fstdd(data_paths, output_file, meta_json, block_size_kb,
+                       compress_level, worker_num, opt_verbose,
+                       file_stream_num);
+}
+
+int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
+                               const std::string &output_file,
                                const nlohmann::json &meta, size_t block_size_kb,
                                size_t compress_level, size_t worker_num,
-                               bool opt_verbose) {
+                               bool opt_verbose, size_t file_stream_num) {
   ofstream fout(output_file, ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
@@ -18,9 +41,9 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
   }
   DdJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
-  FstddCompressor dd_compressor;
   if (!dd_compressor.compress(data_paths, fout, header, block_size_kb * 1024,
-                              compress_level, worker_num, opt_verbose)) {
+                              compress_level, worker_num, opt_verbose,
+                              file_stream_num)) {
     return 2;
   }
   header["meta"]["Creationdate"] = get_current_date();
@@ -53,6 +76,11 @@ int FstddWriter::compile_fstdd(const string &data_path,
   const std::vector<std::string> data_paths{data_path};
   return compile_fstdd(data_paths, output_file, meta, block_size_kb,
                        compress_level, worker_num, opt_verbose);
+}
+
+bool FstddWriter::push_file_stream(const std::string &file_path,
+                                   std::string_view stream) {
+  return dd_compressor.push_file_stream(file_path, stream);
 }
 
 const nlohmann::json FstddWriter::meta_default =

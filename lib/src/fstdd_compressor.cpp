@@ -33,9 +33,11 @@ std::ostream &operator<<(std::ostream &os, const ValueBlockPosIndex &vbp_idx) {
 bool FstddCompressor::compress(const std::vector<std::string> &data_paths,
                                std::ofstream &out, DdJsonHeader &header,
                                size_t block_size, size_t compress_level,
-                               size_t worker_num, bool opt_verbose) {
-  thread reader(
-      [&]() { read_files(data_paths, header, block_size, opt_verbose); });
+                               size_t worker_num, bool opt_verbose,
+                               size_t file_stream_num) {
+  thread reader([&]() {
+    read_files(data_paths, header, block_size, opt_verbose, file_stream_num);
+  });
   if (worker_num == 0) {
     worker_num = get_optimal_thread_num(TaskType::CPU_INTENSIVE);
   }
@@ -153,37 +155,69 @@ void FstddCompressor::read_file_imple(std::istream &ifs, std::string &&key,
   }
 }
 
+bool FstddCompressor::push_file_stream(const std::string &file_path,
+                                       std::string_view stream) {
+  if (!success) { return false; }
+  unique_lock<mutex> lock(file_stream_mtx);
+  fs_cv.wait(lock, [&] { return file_stream_queue.size() < max_queue_size; });
+  file_stream_queue.push(FileStream(file_path, stream));
+  fs_cv.notify_one();
+  return true;
+}
+
 // -------------------- read files with single thread --------------------
 void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
                                  DdJsonHeader &header, size_t block_size,
-                                 bool opt_verbose) {
-  DyBlockProgBars dy_bars;
-  std::function<void(size_t, const std::string &)> refresh_file_bar = nullptr;
-  if (!opt_verbose) {
-    refresh_file_bar = dy_bars.push_back("Collecting files:");
-  }
-  vector<pair<string, size_t>> files_paths =
-      recursive_directory(data_paths, opt_verbose, refresh_file_bar);
+                                 bool opt_verbose, size_t file_stream_num) {
   size_t record = 0;
   size_t buf_size = 0;
   uint64_t block_index = 0;
   vector<char> disk_buf(disk_read_size);
-  auto refresh_bar =
-      dy_bars.push_back(files_paths.size(), "Compressing files:");
-  for (size_t i = 0; i < files_paths.size(); ++i) {
-    string &key = files_paths[i].first;
-    fs::path file_path =
-        fs::path(data_paths[files_paths[i].second]) / fs::path(key);
-    ifstream ifs(file_path.string(), ios::binary);
-    if (!ifs) {
-      LOG_ERROR("Failed to open file: {}", file_path.string());
-      continue;
+  DyBlockProgBars dy_bars;
+  if (data_paths.empty()) {
+    // read from file streams
+    auto refresh_bar = dy_bars.push_back(file_stream_num, "Compressing files:");
+    for (size_t i = 0; i < file_stream_num; ++i) {
+      FileStream file_stream;
+      {
+        unique_lock<mutex> lock(file_stream_mtx);
+        fs_cv.wait(lock, [&] { return !file_stream_queue.empty(); });
+        file_stream = std::move(file_stream_queue.front());
+        file_stream_queue.pop();
+        fs_cv.notify_one(); // notify push to continue
+      }
+      istream &is = file_stream.iss;
+      string &key = file_stream.file_path;
+      if (!success) { return; }
+      read_file_imple(is, std::move(key), disk_buf, buf_size, block_index,
+                      block_size);
+      record += 1;
+      refresh_bar(i);
     }
-    if (!success) { return; }
-    read_file_imple(ifs, std::move(key), disk_buf, buf_size, block_index,
-                    block_size);
-    record += 1;
-    refresh_bar(i);
+  } else {
+    std::function<void(size_t, const std::string &)> refresh_file_bar = nullptr;
+    if (!opt_verbose) {
+      refresh_file_bar = dy_bars.push_back("Collecting files:");
+    }
+    vector<pair<string, size_t>> files_paths =
+        recursive_directory(data_paths, opt_verbose, refresh_file_bar);
+    auto refresh_bar =
+        dy_bars.push_back(files_paths.size(), "Compressing files:");
+    for (size_t i = 0; i < files_paths.size(); ++i) {
+      string &key = files_paths[i].first;
+      fs::path file_path =
+          fs::path(data_paths[files_paths[i].second]) / fs::path(key);
+      ifstream ifs(file_path.string(), ios::binary);
+      if (!ifs) {
+        LOG_ERROR("Failed to open file: {}", file_path.string());
+        continue;
+      }
+      if (!success) { return; }
+      read_file_imple(ifs, std::move(key), disk_buf, buf_size, block_index,
+                      block_size);
+      record += 1;
+      refresh_bar(i);
+    }
   }
 
   // last block

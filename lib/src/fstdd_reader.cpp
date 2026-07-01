@@ -106,7 +106,7 @@ bool FstddReader::extract_all(const std::string &dst_dir_str) const {
   for (size_t i = 0; i < keys_buff.size(); ++i) {
     if (keys_buff[i] == '\0') {
       string key(keys_buff.data() + start_idx, i - start_idx);
-      fs::path output_path = fs::path(dst_dir_str) / fs::path(key);
+      fs::path output_path = fs::absolute(dst_dir_str).string() + "/" + key;
       if (!extract_impl(key, output_path.string())) { return false; }
       refresh_bar(file_idx);
       file_idx += 1;
@@ -119,7 +119,7 @@ bool FstddReader::extract_all(const std::string &dst_dir_str) const {
 bool FstddReader::extract(const std::string &key,
                           const std::string &dst_dir_str) const {
   if (!check_dst_dir(dst_dir_str)) { return false; }
-  fs::path output_path = fs::path(dst_dir_str) / fs::path(key);
+  fs::path output_path = fs::absolute(dst_dir_str).string() + "/" + key;
   return extract_impl(key, output_path.string());
 }
 
