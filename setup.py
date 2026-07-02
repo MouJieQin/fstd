@@ -51,7 +51,9 @@ class CMakeBuild(build_ext):
             deployment_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET", "11.0")
             cmake_args.append(f"-DCMAKE_OSX_DEPLOYMENT_TARGET={deployment_target}")
 
+        if os.environ.get("CI") == "true" or os.environ.get("CIBUILDWHEEL") == "1":
             # Keep Homebrew/System path isolation strictly enforced
+            print("=== Running on CI/GitHub Actions: enabling strict Homebrew isolation ===")
             cmake_args.append("-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew;/usr/local")
             cmake_args.append("-DCMAKE_FIND_FRAMEWORK=NEVER")
             cmake_args.append("-DCMAKE_FIND_APPBUNDLE=NEVER")
