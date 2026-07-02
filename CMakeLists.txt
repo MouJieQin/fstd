@@ -1,5 +1,17 @@
 cmake_minimum_required (VERSION 3.24) # Upgraded from 3.10 to unlock safe system fallback features
 
+set(PYBIND11_FINDPYTHON OFF CACHE BOOL "" FORCE)
+cmake_policy(SET CMP0148 NEW)
+
+# Project configuration
+project (fstd LANGUAGES CXX)
+set(fstd_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
+file(READ ${CMAKE_SOURCE_DIR}/VERSION FSTD_VERSION)
+string(STRIP ${FSTD_VERSION} FSTD_VERSION)
+set(FSTD_VERSION "${FSTD_VERSION}" CACHE STRING "Version from VERSION file" FORCE)
+message(STATUS "fstd version: ${FSTD_VERSION}")
+
 # Build type postfix configuration
 set(RELEASE_POSTFIX "" CACHE STRING "Postfix for release build binaries")
 set(DEBUG_POSTFIX "d" CACHE STRING "Postfix for debug build binaries")
@@ -27,13 +39,6 @@ else()
     string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 endif()
 
-set(PYBIND11_FINDPYTHON ON CACHE BOOL "Use FindPython instead of deprecated modules")
-cmake_policy(SET CMP0148 NEW)
-
-# Project configuration
-project (fstd LANGUAGES CXX)
-set(fstd_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-
 # ================= Python Binding Switch =================
 option(BUILD_PYTHON_BINDING "Build pybind11 python extension module" OFF)
 # =========================================================
@@ -53,8 +58,6 @@ enable_testing()
 # ===================== Library Configuration =====================
 aux_source_directory(${fstd_ROOT_DIR}/lib/src DIR_LIB_SRCS)
 set(FSTD_INCLUDE_DIR ${fstd_ROOT_DIR}/lib/include)
-
-set(FSTD_VERSION "0.1.2" CACHE STRING "Version of the fstd library")
 
 # 1. Build shared library
 add_library(fstd_shared SHARED ${DIR_LIB_SRCS})
