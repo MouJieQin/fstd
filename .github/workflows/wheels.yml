@@ -40,9 +40,9 @@ jobs:
               uses: pypa/cibuildwheel@v2.22.0
               env:
                   CIBW_BUILD: cp311-*
-                #   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+                  #   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
                   CIBW_ARCHS: ${{ matrix.arch }}
-                  
+
                   # 1. SKIP MUSLLINUX (Alpine) because it doesn't support 'yum'
                   CIBW_SKIP: "*-musllinux*"
 
@@ -61,6 +61,10 @@ jobs:
                   # 3. QUOTE THE VALUE containing semicolons
                   CIBW_ENVIRONMENT_MACOS: |
                       CMAKE_IGNORE_PREFIX_PATH="/opt/homebrew;/usr/local"
+
+                  CIBW_TEST_COMMAND: |
+                      python -c "import fstd; print('Successfully loaded fstd from:', fstd.__file__)"
+                      python -c "from fstd import _native; print('Native extension verified at:', _native.__file__)"
 
             - name: Upload Intermediary Wheel Storage
               uses: actions/upload-artifact@v4
