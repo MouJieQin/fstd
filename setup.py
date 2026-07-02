@@ -39,20 +39,26 @@ class CMakeBuild(build_ext):
             "-DBUILD_PYTHON_BINDING=ON",
         ]
 
-        # FIXED FOR LINUX & MACOS ISOLATION:
-        # Intercept the environment override settings passed by cibuildwheel's environment layer
-        # and translate them into explicit command-line configuration arguments for CMake.
+        # 1. Translate environment variable overrides into clean CMake command-line parameters
         for fallback_lib in ["indicators", "nlohmann_json", "spdlog", "fmt"]:
             if os.environ.get(f"{fallback_lib}_FOUND") == "FALSE":
                 cmake_args.append(f"-D{fallback_lib}_FOUND=FALSE")
 
+        # 2. Capture and forward the Homebrew isolation target if present
+        if "CMAKE_IGNORE_PREFIX_PATH" in os.environ:
+            cmake_args.append(f"-DCMAKE_IGNORE_PREFIX_PATH={os.environ['CMAKE_IGNORE_PREFIX_PATH']}")
+
         if platform.system() == "Darwin":
-            # Force a modern deployment target to make std::filesystem available
             cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15")
-            # If cibuildwheel is injecting cross-compile flags, forward them to CMake
+
+            # Cross-compile isolation configurations specifically for macOS x86_64
             archs = os.environ.get("ARCHFLAGS", "")
             if "x86_64" in archs:
                 cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=x86_64")
+                cmake_args.append("-DCMAKE_FIND_FRAMEWORK=NEVER")
+                cmake_args.append("-DCMAKE_FIND_APPBUNDLE=NEVER")
+                cmake_args.append("-Dzstd_RESOLVED=FALSE")
+                cmake_args.append("-Dpcre2_RESOLVED=FALSE")
             elif "arm64" in archs:
                 cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
 
