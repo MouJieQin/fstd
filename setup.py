@@ -29,16 +29,26 @@ class CMakeBuild(build_ext):
         build_dir = Path(self.build_temp) / ext.name
         build_dir.mkdir(parents=True, exist_ok=True)
         import pybind11
+
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={ext_output_path.parent}",
             f"-DPYTHON_EXECUTABLE={sys.executable}",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
             f"-Dpybind11_DIR={pybind11.get_cmake_dir()}",
+            "-DBUILD_PYTHON_BINDING=ON",
         ]
-        cmake_args.append("-DBUILD_PYTHON_BINDING=ON")
-        # Add this logic inside your build_one_ext function in setup.py:
+
+        # FIXED FOR LINUX & MACOS ISOLATION:
+        # Intercept the environment override settings passed by cibuildwheel's environment layer
+        # and translate them into explicit command-line configuration arguments for CMake.
+        for fallback_lib in ["indicators", "nlohmann_json", "spdlog", "fmt"]:
+            if os.environ.get(f"{fallback_lib}_FOUND") == "FALSE":
+                cmake_args.append(f"-D{fallback_lib}_FOUND=FALSE")
+
         if platform.system() == "Darwin":
+            # Force a modern deployment target to make std::filesystem available
+            cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15")
             # If cibuildwheel is injecting cross-compile flags, forward them to CMake
             archs = os.environ.get("ARCHFLAGS", "")
             if "x86_64" in archs:
