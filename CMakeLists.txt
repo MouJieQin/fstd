@@ -293,7 +293,7 @@ endif()
 
 # Link cross-platform dynamic system fallback dependencies
 foreach(TARGET ${TARGETS})
-    target_link_libraries(${TARGET} PRIVATE
+    target_link_libraries(${TARGET} PUBLIC
         spdlog::spdlog
         fmt::fmt
         nlohmann_json::nlohmann_json

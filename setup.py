@@ -39,26 +39,23 @@ class CMakeBuild(build_ext):
             "-DBUILD_PYTHON_BINDING=ON",
         ]
 
-        # 1. Translate environment variable overrides into clean CMake command-line parameters
-        for fallback_lib in ["indicators", "nlohmann_json", "spdlog", "fmt"]:
-            if os.environ.get(f"{fallback_lib}_FOUND") == "FALSE":
-                cmake_args.append(f"-D{fallback_lib}_FOUND=FALSE")
+        # 1. Force FetchContent on Linux/CI to avoid "missing header" errors
+        # If we are running in CIBUILDWHEEL, assume system libs are missing/broken
+        if os.environ.get("CIBUILDWHEEL") == "1":
+            for lib in ["indicators", "nlohmann_json", "spdlog", "fmt"]:
+                cmake_args.append(f"-D{lib}_FOUND=FALSE")
 
-        # 2. Capture and forward the Homebrew isolation target if present
-        if "CMAKE_IGNORE_PREFIX_PATH" in os.environ:
-            cmake_args.append(f"-DCMAKE_IGNORE_PREFIX_PATH={os.environ['CMAKE_IGNORE_PREFIX_PATH']}")
-
+        # 2. macOS Specific Configuration
         if platform.system() == "Darwin":
+            # CRITICAL: Force macOS 10.15+ for std::filesystem support
             cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15")
 
-            # Cross-compile isolation configurations specifically for macOS x86_64
+            # Forward Architecture flags from cibuildwheel
             archs = os.environ.get("ARCHFLAGS", "")
             if "x86_64" in archs:
                 cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=x86_64")
-                cmake_args.append("-DCMAKE_FIND_FRAMEWORK=NEVER")
-                cmake_args.append("-DCMAKE_FIND_APPBUNDLE=NEVER")
-                cmake_args.append("-Dzstd_RESOLVED=FALSE")
-                cmake_args.append("-Dpcre2_RESOLVED=FALSE")
+                # Force strict isolation for Intel cross-compile
+                cmake_args.append("-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew")
             elif "arm64" in archs:
                 cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
 
@@ -69,18 +66,8 @@ class CMakeBuild(build_ext):
         else:
             build_args += ["-j{}".format(os.cpu_count() or 4)]
 
-        # cmake configure
-        subprocess.run(
-            ["cmake", ext.sourcedir] + cmake_args,
-            cwd=build_dir,
-            check=True
-        )
-        # cmake build
-        subprocess.run(
-            ["cmake"] + build_args,
-            cwd=build_dir,
-            check=True
-        )
+        subprocess.run(["cmake", ext.sourcedir] + cmake_args, cwd=build_dir, check=True)
+        subprocess.run(["cmake"] + build_args, cwd=build_dir, check=True)
 
 
 setup(
