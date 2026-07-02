@@ -45,15 +45,13 @@ class CMakeBuild(build_ext):
             for lib in ["indicators", "nlohmann_json", "spdlog", "fmt"]:
                 cmake_args.append(f"-D{lib}_FOUND=FALSE")
 
-        # 2. macOS Specific Configuration
+        # In setup.py, update your Darwin configuration block to match this implementation:
         if platform.system() == "Darwin":
-            # Force macOS 11.0 as the unified minimum version for all modern Apple platforms
-            cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0")
+            # Dynamically inherit deployment targets directly from the active runtime engine
+            deployment_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET", "11.0")
+            cmake_args.append(f"-DCMAKE_OSX_DEPLOYMENT_TARGET={deployment_target}")
 
-            # CRITICAL ISOLATION FIX:
-            # Force CMake to completely ignore the host's Homebrew system libraries.
-            # This forces the build to compile clean static dependencies from FetchContent source code,
-            # completely bypassing the target version mismatch error.
+            # Keep Homebrew/System path isolation strictly enforced
             cmake_args.append("-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew;/usr/local")
             cmake_args.append("-DCMAKE_FIND_FRAMEWORK=NEVER")
             cmake_args.append("-DCMAKE_FIND_APPBUNDLE=NEVER")

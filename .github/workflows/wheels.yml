@@ -40,24 +40,16 @@ jobs:
               uses: pypa/cibuildwheel@v2.22.0
               env:
                   CIBW_BUILD: cp311-*
-                #   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+                  #   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
                   CIBW_ARCHS: ${{ matrix.arch }}
-                  
-                  # CRITICAL FIX: Use '|' (pipe) to preserve newlines.
-                  # This ensures MACOSX_DEPLOYMENT_TARGET is actually set.
-                  CIBW_ENVIRONMENT: |
-                      MACOSX_DEPLOYMENT_TARGET=10.15
-                      CMAKE_BUILD_TYPE=Release
-                      indicators_FOUND=FALSE
-                      nlohmann_json_FOUND=FALSE
-                      spdlog_FOUND=FALSE
-                      fmt_FOUND=FALSE
 
+                  MACOSX_DEPLOYMENT_TARGET: "11.0"
+                  CIBW_BEFORE_ALL_LINUX: "yum install -y zlib-devel libzstd-devel pcre2-devel"
+                  CIBW_ENVIRONMENT: |
+                      CMAKE_BUILD_TYPE=Release
                   # Force macOS Intel builds to ignore Homebrew
                   CIBW_ENVIRONMENT_MACOS: |
-                      MACOSX_DEPLOYMENT_TARGET=10.15
-                      CMAKE_IGNORE_PREFIX_PATH=/opt/homebrew
-
+                      CMAKE_IGNORE_PREFIX_PATH=/opt/homebrew;/usr/local
             - name: Upload Intermediary Wheel Storage
               uses: actions/upload-artifact@v4
               with:
