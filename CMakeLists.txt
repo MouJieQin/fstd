@@ -54,11 +54,13 @@ enable_testing()
 aux_source_directory(${fstd_ROOT_DIR}/lib/src DIR_LIB_SRCS)
 set(FSTD_INCLUDE_DIR ${fstd_ROOT_DIR}/lib/include)
 
+set(FSTD_VERSION "0.1.2" CACHE STRING "Version of the fstd library")
+
 # 1. Build shared library
 add_library(fstd_shared SHARED ${DIR_LIB_SRCS})
 set_target_properties(fstd_shared PROPERTIES
     OUTPUT_NAME fstd${BUILD_TYPE}
-    VERSION 0.1.0
+    VERSION ${FSTD_VERSION}
     SOVERSION 1
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
@@ -69,7 +71,6 @@ set_target_properties(fstd_static PROPERTIES
     OUTPUT_NAME fstd${BUILD_TYPE}
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
-
 target_include_directories(fstd_shared PUBLIC
     $<BUILD_INTERFACE:${FSTD_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -86,6 +87,9 @@ target_link_libraries(fstd PRIVATE fstd_static)
 # ============================================================================
 
 target_compile_definitions(fstd PRIVATE SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+target_compile_definitions(fstd_shared PRIVATE FSTD_VERSION="${FSTD_VERSION}")
+target_compile_definitions(fstd_static PRIVATE FSTD_VERSION="${FSTD_VERSION}")
+target_compile_definitions(fstd PRIVATE FSTD_VERSION="${FSTD_VERSION}")
 
 if(WIN32)
     add_compile_definitions(NOMINMAX)

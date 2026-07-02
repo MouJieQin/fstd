@@ -77,3 +77,4 @@ Testing/
 # python egg info
 *.egg-info/
 dist/
+fstd/__pycache__/

@@ -14,7 +14,6 @@
 
 namespace fstd {
 
-#define FSTD_VERSION "0.1.0"
 constexpr auto DELIMITER = "</>";
 constexpr size_t max_queue_size = 8;
 constexpr size_t disk_read_size =

@@ -243,5 +243,6 @@ PYBIND11_MODULE(_native, m) {
             :return: True if the save is successful, False otherwise
            )");
 
-  m.def("get_version", []() { return "0.1.0"; }, "Get fstd library version");
+  m.def(
+      "get_version", []() { return FSTD_VERSION; }, "Get fstd library version");
 }
