@@ -37,6 +37,14 @@ class CMakeBuild(build_ext):
             f"-Dpybind11_DIR={pybind11.get_cmake_dir()}",
         ]
         cmake_args.append("-DBUILD_PYTHON_BINDING=ON")
+        # Add this logic inside your build_one_ext function in setup.py:
+        if platform.system() == "Darwin":
+            # If cibuildwheel is injecting cross-compile flags, forward them to CMake
+            archs = os.environ.get("ARCHFLAGS", "")
+            if "x86_64" in archs:
+                cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=x86_64")
+            elif "arm64" in archs:
+                cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
 
         build_args = ["--build", ".", "--config", "Release"]
         if platform.system() == "Windows":

@@ -1,0 +1,76 @@
+name: Build and publish Python wheels
+
+on:
+    push:
+        branches: ["py"]
+        tags: ["v*"]
+    pull_request:
+        branches: ["py"]
+
+permissions:
+    contents: read
+    id-token: write # CRITICAL FOR TRUSTED PUBLISHING OIDC TOKENS
+
+jobs:
+    build_wheels:
+        name: Build wheels on ${{ matrix.os }} (${{ matrix.arch }})
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # Linux x86_64
+                    - os: ubuntu-latest
+                      arch: x86_64
+                    # macOS Apple Silicon (Native)
+                    - os: macos-latest
+                      arch: arm64
+                    # macOS Intel (Cross-compiled)
+                    - os: macos-latest
+                      arch: x86_64
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up QEMU
+              if: runner.os == 'Linux' && matrix.arch == 'aarch64'
+              uses: docker/setup-qemu-action@v3
+
+            - name: Build wheels via cibuildwheel
+              uses: pypa/cibuildwheel@v2.22.0
+              env:
+                  # Target Python 3.9 through 3.12 
+                  CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+                  CIBW_ARCHS: ${{ matrix.arch }}
+                  
+                  # CRITICAL FIX FOR LINUX WHEELS:
+                  # cibuildwheel runs inside a clean docker container. We must force it 
+                  # to download development tools needed by your CMake/C++ project.
+                  CIBW_BEFORE_ALL_LINUX: "yum install -y zlib-devel libzstd-devel pcre2-devel"
+
+            - name: Upload Intermediary Wheel Storage
+              uses: actions/upload-artifact@v4
+              with:
+                  name: python-wheels-${{ matrix.os }}-${{ matrix.arch }}
+                  path: ./wheelhouse/*.whl
+                  retention-days: 1
+
+    publish_pypi:
+        name: Publish Python Dist to PyPI
+        needs: build_wheels
+        if: startsWith(github.ref, 'refs/tags/v')
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download Built Wheels
+              uses: actions/download-artifact@v4
+              with:
+                  path: ./dist
+                  pattern: python-wheels-*
+                  merge-multiple: true
+
+            - name: Publish Package to PyPI
+              uses: pypa/gh-action-pypi-publish@release/v1
+              with:
+                  packages-dir: ./dist/
+                  # To target TestPyPI for testing, uncomment the next line:
+                  # repository-url: https://pypi.org
