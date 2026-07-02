@@ -2,10 +2,10 @@ name: Build and publish Python wheels
 
 on:
     push:
-        branches: ["py"]
+        branches: ["main"]
         tags: ["v*"]
     pull_request:
-        branches: ["py"]
+        branches: ["main"]
 
 permissions:
     contents: read
@@ -39,8 +39,8 @@ jobs:
             - name: Build wheels via cibuildwheel
               uses: pypa/cibuildwheel@v2.22.0
               env:
-                  CIBW_BUILD: cp311-*
-                  #   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+                  #   CIBW_BUILD: cp311-*
+                  CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
                   CIBW_ARCHS: ${{ matrix.arch }}
 
                   # 1. SKIP MUSLLINUX (Alpine) because it doesn't support 'yum'
