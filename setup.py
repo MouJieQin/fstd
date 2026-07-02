@@ -47,15 +47,22 @@ class CMakeBuild(build_ext):
 
         # 2. macOS Specific Configuration
         if platform.system() == "Darwin":
-            # CRITICAL: Force macOS 10.15+ for std::filesystem support
-            cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15")
+            # Force macOS 11.0 as the unified minimum version for all modern Apple platforms
+            cmake_args.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0")
 
-            # Forward Architecture flags from cibuildwheel
+            # CRITICAL ISOLATION FIX:
+            # Force CMake to completely ignore the host's Homebrew system libraries.
+            # This forces the build to compile clean static dependencies from FetchContent source code,
+            # completely bypassing the target version mismatch error.
+            cmake_args.append("-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew;/usr/local")
+            cmake_args.append("-DCMAKE_FIND_FRAMEWORK=NEVER")
+            cmake_args.append("-DCMAKE_FIND_APPBUNDLE=NEVER")
+            cmake_args.append("-Dzstd_RESOLVED=FALSE")
+            cmake_args.append("-Dpcre2_RESOLVED=FALSE")
+
             archs = os.environ.get("ARCHFLAGS", "")
             if "x86_64" in archs:
                 cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=x86_64")
-                # Force strict isolation for Intel cross-compile
-                cmake_args.append("-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew")
             elif "arm64" in archs:
                 cmake_args.append("-DCMAKE_OSX_ARCHITECTURES=arm64")
 
