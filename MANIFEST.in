@@ -1,25 +1,19 @@
-# 顶层CMake、许可、文档
 include CMakeLists.txt
 include cmake_uninstall.cmake.in
 include LICENSE
+include VERSION
 include README.md
 include prior_suffix.json
 
-# CLI主程序源码
 recursive-include src *.cpp *.h *.hpp
 
-# C++库源码+头文件
 recursive-include lib *.h *.hpp *.cpp
 
-# Python绑定CMake与源码
 recursive-include python *.h *.hpp *.cpp CMakeLists.txt
 
-# 测试目录（可选，保留则加）
 recursive-include tests *.cpp CMakeLists.txt *.txt
 
-# Python包代码
 recursive-include fstd *.py *.pyi
 
-# 排除构建缓存、编译产物
 global-exclude build/* build_ext/* dist/* *.egg-info *.o *.a *.so *.dylib *.pyd
 global-exclude __pycache__ *.pyc

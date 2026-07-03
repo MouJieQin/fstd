@@ -15,6 +15,11 @@ public:
                     size_t block_size_kb, size_t compress_level,
                     size_t worker_num, bool opt_verbose);
 
+  int compile_fstdd(const std::string &data_path,
+                    const std::string &output_file,
+                    const std::string &meta_json_str, size_t block_size_kb,
+                    size_t compress_level, size_t worker_num, bool opt_verbose);
+
   int compile_fstdd(const std::vector<std::string> &data_paths,
                     const std::string &output_file, const nlohmann::json &meta,
                     size_t block_size_kb, size_t compress_level,

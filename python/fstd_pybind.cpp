@@ -13,16 +13,28 @@ namespace py = pybind11;
 PYBIND11_MODULE(_native, m) {
   m.doc() = "Python binding for fstd dictionary engine";
 
-  py::class_<fstd::FstdxReader>(m, "FstdxReader")
-      .def(py::init<const std::string &>(), py::arg("fstdx_path"),
-           R"(Initialize the reader with fstdx_path.
-            :param fstdx_path: the path to the fstdx file
+  m.def(
+      "get_version", []() { return FSTD_VERSION; }, "Get fstd library version");
+
+  m.def(
+      "set_log_level",
+      [](uint8_t log_level) {
+        Logger::instance().set_level(
+            static_cast<spdlog::level::level_enum>(log_level));
+      },
+      "Set the log level for fstd library. log_level: 0-6, 0 is trace, 1 is "
+      "debug, 2 is info, 3 is warn, 4 is error, 5 is critical, 6 is off");
+
+  py::class_<fstd::FstddReader>(m, "FstddReader")
+      .def(py::init<const std::string &>(), py::arg("output_file"),
+           R"(Initialize the reader with output_file.
+            :param output_file: the path to the fstddd file
            )")
-      .def("get_fst_key_size", &fstd::FstdxReader::get_fst_key_size,
-           R"(Get the key size of the fst index.
-            :return: the key size of the fst index
+      .def("get_meta", &fstd::FstddReader::get_meta,
+           R"(Get the meta of the fstddd file.
+            :return: the meta json string
            )")
-      .def("contains", &fstd::FstdxReader::contains, py::arg("word"),
+      .def("contains", &fstd::FstddReader::contains, py::arg("word"),
            R"(Check if the word is in the dictionary.
             :param word: the word to check
             :return: True if the word is in the dictionary, False otherwise
@@ -30,6 +42,30 @@ PYBIND11_MODULE(_native, m) {
 
   py::class_<fstd::FstddWriter>(m, "FstddWriter")
       .def(py::init<>())
+      .def(
+          "compile_fstdd",
+          [](fstd::FstddWriter &self, const std::string &data_path,
+             const std::string &output_file, const std::string &meta_json_str,
+             size_t block_size_kb, size_t compress_level, size_t worker_num,
+             bool opt_verbose) {
+            return self.compile_fstdd(data_path, output_file, meta_json_str,
+                                      block_size_kb, compress_level, worker_num,
+                                      opt_verbose);
+          },
+          py::arg("data_path"), py::arg("output_file"),
+          py::arg("meta_json_str"), py::arg("block_size_kb"),
+          py::arg("compress_level"), py::arg("worker_num"),
+          py::arg("opt_verbose"),
+          R"(Compile the fstd file from data path.
+            :param data_path: the path to the data file or directory
+            :param output_file: the path to the output fstd file
+            :param meta_json_str: the meta json string
+            :param block_size_kb: the block size in kb
+            :param compress_level: the compress level [0, 22]
+            :param worker_num: the number of threads to use for compile
+            :param opt_verbose: whether to print verbose info
+            :return: True if the compilation is successful, False otherwise
+           )")
       .def(
           "push_file_stream",
           [](fstd::FstddWriter &self, const std::string &file_path,
@@ -72,8 +108,51 @@ PYBIND11_MODULE(_native, m) {
             :return: True if the compilation is successful, False otherwise
            )");
 
+  py::class_<fstd::FstdxReader>(m, "FstdxReader")
+      .def(py::init<const std::string &>(), py::arg("fstdx_path"),
+           R"(Initialize the reader with fstdx_path.
+            :param fstdx_path: the path to the fstdx file
+           )")
+      .def("get_fst_key_size", &fstd::FstdxReader::get_fst_key_size,
+           R"(Get the key size of the fst index.
+            :return: the key size of the fst index
+           )")
+      .def("contains", &fstd::FstdxReader::contains, py::arg("word"),
+           R"(Check if the word is in the dictionary.
+            :param word: the word to check
+            :return: True if the word is in the dictionary, False otherwise
+           )");
+
   py::class_<fstd::FstdxWriter>(m, "FstdxWriter")
       .def(py::init<>())
+      .def(
+          "compile_fstdx",
+          [](fstd::FstdxWriter &self, const std::string &input_file,
+             const std::string &output_file, const std::string &meta_json_str,
+             uint16_t block_size_kb, uint8_t compress_level,
+             uint16_t zstd_dict_size_kb, size_t worker_num, bool opt_sorted,
+             bool opt_verbose) {
+            return self.compile_fstdx(input_file, output_file, meta_json_str,
+                                      block_size_kb, compress_level,
+                                      zstd_dict_size_kb, worker_num, opt_sorted,
+                                      opt_verbose);
+          },
+          py::arg("input_file"), py::arg("output_file"),
+          py::arg("meta_json_str"), py::arg("block_size_kb"),
+          py::arg("compress_level"), py::arg("zstd_dict_size_kb"),
+          py::arg("worker_num"), py::arg("opt_sorted"), py::arg("opt_verbose"),
+          R"(Compile the fstdx file.
+            :param input_file: the path to the input fstdx file
+            :param output_file: the path to the output fstdx file
+            :param meta_json_str: the meta json string
+            :param block_size_kb: the block size in kb
+            :param compress_level: the compress level [0, 22]
+            :param zstd_dict_size_kb: the zstd dict size in kb
+            :param worker_num: the number of threads to use for compile
+            :param opt_sorted: whether to sort the values
+            :param opt_verbose: whether to print verbose info
+            :return: True if the compilation is successful, False otherwise
+           )")
       .def(
           "compile_fstdx",
           [](fstd::FstdxWriter &self, const std::string &output_file,
@@ -242,7 +321,4 @@ PYBIND11_MODULE(_native, m) {
             :param meta_json_path: the path to save the meta json
             :return: True if the save is successful, False otherwise
            )");
-
-  m.def(
-      "get_version", []() { return FSTD_VERSION; }, "Get fstd library version");
 }

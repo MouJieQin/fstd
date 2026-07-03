@@ -1,5 +1,4 @@
 #include <fstd/common.h>
-#include <fstd/fstdd_compressor.h>
 #include <fstd/fstdd_writer.h>
 #include <fstd/logger.h>
 
@@ -65,6 +64,26 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
   fout.write(reinterpret_cast<const char *>(&header_size_record),
              sizeof(HeaderSizeRecord));
   return 0;
+}
+
+int FstddWriter::compile_fstdd(const std::string &data_path,
+                               const std::string &output_file,
+                               const std::string &meta_json_str,
+                               size_t block_size_kb, size_t compress_level,
+                               size_t worker_num, bool opt_verbose) {
+  using json = nlohmann::json;
+  json meta_json;
+  try {
+    meta_json = json::parse(meta_json_str);
+  } catch (const json::exception &e) {
+    LOG_ERROR("JSON string {} format error: {}", meta_json_str, e.what());
+    return 1;
+  } catch (const std::exception &e) {
+    LOG_ERROR("JSON string {} read error: {}", meta_json_str, e.what());
+    return 1;
+  }
+  return compile_fstdd(data_path, output_file, meta_json, block_size_kb,
+                       compress_level, worker_num, opt_verbose);
 }
 
 int FstddWriter::compile_fstdd(const string &data_path,

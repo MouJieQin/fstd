@@ -85,6 +85,7 @@ FstddCompressor::recursive_directory(
     const std::vector<std::string> &data_paths, bool opt_verbose,
     std::function<void(size_t, const std::string &)> refresh_bar) {
   std::vector<std::pair<std::string, size_t>> files_paths;
+  size_t count = 0;
   for (size_t i = 0; i < data_paths.size(); ++i) {
     const string &data_path = data_paths[i];
     for (const auto &entry : fs::recursive_directory_iterator(data_path)) {
@@ -94,7 +95,11 @@ FstddCompressor::recursive_directory(
       if (opt_verbose) {
         std::cout << "collect file: " << file << "\n";
       } else {
-        if (refresh_bar) { refresh_bar(files_paths.size() + 1, file); }
+        count += 1;
+        if (count > 10) {
+          count = 0;
+          if (refresh_bar) { refresh_bar(files_paths.size() + 1, "files"); }
+        }
       }
       files_paths.emplace_back(std::move(file), i);
     }
@@ -102,7 +107,10 @@ FstddCompressor::recursive_directory(
   if (opt_verbose) {
     std::cout << "collect " << files_paths.size() << " files" << std::endl;
   } else {
-    if (refresh_bar) { refresh_bar(0, ""); }
+    if (refresh_bar) {
+      refresh_bar(files_paths.size(), "files");
+      refresh_bar(0, "");
+    }
   }
   return files_paths;
 }

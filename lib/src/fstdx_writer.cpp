@@ -20,7 +20,7 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                                const json &meta, uint16_t block_size_kb,
                                uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
-                               bool opt_sorted, bool opt_verbose) {
+                               bool opt_sorted, bool opt_verbose) const {
   ofstream fout(output_file, ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
@@ -37,7 +37,7 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                                const std::string &meta_json_str,
                                uint16_t block_size_kb, uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
-                               bool opt_sorted, bool opt_verbose) {
+                               bool opt_sorted, bool opt_verbose) const {
 
   json meta_json;
   try {
@@ -54,11 +54,30 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                        zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
 }
 
+int FstdxWriter::compile_fstdx(const std::string &input_file, const std::string &output_file,
+                  const std::string &meta_json_str, uint16_t block_size_kb,
+                  uint8_t compress_level, uint16_t zstd_dict_size_kb,
+                  size_t worker_num, bool opt_sorted, bool opt_verbose) const {
+  json meta_json;
+  try {
+    meta_json = json::parse(meta_json_str);
+  } catch (const json::exception &e) {
+    LOG_ERROR("JSON string {} format error: {}", meta_json_str, e.what());
+    return 1;
+  } catch (const std::exception &e) {
+    LOG_ERROR("JSON string {} read error: {}", meta_json_str, e.what());
+    return 1;
+  }
+  return compile_fstdx(input_file, output_file, meta_json, block_size_kb,
+                       compress_level, zstd_dict_size_kb, worker_num,
+                       opt_sorted, opt_verbose);
+}
+
 int FstdxWriter::compile_fstdx(const std::string &input_file,
                                const std::string &output_file, const json &meta,
                                uint16_t block_size_kb, uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
-                               bool opt_sorted, bool opt_verbose) {
+                               bool opt_sorted, bool opt_verbose) const {
 
   ofstream fout(output_file, ios_base::binary);
   if (!fout) {
@@ -139,7 +158,7 @@ int FstdxWriter::compile_fstdx(std::ostream &fout,
                                const json &meta, uint16_t block_size_kb,
                                uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
-                               bool opt_sorted, bool opt_verbose) {
+                               bool opt_sorted, bool opt_verbose) const {
   DxJsonHeader header;
   if (!handle_meta(meta, meta_default, header)) { return 5; }
   header["comp_dict"]["original_size"] = zstd_dict_size_kb * 1024;
@@ -165,7 +184,7 @@ int FstdxWriter::compile_fstdx_impl(
     std::ostream &fout, std::vector<std::pair<std::string, uint64_t>> &input,
     std::vector<std::string> &&values, DxJsonHeader &header,
     uint16_t block_size_kb, uint8_t compress_level, uint16_t zstd_dict_size_kb,
-    size_t worker_num, bool opt_verbose) {
+    size_t worker_num, bool opt_verbose) const {
 
   if (worker_num == 0) { worker_num = get_cpu_core_count(); }
   ThreadPool thread_pool(worker_num);
@@ -200,7 +219,7 @@ int FstdxWriter::compile_fstdx_impl(
 int FstdxWriter::write_fst_header(std::ostream &fout,
                                   std::ostringstream &oss_key_fst_out,
                                   DxJsonHeader &header,
-                                  uint8_t compress_level) {
+                                  uint8_t compress_level) const {
   bool comp_res = false;
   std::vector<char> comp_key_fst_dst;
   {
@@ -237,7 +256,7 @@ int FstdxWriter::write_fst_header(std::ostream &fout,
   return 0;
 }
 
-std::string FstdxWriter::trim_whitespace(const std::string &s) {
+std::string FstdxWriter::trim_whitespace(const std::string &s) const {
   size_t start = s.find_first_not_of(" \t\n\r");
   if (start == std::string::npos) return "";
 
@@ -248,7 +267,7 @@ std::string FstdxWriter::trim_whitespace(const std::string &s) {
 bool FstdxWriter::parse_raw_txt(std::vector<unique_ptr<string>> &raw_lines,
                                 std::vector<size_t> &delimiter_indices,
                                 std::vector<std::string> &keys,
-                                std::vector<std::string> &values) {
+                                std::vector<std::string> &values) const {
   if (delimiter_indices.empty()) {
     LOG_ERROR("Not found valid key and value lines. [not found delimiter]");
     return false;
@@ -309,7 +328,7 @@ bool FstdxWriter::parse_raw_txt(std::vector<unique_ptr<string>> &raw_lines,
 
 bool FstdxWriter::load_file(const std::string &file_path,
                             std::vector<std::string> &keys,
-                            std::vector<std::string> &values) {
+                            std::vector<std::string> &values) const {
   ifstream fin(file_path, ios_base::in);
   if (!fin) {
     LOG_ERROR("Failed to open file {} for reading.", file_path);
@@ -319,7 +338,7 @@ bool FstdxWriter::load_file(const std::string &file_path,
 }
 
 bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,
-                            std::vector<std::string> &values) {
+                            std::vector<std::string> &values) const {
   LOG_INFO("Loading and parsing raw text file...");
   string line;
   vector<unique_ptr<string>> raw_lines;
@@ -339,7 +358,7 @@ bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,
 }
 
 void FstdxWriter::sort_keys_values(std::vector<std::string> &keys,
-                                   std::vector<std::string> &values) {
+                                   std::vector<std::string> &values) const {
   LOG_INFO("Sorting {} keys and values...", keys.size());
   vector<size_t> sorted_indices = sort_indexes(keys);
   vector<string> temp_keys;
@@ -354,14 +373,15 @@ void FstdxWriter::sort_keys_values(std::vector<std::string> &keys,
   values.swap(temp_values);
 }
 
-uint64_t FstdxWriter::get_output(uint32_t index, uint32_t duplicate_count) {
+uint64_t FstdxWriter::get_output(uint32_t index,
+                                 uint32_t duplicate_count) const {
   uint64_t duplicate_mask = static_cast<uint64_t>(duplicate_count) << 32;
   return duplicate_mask | static_cast<uint64_t>(index);
 }
 
 void FstdxWriter::make_output(
     std::vector<std::string> &&sorted_keys,
-    std::vector<std::pair<std::string, uint64_t>> &input) {
+    std::vector<std::pair<std::string, uint64_t>> &input) const {
   if (sorted_keys.empty()) { return; }
   LOG_INFO("Encoding duplicate keys for compiling FST...");
   std::vector<std::pair<std::string, uint64_t>> temp_input;
@@ -392,7 +412,7 @@ void FstdxWriter::make_output(
 bool FstdxWriter::compile_fst(
     std::vector<std::pair<std::string, uint64_t>> &input,
     std::ostringstream &oss_out, bool opt_sorted, bool opt_verbose,
-    std::function<void(size_t)> progress) {
+    std::function<void(size_t)> progress) const {
   LOG_INFO("Compiling FST for {} keys...", input.size());
   return fstd::compile_fst(input, oss_out, opt_sorted, opt_verbose, progress);
 }

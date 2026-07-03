@@ -17,62 +17,69 @@ public:
                     std::vector<std::string> &&values,
                     const nlohmann::json &meta, uint16_t block_size_kb,
                     uint8_t compress_level, uint16_t zstd_dict_size_kb,
-                    size_t worker_num, bool opt_sorted, bool opt_verbose);
+                    size_t worker_num, bool opt_sorted, bool opt_verbose) const;
 
   int compile_fstdx(const std::string &input_file,
                     const std::string &output_file, const nlohmann::json &meta,
                     uint16_t block_size_kb, uint8_t compress_level,
                     uint16_t zstd_dict_size_kb, size_t worker_num,
-                    bool opt_sorted, bool opt_verbose);
+                    bool opt_sorted, bool opt_verbose) const;
+
+  int compile_fstdx(const std::string &input_file,
+                    const std::string &output_file,
+                    const std::string &meta_json_str, uint16_t block_size_kb,
+                    uint8_t compress_level, uint16_t zstd_dict_size_kb,
+                    size_t worker_num, bool opt_sorted, bool opt_verbose) const;
 
   int compile_fstdx(const std::string &output_file,
                     std::vector<std::string> &&keys,
                     std::vector<std::string> &&values,
                     const std::string &meta_json_str, uint16_t block_size_kb,
                     uint8_t compress_level, uint16_t zstd_dict_size_kb,
-                    size_t worker_num, bool opt_sorted, bool opt_verbose);
+                    size_t worker_num, bool opt_sorted, bool opt_verbose) const;
 
   int compile_fstdx(std::ostream &fout, std::vector<std::string> &&keys,
                     std::vector<std::string> &&values,
                     const nlohmann::json &meta, uint16_t block_size_kb,
                     uint8_t compress_level, uint16_t zstd_dict_size_kb,
-                    size_t worker_num, bool opt_sorted, bool opt_verbose);
+                    size_t worker_num, bool opt_sorted, bool opt_verbose) const;
 
   bool load_file(const std::string &file_path, std::vector<std::string> &keys,
-                 std::vector<std::string> &values);
+                 std::vector<std::string> &values) const;
 
 private:
-  std::string trim_whitespace(const std::string &s);
+  std::string trim_whitespace(const std::string &s) const;
 
   bool parse_raw_txt(std::vector<std::unique_ptr<std::string>> &raw_lines,
                      std::vector<size_t> &delimiter_indices,
                      std::vector<std::string> &keys,
-                     std::vector<std::string> &values);
+                     std::vector<std::string> &values) const;
 
   bool load_file(std::ifstream &fin, std::vector<std::string> &keys,
-                 std::vector<std::string> &values);
+                 std::vector<std::string> &values) const;
 
   void sort_keys_values(std::vector<std::string> &keys,
-                        std::vector<std::string> &values);
+                        std::vector<std::string> &values) const;
 
-  uint64_t get_output(uint32_t index, uint32_t duplicate_count);
+  uint64_t get_output(uint32_t index, uint32_t duplicate_count) const;
 
   void make_output(std::vector<std::string> &&sorted_keys,
-                   std::vector<std::pair<std::string, uint64_t>> &input);
+                   std::vector<std::pair<std::string, uint64_t>> &input) const;
 
   bool compile_fst(std::vector<std::pair<std::string, uint64_t>> &input,
                    std::ostringstream &oss_out, bool opt_sorted,
-                   bool opt_verbose, std::function<void(size_t)> progress);
+                   bool opt_verbose,
+                   std::function<void(size_t)> progress) const;
 
   int compile_fstdx_impl(std::ostream &fout,
                          std::vector<std::pair<std::string, uint64_t>> &input,
                          std::vector<std::string> &&values,
                          DxJsonHeader &header, uint16_t block_size_kb,
                          uint8_t compress_level, uint16_t zstd_dict_size_kb,
-                         size_t worker_num, bool opt_verbose);
+                         size_t worker_num, bool opt_verbose) const;
 
   int write_fst_header(std::ostream &fout, std::ostringstream &oss_key_fst_out,
-                       DxJsonHeader &header, uint8_t compress_level);
+                       DxJsonHeader &header, uint8_t compress_level) const;
 
 private:
   static const nlohmann::json meta_default;
