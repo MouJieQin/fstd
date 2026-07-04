@@ -30,11 +30,12 @@ public:
   bool contains(std::string_view word,
                 const std::vector<std::string> &names) const;
 
-  std::vector<std::string> single_exact_match_search(std::string_view word,
-                                  const std::string &name) const;
+  std::vector<std::string> exact_match_search(std::string_view word,
+                                              const std::string &name) const;
 
   std::unordered_map<std::string, std::vector<std::string>>
-  exact_match_search(std::string_view word, const std::vector<std::string> &names) const;
+  exact_match_search(std::string_view word,
+                     const std::vector<std::string> &names) const;
 
   std::vector<std::string>
   common_prefix_search(std::string_view word,

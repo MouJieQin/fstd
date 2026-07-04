@@ -37,8 +37,7 @@ bool FstdxHashReader::parse_fstdx(const std::string &fstdx_path) {
   }
   size_t fstdx_size = ins.tellg();
   if (!parse_header(ins, fstdx_size, mx_json_header_)) { return false; }
-  size_t record_size = sizeof(HeaderSizeRecord);
-  if (fstdx_size < record_size) {
+  if (!mx_json_header_.contains("key_fst")) {
     LOG_ERROR("It is not a valid fstdx file: {}", fstdx_path);
     return false;
   }

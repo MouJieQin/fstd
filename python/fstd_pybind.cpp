@@ -10,6 +10,38 @@
 
 namespace py = pybind11;
 
+std::vector<std::string>
+convert(const std::vector<std::unique_ptr<std::string>> &res) {
+  std::vector<std::string> result;
+  result.reserve(res.size());
+  for (auto &ptr : res) {
+    result.emplace_back(std::move(*ptr));
+  }
+  return result;
+}
+
+std::vector<std::pair<double, std::string>> convert(
+    const std::vector<std::unique_ptr<std::pair<double, std::string>>> &res) {
+  std::vector<std::pair<double, std::string>> result;
+  result.reserve(res.size());
+  for (auto &ptr : res) {
+    result.emplace_back(*ptr);
+  }
+  return result;
+}
+
+std::pair<std::vector<std::string>, std::string>
+convert(const std::pair<std::vector<std::unique_ptr<std::string>>, std::string>
+            &res) {
+  std::pair<std::vector<std::string>, std::string> result;
+  result.first.reserve(res.first.size());
+  for (auto &ptr : res.first) {
+    result.first.emplace_back(std::move(*ptr));
+  }
+  result.second = res.second;
+  return result;
+}
+
 PYBIND11_MODULE(_native, m) {
   m.doc() = "Python binding for fstd dictionary engine";
 
@@ -28,16 +60,50 @@ PYBIND11_MODULE(_native, m) {
   py::class_<fstd::FstddReader>(m, "FstddReader")
       .def(py::init<const std::string &>(), py::arg("output_file"),
            R"(Initialize the reader with output_file.
-            :param output_file: the path to the fstddd file
+            :param output_file: the path to the fstdd file
            )")
-      .def("get_meta", &fstd::FstddReader::get_meta,
-           R"(Get the meta of the fstddd file.
-            :return: the meta json string
+      .def("is_valid", &fstd::FstddReader::operator bool,
+           R"(Check if the fstdd file is valid.
+            :return: True if the fstdd file is valid, False otherwise
            )")
+      .def(
+          "get_meta",
+          [](fstd::FstddReader &self) { return self.get_meta().dump(); },
+          R"(Get the meta of the fstdd file.
+             :return: the meta json string
+            )")
+      .def(
+          "get_header",
+          [](fstd::FstddReader &self) { return self.get_header().dump(); },
+          R"(Get the header of the fstdd file.
+             :return: the header json string
+            )")
       .def("contains", &fstd::FstddReader::contains, py::arg("word"),
-           R"(Check if the word is in the dictionary.
-            :param word: the word to check
-            :return: True if the word is in the dictionary, False otherwise
+           R"(Check if the word is in the fstdd file.
+             :param word: the word to check
+             :return: True if the word is in the fstdd file, False otherwise
+            )")
+      .def(
+          "extract_all_key",
+          [](fstd::FstddReader &self) {
+            std::vector<std::string> all_keys;
+            self.extract_all_key(all_keys);
+            return all_keys;
+          },
+          R"(Extract all keys from the fstdd file.
+            :return: a vector of keys
+           )")
+      .def("extract", &fstd::FstddReader::extract, py::arg("key"),
+           py::arg("dst_dir") = "data",
+           R"(Extract the file with key to dst_dir.
+            :param key: the key to extract
+            :param dst_dir: the path to the destination directory, default is data
+            :return: True if the extraction is successful, False otherwise
+           )")
+      .def("extract_all", &fstd::FstddReader::extract_all, py::arg("dst_dir"),
+           R"(Extract all files in the fstdd file to dst_dir.
+            :param dst_dir: the path to the destination directory
+            :return: True if the extraction is successful, False otherwise
            )");
 
   py::class_<fstd::FstddWriter>(m, "FstddWriter")
@@ -113,15 +179,150 @@ PYBIND11_MODULE(_native, m) {
            R"(Initialize the reader with fstdx_path.
             :param fstdx_path: the path to the fstdx file
            )")
-      .def("get_fst_key_size", &fstd::FstdxReader::get_fst_key_size,
-           R"(Get the key size of the fst index.
+      .def("is_valid", &fstd::FstdxReader::operator bool,
+           R"(Check if the fstdx file is valid.
+            :return: True if the fstdx file is valid, False otherwise
+           )")
+      .def(
+          "get_meta",
+          [](fstd::FstdxReader &self) { return self.get_meta().dump(); },
+          R"(Get the meta of the fstdx file.
+             :return: the meta json string
+            )")
+      .def(
+          "get_header",
+          [](fstd::FstdxReader &self) { return self.get_header().dump(); },
+          R"(Get the header of the fstdx file.
+             :return: the header json string
+            )")
+      .def("get_key_size", &fstd::FstdxReader::get_key_size,
+           R"(Get the key size of the entry words.
+            :return: the key size of the entry words
+           )")
+      .def(
+          "get_fst_key_size", &fstd::FstdxReader::get_fst_key_size,
+          R"(Get the key size of the fst index. It's less or equal to the key size of the entry words because of duplicates.
             :return: the key size of the fst index
+           )")
+      .def(
+          "extract_values",
+          [](fstd::FstdxReader &self) { return self.extract_values(); },
+          R"(Extract all values of the dictionary.
+            :return: the values of the dictionary
            )")
       .def("contains", &fstd::FstdxReader::contains, py::arg("word"),
            R"(Check if the word is in the dictionary.
-            :param word: the word to check
-            :return: True if the word is in the dictionary, False otherwise
-           )");
+         :param word: the word to check
+         :return: True if the word is in the dictionary, False otherwise
+        )")
+      .def(
+          "exact_match_search",
+          [](fstd::FstdxReader &self, const std::string &word) {
+            std::vector<std::string> result;
+            self.exact_match_search(word, result);
+            return result;
+          },
+          py::arg("word"),
+          R"(Search the exact match of the word in the dictionary.
+         :param word: the word to search
+         :return: the value of the word in the dictionary if the word is in
+         the dictionary, otherwise an empty vector
+        )")
+      .def(
+          "common_prefix_search",
+          [](fstd::FstdxReader &self, const std::string &word) {
+            return convert(self.common_prefix_search(word));
+          },
+          py::arg("word"),
+          R"(Search the common prefix of the word in the dictionary.
+          :param word: the word to search
+          :return: the common prefix of the word in the dictionary if the
+          word is in the dictionary, otherwise an empty vector
+         )")
+      .def("longest_prefix_len", &fstd::FstdxReader::longest_prefix_len,
+           py::arg("word"),
+           R"(Get the longest prefix length of the word in the dictionary.
+            :param word: the word to search
+            :return: the longest prefix length of the word in the dictionary.
+        )")
+      .def(
+          "predictive_search",
+          [](fstd::FstdxReader &self, const std::string &word) {
+            return convert(self.predictive_search(word));
+          },
+          py::arg("word"),
+          R"(Search the predictive of the word as a prefix in the dictionary.
+          :param word: the word as a prefix to search
+          :return: the predictive of the word as a prefix in the dictionary if the
+          prefix is in the dictionary, otherwise an empty vector
+         )")
+      .def(
+          "edit_distance_search",
+          [](fstd::FstdxReader &self, const std::string &word,
+             size_t distance) {
+            return convert(self.edit_distance_search(word, distance));
+          },
+          py::arg("word"), py::arg("distance") = 1,
+          R"(Search the edit distance of the word in the dictionary.
+                      :param word: the word to search
+                      :param distance: the edit distance to search
+                      :return: the words that have an edit distance less than equal to the distance from the word in the dictionary
+                     )")
+      .def(
+          "suggest",
+          [](fstd::FstdxReader &self, const std::string &word) {
+            return convert(self.suggest(word));
+          },
+          py::arg("word"),
+          R"(Suggest the word in the dictionary.
+                      :param word: the word to suggest
+                      :return: the words that are suggested according to the word in the dictionary
+                     )")
+      .def(
+          "regex_search",
+          [](fstd::FstdxReader &self, const std::string &pattern,
+             size_t thread) {
+            if (thread == 1) {
+              return convert(self.regex_search(pattern));
+            } else {
+              ThreadPool pool(thread);
+              return convert(self.regex_search(pattern, pool));
+            }
+          },
+          py::arg("pattern"), py::arg("thread") = 1,
+          R"(Search the regex of the word in the dictionary.
+          :param pattern: the regex pattern to search
+          :param thread: the number of threads to use
+          :return: the words that match the regex pattern in the dictionary
+         )")
+      .def(
+          "spellcheck_word",
+          [](fstd::FstdxReader &self, const std::string &word, size_t limit) {
+            return convert(self.spellcheck_word(word, limit));
+          },
+          py::arg("word"), py::arg("limit") = 10,
+          R"(Spellcheck the word in the dictionary.
+          :param word: the word to spellcheck
+          :param limit: the number of suggestions to return
+          :return: the spellchecked word in the dictionary
+         )")
+      .def("enumerate_print", &fstd::FstdxReader::enumerate_print,
+           R"(Print the dictionary to the console.
+         :return: None
+        )")
+      .def("extract", &fstd::FstdxReader::extract, py::arg("output_file"),
+           R"(Extract the raw text of the dictionary to the output file.
+          :param output_file: the path to the output file
+          :return: True if the dictionary is extracted, False otherwise
+         )")
+      .def(
+          "extract_keys",
+          [](fstd::FstdxReader &self) -> std::vector<std::string> {
+            return self.extract_keys();
+          },
+          R"(Extract all keys of the dictionary.
+          :return: the keys of the dictionary
+         )");
 
   py::class_<fstd::FstdxWriter>(m, "FstdxWriter")
       .def(py::init<>())
@@ -227,17 +428,26 @@ PYBIND11_MODULE(_native, m) {
             :param names: the names of dictionaries to check
             :return: True if the word is in the dictionaries, False otherwise
            )")
-      .def("single_exact_match_search",
-           &fstd::FstdxSearcher::single_exact_match_search, py::arg("word"),
-           py::arg("name"),
-           R"(Search the word in the dictionary.
+      .def(
+          "exact_match_search",
+          [](fstd::FstdxSearcher &self, const std::string &word,
+             const std::string &name) {
+            return self.exact_match_search(word, name);
+          },
+          py::arg("word"), py::arg("name"),
+          R"(Search the word in the dictionary.
             :param word: the word to search
             :param name: the name of the dictionary to search
             :return: the results of the search
            )")
-      .def("exact_match_search", &fstd::FstdxSearcher::exact_match_search,
-           py::arg("word"), py::arg("names"),
-           R"(Search the word in the dictionaries.
+      .def(
+          "exact_match_search",
+          [](fstd::FstdxSearcher &self, const std::string &word,
+             const std::vector<std::string> &names) {
+            return self.exact_match_search(word, names);
+          },
+          py::arg("word"), py::arg("names"),
+          R"(Search the word in the dictionaries.
             :param word: the word to search
             :param names: the names of dictionaries to search
             :return: the results of the search

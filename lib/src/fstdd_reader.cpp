@@ -34,7 +34,10 @@ bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
   size_t fstdd_size = ins.tellg();
   if (!parse_header(ins, fstdd_size, md_json_header_)) { return false; }
   ins.close();
-
+  if (!md_json_header_.contains("keys")) {
+    LOG_ERROR("It is not a valid fstdd file: {}", fstdd_path);
+    return false;
+  }
   key_size_ = md_json_header_["meta"]["Record"];
   block_size_ = md_json_header_["comp_blocks"]["block_size"];
   bucket_size_ = md_json_header_["hash_index"]["bucket_size"];
