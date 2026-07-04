@@ -1,5 +1,5 @@
 # fstd
-A dictionary engine powered by Finite State Transducers, a data structure that enables us to search in dictionaries with many ways, including regex, suggesting based on edit distance, other than just prefix search powered by trie data structure used by traditional dictionaries.  Fstd dictionary provides two format file: `fstdx` and `fstdd` , which is similar to the popular dictionary format: `mdx` and `mdd`. A [converter](https://github.com/MouJieQin/mdict-fstd) from mdx/mdd to fstdx/fstdd.
+A dictionary engine powered by Finite State Transducers, a data structure that enables us to search in dictionaries with many ways, including regex, suggesting based on edit distance, other than just prefix search powered by trie data structure used by traditional dictionaries.  Fstd dictionary provides two format file: `fstdx` and `fstdd` , which is similar to the popular dictionary format: `mdx` and `mdd`. A [fstdtools](https://github.com/MouJieQin/fstdtools) that can convert mdx/mdd to fstdx/fstdd.
 
 ## Features
 
@@ -11,10 +11,13 @@ A dictionary engine powered by Finite State Transducers, a data structure that e
 * Esay to convert from mdx/mdd to fstdx/fstdd.
 * Data related to dictionaries is compressed to reduce disk usage.
 * Low memory usage and high-performance search, as the FST made by compiling entry words of a dictionary is loaded into memory to support high-performance search. FST is a data structure providing a better compression rate than trie, because it can not only compress common prefix but also common suffix.
+* Python support by `pip install fstd`
 
 ## Install
 
->  It has been tested on Macos and Linux platform now. On Windows platform, there might be a bug when launching a thread pool. It's not convenient to fix it because I don't have a windows machine. Pull a request to me if you can fix it.
+>  It has been tested on Macos and Linux platform now. On Windows platform, there might be a bug while launching a thread pool. It's not convenient to fix it because I don't have a windows machine. Pull a request to me if you can fix it.
+
+It's recommanded to install a python command line tool [fstdtools](https://github.com/MouJieQin/fstdtools) by `pip install fstdtools`. Because it offers a safer and more friendly usage than the CLI compiled from c plus plus.
 
 ### Install from source code
 
@@ -53,24 +56,24 @@ A dictionary engine powered by Finite State Transducers, a data structure that e
    # use default configure to compile a fstdd. Note: fstdd normally include resource data, such as pictures and audios, but we use the project lib directory for test.
    fstd write -f lib -o dict.fstdd
    ```
-The raw content of tests/dict/dict.txt :
-> 1. The first entry requires no preceding delimiter: write the entry word (key) directly, followed by its corresponding definition (value). Definitions can span multiple lines, but entry words must stay on a single line.
-> 2. Starting from the second entry, each entry word (key) must be preceded by the delimiter `</>`. Entry words must still be written on one line, while definitions can span multiple lines.
-> 3. The end of each complete entry (entry word + corresponding definition) must be marked with the delimiter `</>` as a closing tag.
+   The raw content of tests/dict/dict.txt :
+   > 1. The first entry requires no preceding delimiter: write the entry word (key) directly, followed by its corresponding definition (value). Definitions can span multiple lines, but entry words must stay on a single line.
+   > 2. Starting from the second entry, each entry word (key) must be preceded by the delimiter `</>`. Entry words must still be written on one line, while definitions can span multiple lines.
+   > 3. The end of each complete entry (entry word + corresponding definition) must be marked with the delimiter `</>` as a closing tag.
 
 
-````
-Ab
-The definition of Ab
-</>
-Ababdeh
-The definition of Ababdeh
-</>
-Abby
-The definition of Abby
-</>
-...
-````
+   ````
+   Ab
+   The definition of Ab
+   </>
+   Ababdeh
+   The definition of Ababdeh
+   </>
+   Abby
+   The definition of Abby
+   </>
+   ...
+   ````
 
 2. Search in a fstdx
 
