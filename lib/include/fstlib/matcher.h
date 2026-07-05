@@ -606,7 +606,7 @@ protected:
     size_t c_len = calc_c_len(word);
     if (c_len == 0) { return suggestions; }
     size_t min_edits = c_len <= 1 ? 1 : 2;
-    size_t max_edits = c_len;
+    size_t max_edits = c_len > 3 ? 3 : c_len;
 
     for (size_t edits = min_edits; edits <= max_edits; edits++) {
       auto results = matcher.edit_distance_search(word, edits, 1, 1, 2);
