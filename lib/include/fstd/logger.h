@@ -15,7 +15,9 @@
 #ifdef _WIN32
 #include <windows.h>
 inline bool is_terminal() {
-  return GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), nullptr) != 0;
+  DWORD mode;
+  // Pass the address of 'mode' rather than nullptr
+  return GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &mode) != 0;
 }
 #else
 #include <unistd.h>
