@@ -2,13 +2,13 @@
 """
 Python type stub for fstd._native C++ extension binding
 """
-from typing import List, Tuple, Optional, Union, Sequence, Any
+from typing import overload, List, Tuple, Sequence
 
 # ------------------------------ Top-level functions ------------------------------
 
 
 def get_version() -> str:
-    """Get fstd library version"""
+    """Get fstd library version number"""
     ...
 
 
@@ -27,21 +27,21 @@ class FstddReader:
     Reader for fstdd archive format
     """
 
-    def __init__(self, output_file: str) -> None:
+    def __init__(self, fstdd_file: str) -> None:
         """
-        Initialize the reader with output_file.
-        :param output_file: the path to the fstdd file
+        Initialize the reader with fstdd_file.
+        :param fstdd_file: the path to the fstdd file
         """
         ...
 
     def __bool__(self) -> bool:
-        """Check if the fstdd file is valid."""
+        """Check if the fstdd reader is valid."""
         ...
 
     def is_valid(self) -> bool:
         """
-        Check if the fstdd file is valid.
-        :return: True if the fstdd file is valid, False otherwise
+        Check if the fstdd reader is valid.
+        :return: True if the fstdd reader is valid, False otherwise
         """
         ...
 
@@ -59,34 +59,34 @@ class FstddReader:
         """
         ...
 
-    def contains(self, word: str) -> bool:
+    def contains(self, key_path: str) -> bool:
         """
-        Check if the word is in the fstdd file.
-        :param word: the word to check
-        :return: True if the word is in the fstdd file, False otherwise
+        Check if the key_path is in the fstdd file.
+        :param key_path: the key_path to check
+        :return: True if the key_path is in the fstdd file, False otherwise
         """
         ...
 
     def extract_all_key(self) -> List[str]:
         """
         Extract all keys from the fstdd file.
-        :return: a vector of keys
+        :return: a list of keys
         """
         ...
 
-    def extract(self, key: str, dst_dir: str = "data") -> bool:
+    def extract(self, key_path: str, dst_dir: str = "data") -> bool:
         """
-        Extract the file with key to dst_dir.
-        :param key: the key to extract
+        Extract the file with key_path to dst_dir.
+        :param key_path: the key_path to extract
         :param dst_dir: the path to the destination directory, default is data
         :return: True if the extraction is successful, False otherwise
         """
         ...
 
-    def extract_all(self, dst_dir: str) -> bool:
+    def extract_all(self, dst_dir: str = "data") -> bool:
         """
         Extract all files in the fstdd file to dst_dir.
-        :param dst_dir: the path to the destination directory
+        :param dst_dir: the path to the destination directory, default is data
         :return: True if the extraction is successful, False otherwise
         """
         ...
@@ -102,6 +102,7 @@ class FstddWriter:
     def __init__(self) -> None:
         ...
 
+    @overload
     def compile_fstdd(
         self,
         data_path: str,
@@ -121,7 +122,7 @@ class FstddWriter:
         :param compress_level: the compress level [0, 22]
         :param worker_num: the number of threads to use for compile
         :param opt_verbose: whether to print verbose info
-        :return: True if the compilation is successful, False otherwise
+        :return: 0 if the compilation is successful, non-zero otherwise
         """
         ...
 
@@ -134,6 +135,7 @@ class FstddWriter:
         """
         ...
 
+    @overload
     def compile_fstdd(
         self,
         file_stream_num: int,
@@ -153,10 +155,12 @@ class FstddWriter:
         :param compress_level: the compress level [0, 22]
         :param worker_num: the number of threads to use for compile
         :param opt_verbose: whether to print verbose info
-        :return: True if the compilation is successful, False otherwise
+        :return: 0 if the compilation is successful, non-zero otherwise
         """
         ...
 
+    def compile_fstdd(*args, **kwargs) -> bool:
+        ...
 # ------------------------------ FstdxReader ------------------------------
 
 
@@ -173,13 +177,13 @@ class FstdxReader:
         ...
 
     def __bool__(self) -> bool:
-        """Check if the fstdx file is valid."""
+        """Check if the fstdx reader is valid."""
         ...
 
     def is_valid(self) -> bool:
         """
-        Check if the fstdx file is valid.
-        :return: True if the fstdx file is valid, False otherwise
+        Check if the fstdx reader is valid.
+        :return: True if the fstdx reader is valid, False otherwise
         """
         ...
 
@@ -267,29 +271,30 @@ class FstdxReader:
         """
         ...
 
-    def suggest(self, word: str) -> List[str]:
+    def suggest(self, word: str) -> List[Tuple[float, str]]:
         """
         Suggest the word in the dictionary.
         :param word: the word to suggest
-        :return: the words that are suggested according to the word in the dictionary
+        :return: the words and its similarity, the words are suggested according to similarity in descending order
         """
         ...
 
-    def regex_search(self, pattern: str, thread: int = 1) -> List[str]:
+    def regex_search(self, pattern: str, thread: int = 1) -> Tuple[List[str], str]:
         """
-        Search the regex of the word in the dictionary.
+        Search the word in the dictionaries with regex.
         :param pattern: the regex pattern to search
         :param thread: the number of threads to use
-        :return: the words that match the regex pattern in the dictionary
+        :return: the words that match the regex pattern in the dictionary in tuple[0], the error message if any in tuple[1]
         """
         ...
 
-    def spellcheck_word(self, word: str, limit: int = 10) -> List[str]:
+    def spellcheck_word(self, word: str, names: Sequence[str], limit: int = 10) -> List[str]:
         """
-        Spellcheck the word in the dictionary.
+        Spellcheck the word in the dictionaries.
         :param word: the word to spellcheck
+        :param names: the names of dictionaries to spellcheck
         :param limit: the number of suggestions to return
-        :return: the spellchecked word in the dictionary
+        :return: the spellchecked word and its similarity in the dictionary
         """
         ...
 
@@ -323,6 +328,7 @@ class FstdxWriter:
     def __init__(self) -> None:
         ...
 
+    @overload
     def compile_fstdx(
         self,
         input_file: str,
@@ -350,6 +356,7 @@ class FstdxWriter:
         """
         ...
 
+    @overload
     def compile_fstdx(
         self,
         output_file: str,
@@ -379,6 +386,8 @@ class FstdxWriter:
         """
         ...
 
+    def compile_fstdx(*args, **kwargs) -> bool:
+        ...
 # ------------------------------ FstdxSearcher ------------------------------
 
 
@@ -387,6 +396,7 @@ class FstdxSearcher:
     Multi-dictionary search manager, load multiple fstdx and batch search
     """
 
+    @overload
     def __init__(self, worker_num: int = 0) -> None:
         """
         Initialize the searcher with worker_num.
@@ -395,6 +405,7 @@ class FstdxSearcher:
         """
         ...
 
+    @overload
     def __init__(self, meta_json_path: str, worker_num: int = 0) -> None:
         """
         Initialize the searcher with meta_json_path and worker_num.
@@ -402,6 +413,9 @@ class FstdxSearcher:
         :param worker_num: the number of threads to use for search
         :default worker_num is 0, automatically use all the current threads
         """
+        ...
+
+    def compile_fstdx(*args, **kwargs) -> None:
         ...
 
     def __bool__(self) -> bool:
@@ -417,7 +431,7 @@ class FstdxSearcher:
 
     def extract(self, name: str, file_path: str, dst_dir: str = "") -> bool:
         """
-        Extract the fstdx file.
+        Extract file_path from the fstdd files found in the same directory as the fstdx file.
         :param name: the name of the dictionary
         :param file_path: the path(key) to the file to extract
         :param dst_dir: the destination directory to extract the files, if empty, will extract to the default directory
@@ -425,43 +439,48 @@ class FstdxSearcher:
         """
         ...
 
-    def contains(self, word: str, names: Union[str, Sequence[str]]) -> bool:
+    def contains(self, word: str, names: Sequence[str]) -> bool:
         """
-        Check if the word is in the dictionary.
+        Check if the word is in the dictionaries.
         :param word: the word to check
         :param names: the names of dictionaries to check
         :return: True if the word is in the dictionaries, False otherwise
         """
         ...
 
+    @overload
     def exact_match_search(self, word: str, name: str) -> List[str]:
         """
-        Search the word in the dictionary.
+        Search the word in the dictionary with name.
         :param word: the word to search
         :param name: the name of the dictionary to search
         :return: the results of the search
         """
         ...
 
-    def exact_match_search(self, word: str, names: Sequence[str]) -> List[str]:
+    @overload
+    def exact_match_search(self, word: str, names: Sequence[str]) -> dict[str, list[str]]:
         """
-        Search the word in the dictionaries.
+        Search the word in the dictionaries with names.
         :param word: the word to search
         :param names: the names of dictionaries to search
         :return: the results of the search
         """
+        ...
+
+    def exact_match_search(*args, **kwargs) -> List[str]:
         ...
 
     def common_prefix_search(self, word: str, names: Sequence[str]) -> List[str]:
         """
-        Search the common prefix of the word in the dictionaries.
+        Search the longest common prefix of the word in the dictionaries.
         :param word: the word to search
         :param names: the names of dictionaries to search
-        :return: the results of the search
+        :return: the length of the longest common prefix in the dictionaries.
         """
         ...
 
-    def longest_common_prefix_search(self, word: str, names: Sequence[str]) -> List[str]:
+    def longest_prefix_len(self, word: str, names: Sequence[str]) -> int:
         """
         Search the longest common prefix of the word in the dictionaries.
         :param word: the word to search
@@ -508,12 +527,12 @@ class FstdxSearcher:
         """
         ...
 
-    def regex_search(self, pattern: str, names: Sequence[str]) -> List[str]:
+    def regex_search(self, pattern: str, names: Sequence[str]) -> Tuple[List[str], str]:
         """
         Search the word in the dictionaries with regex.
         :param pattern: the regex pattern to search
         :param names: the names of dictionaries to search
-        :return: the results of the search
+        :return: the words that match the regex pattern in the dictionary in tuple[0], the error message if any in tuple[1]
         """
         ...
 
@@ -524,7 +543,7 @@ class FstdxSearcher:
         """
         ...
 
-    def insert_if_not_exists(self, name: str, fstdx_path: str) -> bool:
+    def insert_if_not_exists(self, name: str, fstdx_path: str) -> None:
         """
         Insert the fstdx file if it does not exist.
         :param name: the name of the dictionary

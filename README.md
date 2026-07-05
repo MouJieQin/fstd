@@ -221,7 +221,7 @@ It's recommanded to install a python command line tool [fstdtools](https://githu
                           const std::vector<std::string> &names) const;
    
      size_t
-     longest_common_prefix_search(std::string_view word,
+     longest_prefix_len(std::string_view word,
                                   const std::vector<std::string> &names) const;
    
      std::vector<std::string>

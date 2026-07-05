@@ -41,9 +41,8 @@ public:
   common_prefix_search(std::string_view word,
                        const std::vector<std::string> &names) const;
 
-  size_t
-  longest_common_prefix_search(std::string_view word,
-                               const std::vector<std::string> &names) const;
+  size_t longest_prefix_len(std::string_view word,
+                            const std::vector<std::string> &names) const;
 
   std::vector<std::string>
   edit_distance_search(std::string_view word,

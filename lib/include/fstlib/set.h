@@ -37,7 +37,7 @@ public:
     return ret;
   }
 
-  size_t longest_common_prefix_search(std::string_view sv) const {
+  size_t longest_prefix_len(std::string_view sv) const {
     size_t prefix_len = 0;
     common_prefix_search(sv, [&](size_t len) { prefix_len = len; });
     return prefix_len;

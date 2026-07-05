@@ -395,7 +395,7 @@ private:
     }
     if (longest_prefix_) {
       size_t len =
-          searcher.longest_common_prefix_search(search_key_, dict_files_);
+          searcher.longest_prefix_len(search_key_, dict_files_);
       if (len == 0) {
         LOG_INFO("no match found");
         return 1;

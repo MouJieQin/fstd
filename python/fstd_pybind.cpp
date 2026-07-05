@@ -58,13 +58,19 @@ PYBIND11_MODULE(_native, m) {
       "debug, 2 is info, 3 is warn, 4 is error, 5 is critical, 6 is off");
 
   py::class_<fstd::FstddReader>(m, "FstddReader")
-      .def(py::init<const std::string &>(), py::arg("output_file"),
-           R"(Initialize the reader with output_file.
-            :param output_file: the path to the fstdd file
+      .def(py::init<const std::string &>(), py::arg("fstdd_file"),
+           R"(Initialize the reader with fstdd_file.
+            :param fstdd_file: the path to the fstdd file
            )")
+      .def(
+          "__bool__",
+          [](const fstd::FstddReader &self) -> bool {
+            return static_cast<bool>(self);
+          },
+          "Check if the fstdd reader is valid")
       .def("is_valid", &fstd::FstddReader::operator bool,
-           R"(Check if the fstdd file is valid.
-            :return: True if the fstdd file is valid, False otherwise
+           R"(Check if the fstdd reader is valid.
+            :return: True if the fstdd reader is valid, False otherwise
            )")
       .def(
           "get_meta",
@@ -78,10 +84,10 @@ PYBIND11_MODULE(_native, m) {
           R"(Get the header of the fstdd file.
              :return: the header json string
             )")
-      .def("contains", &fstd::FstddReader::contains, py::arg("word"),
-           R"(Check if the word is in the fstdd file.
-             :param word: the word to check
-             :return: True if the word is in the fstdd file, False otherwise
+      .def("contains", &fstd::FstddReader::contains, py::arg("key_path"),
+           R"(Check if the key_path is in the fstdd file.
+             :param key_path: the key_path to check
+             :return: True if the key_path is in the fstdd file, False otherwise
             )")
       .def(
           "extract_all_key",
@@ -91,7 +97,7 @@ PYBIND11_MODULE(_native, m) {
             return all_keys;
           },
           R"(Extract all keys from the fstdd file.
-            :return: a vector of keys
+            :return: a list of keys
            )")
       .def("extract", &fstd::FstddReader::extract, py::arg("key"),
            py::arg("dst_dir") = "data",
@@ -100,7 +106,8 @@ PYBIND11_MODULE(_native, m) {
             :param dst_dir: the path to the destination directory, default is data
             :return: True if the extraction is successful, False otherwise
            )")
-      .def("extract_all", &fstd::FstddReader::extract_all, py::arg("dst_dir"),
+      .def("extract_all", &fstd::FstddReader::extract_all,
+           py::arg("dst_dir") = "data",
            R"(Extract all files in the fstdd file to dst_dir.
             :param dst_dir: the path to the destination directory
             :return: True if the extraction is successful, False otherwise
@@ -130,7 +137,7 @@ PYBIND11_MODULE(_native, m) {
             :param compress_level: the compress level [0, 22]
             :param worker_num: the number of threads to use for compile
             :param opt_verbose: whether to print verbose info
-            :return: True if the compilation is successful, False otherwise
+            :return: 0 if the compilation is successful, non-zero otherwise
            )")
       .def(
           "push_file_stream",
@@ -178,6 +185,10 @@ PYBIND11_MODULE(_native, m) {
       .def(py::init<const std::string &>(), py::arg("fstdx_path"),
            R"(Initialize the reader with fstdx_path.
             :param fstdx_path: the path to the fstdx file
+           )")
+      .def("__bool__", &fstd::FstdxReader::operator bool,
+           R"(Check if the fstdx reader is valid.
+            :return: True if the fstdx reader is valid, False otherwise
            )")
       .def("is_valid", &fstd::FstdxReader::operator bool,
            R"(Check if the fstdx file is valid.
@@ -276,7 +287,7 @@ PYBIND11_MODULE(_native, m) {
           py::arg("word"),
           R"(Suggest the word in the dictionary.
                       :param word: the word to suggest
-                      :return: the words that are suggested according to the word in the dictionary
+                      :return: the words and its similarity, the words are suggested according to similarity
                      )")
       .def(
           "regex_search",
@@ -293,7 +304,7 @@ PYBIND11_MODULE(_native, m) {
           R"(Search the regex of the word in the dictionary.
           :param pattern: the regex pattern to search
           :param thread: the number of threads to use
-          :return: the words that match the regex pattern in the dictionary
+          :return: the words that match the regex pattern in the dictionary in tuple[0], the error message if any in tuple[1]
          )")
       .def(
           "spellcheck_word",
@@ -304,7 +315,7 @@ PYBIND11_MODULE(_native, m) {
           R"(Spellcheck the word in the dictionary.
           :param word: the word to spellcheck
           :param limit: the number of suggestions to return
-          :return: the spellchecked word in the dictionary
+          :return: the spellchecked word and its similarity in the dictionary
          )")
       .def("enumerate_print", &fstd::FstdxReader::enumerate_print,
            R"(Print the dictionary to the console.
@@ -403,6 +414,13 @@ PYBIND11_MODULE(_native, m) {
               :default worker_num is 0, automatically use all the current
               threads
              )")
+      .def(
+          "__bool__",
+          [](fstd::FstdxSearcher &self) { return self.operator bool(); },
+          R"(Check if the searcher is valid.
+            :return: True if the searcher is valid, False otherwise
+           )")
+
       .def("is_valid", &fstd::FstdxSearcher::operator bool,
            R"(Check if the searcher is valid.
             :return: True if the searcher is valid, False otherwise
@@ -415,7 +433,7 @@ PYBIND11_MODULE(_native, m) {
             return self.extract(name, file_path, dst_dir);
           },
           py::arg("name"), py::arg("file_path"), py::arg("dst_dir") = "",
-          R"(Extract the fstdx file.
+          R"(Extract file_path from the fstdd files found in the same directory as the fstdx file.
             :param name: the name of the dictionary
             :param file_path: the path(key) to the file to extract
             :param dst_dir: the destination directory to extract the files, if empty, will extract to the default directory
@@ -459,13 +477,13 @@ PYBIND11_MODULE(_native, m) {
             :param names: the names of dictionaries to search
             :return: the results of the search
            )")
-      .def("longest_common_prefix_search",
-           &fstd::FstdxSearcher::longest_common_prefix_search, py::arg("word"),
+      .def("longest_prefix_len",
+           &fstd::FstdxSearcher::longest_prefix_len, py::arg("word"),
            py::arg("names"),
            R"(Search the longest common prefix of the word in the dictionaries.
             :param word: the word to search
             :param names: the names of dictionaries to search
-            :return: the results of the search
+            :return: the length of the longest common prefix in the dictionaries.
            )")
       .def("edit_distance_search", &fstd::FstdxSearcher::edit_distance_search,
            py::arg("word"), py::arg("names"), py::arg("edit_distance") = 1,
@@ -516,7 +534,7 @@ PYBIND11_MODULE(_native, m) {
            R"(Insert the fstdx file if it does not exist.
             :param name: the name of the dictionary
             :param fstdx_path: the path to the fstdx file
-            :return: True if the insertion is successful, False otherwise
+            :return: None
            )")
       .def("insert", &fstd::FstdxSearcher::insert, py::arg("name"),
            py::arg("fstdx_path"),

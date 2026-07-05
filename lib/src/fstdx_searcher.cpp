@@ -115,19 +115,19 @@ std::vector<std::string> FstdxSearcher::common_prefix_search(
   return uniq_sort_results(std::move(results), count);
 }
 
-size_t FstdxSearcher::longest_common_prefix_search(
+size_t FstdxSearcher::longest_prefix_len(
     std::string_view word, const std::vector<std::string> &names) const {
-  size_t longest_prefix_len = 0;
+  size_t longest_len = 0;
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
     if (iter == fstdxes_.end()) {
       LOG_ERROR("FstdxSearcher: name {} not found", name);
     } else {
       size_t len = iter->second->longest_prefix_len(word);
-      if (len > longest_prefix_len) { longest_prefix_len = len; }
+      if (len > longest_len) { longest_len = len; }
     }
   }
-  return longest_prefix_len;
+  return longest_len;
 }
 
 std::vector<std::string>
@@ -297,7 +297,7 @@ FstdxSearcher::prefix_distance_search(std::string_view word,
   size_t count = 0;
   vector<size_t> counts(max_distance + 1);
 
-  size_t longest_prefix_len = longest_common_prefix_search(word, names);
+  size_t common_prefix_len = longest_prefix_len(word, names);
 
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
@@ -306,7 +306,7 @@ FstdxSearcher::prefix_distance_search(std::string_view word,
     } else {
       std::vector<std::vector<std::unique_ptr<std::string>>> res =
           iter->second->prefix_distance_search(
-              word, max_distance, longest_prefix_len, prior_suffixes_);
+              word, max_distance, common_prefix_len, prior_suffixes_);
       for (size_t i = 0; i < res.size(); ++i) {
         counts[i] += res[i].size();
         count += res[i].size();
