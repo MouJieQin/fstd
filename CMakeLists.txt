@@ -44,7 +44,7 @@ option(BUILD_PYTHON_BINDING "Build pybind11 python extension module" OFF)
 # =========================================================
 
 # CRITICAL FOR LINUX DYNAMIC LIBRARIES:
-# Forces compiled modules from FetchContent (spdlog, fmt, zstd, pcre2) to use -fPIC 
+# Forces compiled modules from FetchContent (spdlog, fmt, zstd, pcre2) to use -fPIC
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Require C++20 standard
@@ -129,6 +129,10 @@ endforeach()
 # ===================== AUTO-FALLBACK INDEPENDENT SYSTEM FINDERS =====================
 include(FetchContent)
 
+# Define third-party directory for local source checking
+set(THIRDPARTY_DIR ${CMAKE_SOURCE_DIR}/thirdparty)
+
+# Enhanced macro: check local thirdparty first, then download if missing
 macro(find_shared_or_fetch NAME REPO TAG SUBDIR)
     set(USE_SYSTEM_LIB FALSE)
     if(UNIX AND NOT APPLE)
@@ -166,11 +170,47 @@ macro(find_shared_or_fetch NAME REPO TAG SUBDIR)
         endif()
     else()
         message(STATUS "--> System library missing or lacks -fPIC for ${NAME}. Compiling via FetchContent from GitHub...")
-        if("${SUBDIR}" STREQUAL "")
-            FetchContent_Declare(${NAME} GIT_REPOSITORY ${REPO} GIT_TAG ${TAG})
+
+        # Map library name to local folder name in thirdparty/
+        if(${NAME} STREQUAL "nlohmann_json")
+            set(LOCAL_FOLDER_NAME "json-3.12.0")
+        elseif(${NAME} STREQUAL "indicators")
+            set(LOCAL_FOLDER_NAME "indicators-2.3")
+        elseif(${NAME} STREQUAL "spdlog")
+            set(LOCAL_FOLDER_NAME "spdlog-1.17.0")
+        elseif(${NAME} STREQUAL "fmt")
+            set(LOCAL_FOLDER_NAME "fmt-12.1.0")
+        elseif(${NAME} STREQUAL "CLI11")
+            set(LOCAL_FOLDER_NAME "CLI11-2.6.2")
+        elseif(${NAME} STREQUAL "zstd")
+            set(LOCAL_FOLDER_NAME "zstd-1.5.7")
+        elseif(${NAME} STREQUAL "pcre2")
+            set(LOCAL_FOLDER_NAME "pcre2-pcre2-10.47")
+        elseif(${NAME} STREQUAL "pybind11")
+            set(LOCAL_FOLDER_NAME "pybind11-3.0.4")
         else()
-            FetchContent_Declare(${NAME} GIT_REPOSITORY ${REPO} GIT_TAG ${TAG} SOURCE_SUBDIR ${SUBDIR})
+            set(LOCAL_FOLDER_NAME "${NAME}")
         endif()
+
+        set(LOCAL_SOURCE_PATH ${THIRDPARTY_DIR}/${LOCAL_FOLDER_NAME})
+
+        # Use local source if exists; otherwise download from Git
+        if(EXISTS ${LOCAL_SOURCE_PATH})
+            message(STATUS "--> Found local source for ${NAME} at: ${LOCAL_SOURCE_PATH}")
+            if("${SUBDIR}" STREQUAL "")
+                FetchContent_Declare(${NAME} SOURCE_DIR ${LOCAL_SOURCE_PATH})
+            else()
+                FetchContent_Declare(${NAME} SOURCE_DIR ${LOCAL_SOURCE_PATH} SOURCE_SUBDIR ${SUBDIR})
+            endif()
+        else()
+            message(STATUS "--> Local source not found for ${NAME}, downloading from Git...")
+            if("${SUBDIR}" STREQUAL "")
+                FetchContent_Declare(${NAME} GIT_REPOSITORY ${REPO} GIT_TAG ${TAG})
+            else()
+                FetchContent_Declare(${NAME} GIT_REPOSITORY ${REPO} GIT_TAG ${TAG} SOURCE_SUBDIR ${SUBDIR})
+            endif()
+        endif()
+
         FetchContent_MakeAvailable(${NAME})
     endif()
 endmacro()
@@ -218,7 +258,7 @@ if(APPLE)
                 set(ZSTD_LIB_TARGET zstd_mac_fallback)
             endif()
         endif()
-        
+
         # Bind the localized workspace target to our namespace wrapper
         if(NOT TARGET zstd::zstd AND ZSTD_LIB_TARGET)
             add_library(zstd::zstd INTERFACE IMPORTED)
@@ -256,7 +296,7 @@ set(pcre2_RESOLVED FALSE)
 if(APPLE)
     find_package(pcre2 QUIET)
     find_package(PCRE2 QUIET) # Check both capitalization variants
-    
+
     if(pcre2_FOUND OR PCRE2_FOUND)
         if(TARGET pcre2::8bit)
             set(PCRE2_LIB_TARGET pcre2::8bit)
@@ -271,7 +311,7 @@ if(APPLE)
                 set(PCRE2_LIB_TARGET pcre2_mac_fallback)
             endif()
         endif()
-        
+
         # Bind the localized workspace target to our namespace wrapper
         if(NOT TARGET pcre2::pcre2 AND PCRE2_LIB_TARGET)
             add_library(pcre2::pcre2 INTERFACE IMPORTED)
@@ -317,13 +357,25 @@ find_package(GTest QUIET)
 if(GTest_FOUND)
     message(STATUS "Found system-installed GTest, using it.")
 else()
-    message(STATUS "GTest not found, downloading from source...")
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.17.0
-        EXCLUDE_FROM_ALL
-    )
+    message(STATUS "GTest not found, checking local thirdparty directory...")
+    set(GTEST_LOCAL_PATH ${THIRDPARTY_DIR}/googletest-1.17.0)
+    if(EXISTS ${GTEST_LOCAL_PATH})
+        message(STATUS "--> Found local GTest source at: ${GTEST_LOCAL_PATH}")
+        FetchContent_Declare(
+            googletest
+            SOURCE_DIR ${GTEST_LOCAL_PATH}
+            EXCLUDE_FROM_ALL
+        )
+    else()
+        message(STATUS "--> Local GTest not found, downloading from Git...")
+        FetchContent_Declare(
+            googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG        v1.17.0
+            EXCLUDE_FROM_ALL
+        )
+    endif()
+
     set(gtest_build_tests OFF CACHE BOOL "" FORCE)
     set(gmock_build_tests OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)

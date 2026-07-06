@@ -78,3 +78,6 @@ Testing/
 *.egg-info/
 dist/
 fstd/__pycache__/
+
+# thirdparty
+thirdparty/*
