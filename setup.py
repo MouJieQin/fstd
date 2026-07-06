@@ -68,7 +68,6 @@ class CMakeBuild(build_ext):
 
         build_args = ["--build", ".", "--config", "Release"]
         if platform.system() == "Windows":
-            cmake_args.append("-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON")
             build_args += ["--", "/m"]
         else:
             build_args += ["-j{}".format(os.cpu_count() or 4)]
