@@ -6,10 +6,16 @@
 #include <chrono>
 #include <fstream>
 
+// 1. Include windows.h for Windows-specific console APIs
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include <fstd/logger.h>
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 #include <indicators/dynamic_progress.hpp>
+#include <indicators/progress_bar.hpp>
 #include <nlohmann/json.hpp>
 
 namespace fstd {
@@ -50,7 +56,22 @@ template <typename Bar> class DyProgBars {
 public:
   DyProgBars() {
     show_progress = is_terminal();
-    if (show_progress) { indicators::show_console_cursor(false); }
+    if (show_progress) {
+#ifdef _WIN32
+      // 2. Set console code page to UTF-8 to fix the garbled text
+      SetConsoleOutputCP(CP_UTF8);
+
+      // 3. Enable Virtual Terminal Processing to allow the bar to stay on one
+      // line
+      HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+      DWORD dwMode = 0;
+      if (GetConsoleMode(hOut, &dwMode)) {
+        dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        SetConsoleMode(hOut, dwMode);
+      }
+#endif
+      indicators::show_console_cursor(false);
+    }
     bars.set_option(indicators::option::HideBarWhenComplete{false});
   }
   ~DyProgBars() {
@@ -164,8 +185,11 @@ private:
 template <typename Bar>
 std::chrono::steady_clock::time_point DyProgBars<Bar>::last_update =
     std::chrono::steady_clock::now();
-
+#ifdef _WIN32
+using DyBlockProgBars = DyProgBars<indicators::ProgressBar>;
+#else
 using DyBlockProgBars = DyProgBars<indicators::BlockProgressBar>;
+#endif
 
 struct CompressTask {
   std::vector<char> src_data;
@@ -186,6 +210,8 @@ struct FileStream {
 };
 
 std::string get_current_date();
+
+std::string lf_to_crlf(const char *src, size_t n);
 
 bool ends_with(std::string const &value, std::string const &ending);
 

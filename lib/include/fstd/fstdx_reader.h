@@ -56,7 +56,8 @@ protected:
   std::string read_text_by_index(const size_t idx) const;
 
   std::vector<std::string>
-  extract_comp_blocks(std::function<void(size_t)> refresh_bar = nullptr) const;
+  extract_comp_blocks(bool raw_data = true,
+                      std::function<void(size_t)> refresh_bar = nullptr) const;
 
 protected:
   const std::string fstdx_path_;

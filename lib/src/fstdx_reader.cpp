@@ -172,7 +172,7 @@ std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
 }
 
 std::vector<std::string> FstdxHashReader::extract_comp_blocks(
-    std::function<void(size_t)> refresh_bar) const {
+    bool raw_data, std::function<void(size_t)> refresh_bar) const {
   std::vector<std::string> result;
   std::ifstream comp_in(fstdx_path_, std::ios::binary);
   if (!comp_in) {
@@ -212,8 +212,19 @@ std::vector<std::string> FstdxHashReader::extract_comp_blocks(
     for (; idx < block_index.end_entry_index; ++idx) {
       const char *data_ptr = decomp_buf.data();
       const EntryIndex &entry_index = entry_indexes[idx];
-      result.emplace_back(std::string(data_ptr + entry_index.entry_offset,
-                                      entry_index.entry_size));
+      if (raw_data) {
+        result.emplace_back(std::string(data_ptr + entry_index.entry_offset,
+                                        entry_index.entry_size));
+      } else {
+#ifdef _WIN32
+        std::string value = lf_to_crlf(data_ptr + entry_index.entry_offset,
+                                       entry_index.entry_size);
+#else
+        std::string value(data_ptr + entry_index.entry_offset,
+                          entry_index.entry_size);
+#endif
+        result.emplace_back(std::move(value));
+      }
       if (refresh_bar) { refresh_bar(idx); }
     }
   }
@@ -225,7 +236,7 @@ std::vector<std::string> FstdxHashReader::extract_values(
   auto refresh_bar = dynamic_bars.push_back(
       key_size_, "Decompressing value blocks:", Color::white);
 
-  return extract_comp_blocks(refresh_bar);
+  return extract_comp_blocks(false, refresh_bar);
 }
 
 std::vector<std::string> FstdxHashReader::extract_values() const {
@@ -335,7 +346,11 @@ bool FstdxReader::extract(const std::string &output_file) {
       dynamic_bars.push_back(key_size_, "Writing:", Color::green);
 
   for (size_t i = 0; i < keys.size(); ++i) {
+#ifdef _WIN32
+    fout << keys[i] << "\r\n" << values[i] << "\r\n" << DELIMITER << "\r\n";
+#else
     fout << keys[i] << "\n" << values[i] << "\n" << DELIMITER << "\n";
+#endif
     refresh_bar(i);
   }
   return true;

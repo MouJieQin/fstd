@@ -54,10 +54,12 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                        zstd_dict_size_kb, worker_num, opt_sorted, opt_verbose);
 }
 
-int FstdxWriter::compile_fstdx(const std::string &input_file, const std::string &output_file,
-                  const std::string &meta_json_str, uint16_t block_size_kb,
-                  uint8_t compress_level, uint16_t zstd_dict_size_kb,
-                  size_t worker_num, bool opt_sorted, bool opt_verbose) const {
+int FstdxWriter::compile_fstdx(const std::string &input_file,
+                               const std::string &output_file,
+                               const std::string &meta_json_str,
+                               uint16_t block_size_kb, uint8_t compress_level,
+                               uint16_t zstd_dict_size_kb, size_t worker_num,
+                               bool opt_sorted, bool opt_verbose) const {
   json meta_json;
   try {
     meta_json = json::parse(meta_json_str);
@@ -351,6 +353,7 @@ bool FstdxWriter::load_file(ifstream &fin, std::vector<std::string> &keys,
     if (trimmed_line == delimiter) {
       delimiter_indices.emplace_back(index_count);
     }
+    if (!line.empty() && line.back() == '\r') { line.pop_back(); }
     raw_lines.emplace_back(make_unique<string>(std::move(line)));
     index_count += 1;
   }

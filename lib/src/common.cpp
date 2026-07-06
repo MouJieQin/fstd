@@ -27,6 +27,20 @@ std::string get_current_date() {
   return std::string(buf);
 }
 
+std::string lf_to_crlf(const char *src, size_t n) {
+  std::string dst;
+  dst.reserve(n + n / 16);
+  for (size_t i = 0; i < n; i++) {
+    char ch = src[i];
+    if (ch == '\n') {
+      dst += "\r\n";
+    } else {
+      dst.push_back(ch);
+    }
+  }
+  return dst;
+}
+
 bool ends_with(std::string const &value, std::string const &ending) {
   if (ending.size() > value.size()) return false;
   return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
