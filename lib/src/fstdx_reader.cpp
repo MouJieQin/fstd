@@ -338,7 +338,7 @@ bool FstdxReader::extract(const std::string &output_file) {
     return false;
   }
 
-  DyProgBars<BlockProgressBar> dynamic_bars;
+  DyProgBars<defaultProgressBar> dynamic_bars;
   const std::vector<std::string> keys = extract_keys(dynamic_bars);
   const std::vector<std::string> values = extract_values(dynamic_bars);
 

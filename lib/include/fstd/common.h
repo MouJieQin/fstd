@@ -71,11 +71,15 @@ public:
       }
 #endif
       indicators::show_console_cursor(false);
+      std::cout << "\033[?7l" << std::flush;
     }
     bars.set_option(indicators::option::HideBarWhenComplete{false});
   }
   ~DyProgBars() {
-    if (show_progress) { indicators::show_console_cursor(true); }
+    if (show_progress) {
+      indicators::show_console_cursor(true);
+      std::cout << "\033[?7h\n" << std::flush;
+    }
   }
 
   std::function<void(const size_t)>
