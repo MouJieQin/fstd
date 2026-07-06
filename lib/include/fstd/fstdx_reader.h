@@ -33,7 +33,7 @@ public:
   std::vector<std::string> extract_values() const;
 
   std::vector<std::string>
-  extract_values(DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const;
+  extract_values(DyProgBars<defaultProgressBar> &dynamic_bars) const;
 
   // bool hash_exact_match_search(std::string_view word,
   //                              std::vector<std::string> &result) const;
@@ -121,7 +121,7 @@ private:
   enumerate(std::function<void(const size_t)> refresh_bar) const;
 
   std::vector<std::string>
-  extract_keys(DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const;
+  extract_keys(DyProgBars<defaultProgressBar> &dynamic_bars) const;
 
   std::vector<std::string> extract_keys(
       std::vector<std::pair<std::string, uint64_t>> &&key_output) const;

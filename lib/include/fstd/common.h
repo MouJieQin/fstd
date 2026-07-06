@@ -186,8 +186,10 @@ template <typename Bar>
 std::chrono::steady_clock::time_point DyProgBars<Bar>::last_update =
     std::chrono::steady_clock::now();
 #ifdef _WIN32
+using defaultProgressBar = indicators::ProgressBar;
 using DyBlockProgBars = DyProgBars<indicators::ProgressBar>;
 #else
+using defaultProgressBar = indicators::BlockProgressBar;
 using DyBlockProgBars = DyProgBars<indicators::BlockProgressBar>;
 #endif
 

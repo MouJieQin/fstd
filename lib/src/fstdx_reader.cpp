@@ -232,7 +232,7 @@ std::vector<std::string> FstdxHashReader::extract_comp_blocks(
 }
 
 std::vector<std::string> FstdxHashReader::extract_values(
-    DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const {
+    DyProgBars<defaultProgressBar> &dynamic_bars) const {
   auto refresh_bar = dynamic_bars.push_back(
       key_size_, "Decompressing value blocks:", Color::white);
 
@@ -356,8 +356,8 @@ bool FstdxReader::extract(const std::string &output_file) {
   return true;
 }
 
-std::vector<std::string> FstdxReader::extract_keys(
-    DyProgBars<indicators::BlockProgressBar> &dynamic_bars) const {
+std::vector<std::string>
+FstdxReader::extract_keys(DyProgBars<defaultProgressBar> &dynamic_bars) const {
   auto refresh_bar = dynamic_bars.push_back(
       fst_key_size_, "Decompiling key FST:", Color::cyan);
 
