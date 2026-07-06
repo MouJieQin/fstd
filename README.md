@@ -15,7 +15,7 @@ A dictionary engine powered by Finite State Transducers, a data structure that e
 
 ## Install
 
-It has been tested on Macos and Linux platform now. On Windows platform, there might be a bug while launching a thread pool. It's not convenient to fix it because I don't have a windows machine. Pull a request to me if you can fix it.
+It has been tested on Macos, Linux, Windows platform.  Using a dictionary compiled from anothor platform should be fine.
 
 ### Python
 

@@ -59,7 +59,6 @@ jobs:
                     - os: macos-latest
                       c_compiler: cl
 
-
         steps:
             - uses: actions/checkout@v4
 
@@ -118,7 +117,8 @@ jobs:
               if: startsWith(github.ref, 'refs/tags/v')
               shell: bash
               run: |
-                  cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ./install_stage --config ${{ matrix.build_type }}
+                  # CRITICAL FIX: Wrapped the build output folder variable in strict double quotes
+                  cmake --install "${{ steps.strings.outputs.build-output-dir }}" --prefix ./install_stage --config ${{ matrix.build_type }}
 
             - name: Prepare Package Archive
               if: startsWith(github.ref, 'refs/tags/v')
