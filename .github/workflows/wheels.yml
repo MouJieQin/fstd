@@ -68,6 +68,12 @@ jobs:
                       python -c "import fstd; print('Successfully loaded fstd from:', fstd.__file__)"
                       python -c "from fstd import _native; print('Native extension verified at:', _native.__file__)"
 
+            - name: Setup SSH Debug Session on Failure
+              if: failure()
+              uses: mxschmitt/action-tmate@v3
+              with:
+                  limit-access-to-actor: false
+
             - name: Upload Intermediary Wheel Storage
               uses: actions/upload-artifact@v4
               with:
