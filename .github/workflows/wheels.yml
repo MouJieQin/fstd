@@ -28,6 +28,9 @@ jobs:
                     # macOS Intel (Cross-compiled)
                     - os: macos-latest
                       arch: x86_64
+                    # WINDOWS x86_64 SUPPORT
+                    - os: windows-latest
+                      arch: AMD64
 
         steps:
             - uses: actions/checkout@v4
@@ -39,7 +42,6 @@ jobs:
             - name: Build wheels via cibuildwheel
               uses: pypa/cibuildwheel@v2.22.0
               env:
-                  #   CIBW_BUILD: cp311-*
                   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
                   CIBW_ARCHS: ${{ matrix.arch }}
 
