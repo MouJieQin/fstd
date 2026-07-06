@@ -45,6 +45,15 @@ class CMakeBuild(build_ext):
             for lib in ["indicators", "nlohmann_json", "spdlog", "fmt"]:
                 cmake_args.append(f"-D{lib}_FOUND=FALSE")
 
+        # ==================== CRITICAL WINDOWS WHEEL FIX ====================
+        # On Windows, CMake treats runtime outputs (.dll/.exe) separately from library outputs (.lib).
+        # 1. We force the runtime destination folder to match setuptools' expectations.
+        # 2. We change the output binary file extension to '.pyd' so Python can import it natively.
+        if platform.system() == "Windows":
+            cmake_args.append(f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY={ext_output_path.parent}")
+            cmake_args.append("-DCMAKE_SHARED_MODULE_SUFFIX=.pyd")
+        # ====================================================================
+
         # In setup.py, update your Darwin configuration block to match this implementation:
         if platform.system() == "Darwin":
             # Dynamically inherit deployment targets directly from the active runtime engine
