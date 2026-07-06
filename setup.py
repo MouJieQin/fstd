@@ -30,8 +30,12 @@ class CMakeBuild(build_ext):
         build_dir.mkdir(parents=True, exist_ok=True)
         import pybind11
 
+        # FIXED FOR WINDOWS MULTI-CONFIG SUBFOLDERS:
+        # Instead of using CMAKE_LIBRARY_OUTPUT_DIRECTORY directly (which appends /Release/ on MSVC),
+        # we explicitly set the config-specific paths to point directly to ext_output_path.parent.
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={ext_output_path.parent}",
+            f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE={ext_output_path.parent}",
             f"-DPYTHON_EXECUTABLE={sys.executable}",
             "-DCMAKE_BUILD_TYPE=Release",
             "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
@@ -39,29 +43,23 @@ class CMakeBuild(build_ext):
             "-DBUILD_PYTHON_BINDING=ON",
         ]
 
-        # 1. Force FetchContent on Linux/CI to avoid "missing header" errors
-        # If we are running in CIBUILDWHEEL, assume system libs are missing/broken
         if os.environ.get("CIBUILDWHEEL") == "1":
             for lib in ["indicators", "nlohmann_json", "spdlog", "fmt"]:
                 cmake_args.append(f"-D{lib}_FOUND=FALSE")
 
-        # ==================== CRITICAL WINDOWS WHEEL FIX ====================
-        # On Windows, CMake treats runtime outputs (.dll/.exe) separately from library outputs (.lib).
-        # 1. We force the runtime destination folder to match setuptools' expectations.
-        # 2. We change the output binary file extension to '.pyd' so Python can import it natively.
+        # ==================== UPDATED WINDOWS WHEEL FIX ====================
+        # Enforce both regular and Release-specific runtime output paths directly to the parent folder.
         if platform.system() == "Windows":
             cmake_args.append(f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY={ext_output_path.parent}")
+            cmake_args.append(f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE={ext_output_path.parent}")
             cmake_args.append("-DCMAKE_SHARED_MODULE_SUFFIX=.pyd")
         # ====================================================================
 
-        # In setup.py, update your Darwin configuration block to match this implementation:
         if platform.system() == "Darwin":
-            # Dynamically inherit deployment targets directly from the active runtime engine
             deployment_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET", "11.0")
             cmake_args.append(f"-DCMAKE_OSX_DEPLOYMENT_TARGET={deployment_target}")
 
         if os.environ.get("CI") == "true" or os.environ.get("CIBUILDWHEEL") == "1":
-            # Keep Homebrew/System path isolation strictly enforced
             print("=== Running on CI/GitHub Actions: enabling strict Homebrew isolation ===")
             cmake_args.append("-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew;/usr/local")
             cmake_args.append("-DCMAKE_FIND_FRAMEWORK=NEVER")
