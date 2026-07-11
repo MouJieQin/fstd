@@ -171,7 +171,10 @@ bool parse_header(std::ifstream &ins, const size_t file_size,
   LOG_INFO("header_size_record: original_size:{}, compressed_size:{}",
            header_size_record.original_size,
            header_size_record.compressed_size);
-  if (file_size < header_size_record.compressed_size) {
+  if (file_size < header_size_record.compressed_size ||
+      (header_size_record.compressed_size == 0 ||
+       header_size_record.original_size == 0) ||
+      (header_size_record.original_size > 1024 * 1024 * 5)) {
     LOG_ERROR("It is not a valid fstdx/fstdd file.");
     return false;
   }
@@ -181,9 +184,12 @@ bool parse_header(std::ifstream &ins, const size_t file_size,
   ins.read(const_cast<char *>(header_compressed_byte.data()),
            header_size_record.compressed_size);
   std::vector<char> header_json_raw_str;
-  decompress_to_buffer(header_compressed_byte.data(),
-                       header_compressed_byte.size(),
-                       header_size_record.original_size, header_json_raw_str);
+  if (!decompress_to_buffer(
+          header_compressed_byte.data(), header_compressed_byte.size(),
+          header_size_record.original_size, header_json_raw_str)) {
+    LOG_ERROR("It is not a valid fstdx/fstdd file.");
+    return false;
+  }
   try {
     header = json::parse(string(header_json_raw_str.data()));
     LOG_INFO("{}", header.dump());
