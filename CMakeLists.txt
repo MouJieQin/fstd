@@ -100,6 +100,8 @@ endif()
 
 if(MSVC)
     set(COMMON_COMPILE_OPTIONS /W4)
+    add_compile_options(/utf-8)
+    add_compile_definitions(UNICODE _UNICODE)
 else()
     set(COMMON_COMPILE_OPTIONS -W -Wall)
 endif()

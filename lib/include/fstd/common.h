@@ -276,7 +276,7 @@ bool decompress(std::istream &ins, const std::string &block_name,
 template <typename T>
 bool decompress(const std::string &file_path, const std::string &block_name,
                 const nlohmann::json &json_header_, std::vector<T> &con) {
-  std::ifstream in(file_path, std::ios::binary);
+  std::ifstream in(std::filesystem::path(file_path), std::ios::binary);
   if (!in) {
     LOG_ERROR("Cannot open the file: {}", file_path);
     return false;

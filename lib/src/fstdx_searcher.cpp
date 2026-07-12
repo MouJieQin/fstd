@@ -431,7 +431,7 @@ FstdxSearcher::find_fstdd(const std::string &target_dir) const {
 }
 
 bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
-  ofstream ofs(meta_json_path, ios::out);
+  ofstream ofs(std::filesystem::path(meta_json_path), ios::out);
   if (!ofs) {
     LOG_ERROR("Cannot open the file: {}", meta_json_path);
     return false;
@@ -445,7 +445,7 @@ bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
 }
 
 bool FstdxSearcher::load_file(const std::string &meta_json_path) {
-  ifstream ifs(meta_json_path);
+  ifstream ifs{std::filesystem::path(meta_json_path)};
   if (!ifs) {
     LOG_ERROR("Failed to open file {} for reading.", meta_json_path);
     return false;

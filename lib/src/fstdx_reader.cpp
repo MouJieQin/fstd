@@ -30,7 +30,8 @@ const DxJsonHeader &FstdxHashReader::get_header() const {
 }
 
 bool FstdxHashReader::parse_fstdx(const std::string &fstdx_path) {
-  std::ifstream ins(fstdx_path, std::ios::binary | std::ios::ate);
+  std::ifstream ins(std::filesystem::path(fstdx_path),
+                    std::ios::binary | std::ios::ate);
   if (!ins) {
     LOG_ERROR("Cannot open the file: {}", fstdx_path);
     return false;
@@ -129,7 +130,7 @@ bool FstdxHashReader::exact_match_search_by_index_code(
 // }
 
 std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
-  std::ifstream comp_in(fstdx_path_, std::ios::binary);
+  std::ifstream comp_in(std::filesystem::path(fstdx_path_), std::ios::binary);
   if (!comp_in) {
     LOG_ERROR("Couldn't open the file: {}", fstdx_path_);
     return "";
@@ -174,7 +175,7 @@ std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
 std::vector<std::string> FstdxHashReader::extract_comp_blocks(
     bool raw_data, std::function<void(size_t)> refresh_bar) const {
   std::vector<std::string> result;
-  std::ifstream comp_in(fstdx_path_, std::ios::binary);
+  std::ifstream comp_in(std::filesystem::path(fstdx_path_), std::ios::binary);
   if (!comp_in) {
     LOG_ERROR("Couldn't open file: {}", fstdx_path_);
     return result;
@@ -332,7 +333,7 @@ FstdxReader::enumerate(std::function<void(const size_t)> refresh_bar) const {
 }
 
 bool FstdxReader::extract(const std::string &output_file) {
-  ofstream fout(output_file, ios_base::out);
+  ofstream fout(std::filesystem::path(output_file), ios_base::out);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
     return false;

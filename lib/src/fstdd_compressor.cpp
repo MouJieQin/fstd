@@ -215,7 +215,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
       string &key = files_paths[i].first;
       fs::path file_path =
           fs::path(data_paths[files_paths[i].second]) / fs::path(key);
-      ifstream ifs(file_path.string(), ios::binary);
+      ifstream ifs(file_path, ios::binary);
       if (!ifs) {
         LOG_ERROR("Failed to open file: {}", file_path.string());
         continue;

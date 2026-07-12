@@ -21,7 +21,7 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                                uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
                                bool opt_sorted, bool opt_verbose) const {
-  ofstream fout(output_file, ios_base::binary);
+  ofstream fout(std::filesystem::path(output_file), ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
     return 1;
@@ -81,13 +81,13 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
                                bool opt_sorted, bool opt_verbose) const {
 
-  ofstream fout(output_file, ios_base::binary);
+  ofstream fout(std::filesystem::path(output_file), ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", output_file);
     return 1;
   }
 
-  ifstream fin(input_file, ios_base::binary);
+  ifstream fin(std::filesystem::path(input_file), ios_base::binary);
   if (!fin) {
     LOG_ERROR("Failed to open file {} for reading.", input_file);
     return 1;
@@ -331,7 +331,7 @@ bool FstdxWriter::parse_raw_txt(std::vector<unique_ptr<string>> &raw_lines,
 bool FstdxWriter::load_file(const std::string &file_path,
                             std::vector<std::string> &keys,
                             std::vector<std::string> &values) const {
-  ifstream fin(file_path, ios_base::in);
+  ifstream fin(std::filesystem::path(file_path), ios_base::in);
   if (!fin) {
     LOG_ERROR("Failed to open file {} for reading.", file_path);
     return false;

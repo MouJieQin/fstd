@@ -1,6 +1,5 @@
-#include <zstd.h>
-
 #include <fstd/common.h>
+#include <zstd.h>
 namespace fstd {
 
 using namespace std;
@@ -47,7 +46,7 @@ bool ends_with(std::string const &value, std::string const &ending) {
 }
 
 bool read_file(const std::string &file_path, std::string &content) {
-  std::ifstream file_stream(file_path);
+  std::ifstream file_stream{std::filesystem::path(file_path)};
   if (!file_stream) { return false; }
   content = std::string((std::istreambuf_iterator<char>(file_stream)),
                         std::istreambuf_iterator<char>());
@@ -134,7 +133,7 @@ bool compress_to_buffer(const char *src, size_t src_size,
   size_t comp_size = ZSTD_compress(comp_buf.data(), comp_buf.size(), src,
                                    src_size, compression_level);
   if (ZSTD_isError(comp_size)) {
-    LOG_ERROR("压缩失败: {}", ZSTD_getErrorName(comp_size));
+    LOG_ERROR("Compression failed: {}", ZSTD_getErrorName(comp_size));
     return false;
   }
   comp_buf.resize(comp_size);
