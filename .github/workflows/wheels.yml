@@ -51,6 +51,10 @@ jobs:
                   # 2. FORCE MACOS TARGET
                   MACOSX_DEPLOYMENT_TARGET: "11.0"
 
+                  # CRITICAL FIX FOR PYTHON 3.14 WHEELS:
+                  # Force cibuildwheel to allow compilation against unreleased/pre-release Python versions
+                  CIBW_PRERELEASE_PYTHONS: "True"
+
                   CIBW_BEFORE_ALL_LINUX: "yum install -y zlib-devel libzstd-devel pcre2-devel"
 
                   CIBW_ENVIRONMENT: |
