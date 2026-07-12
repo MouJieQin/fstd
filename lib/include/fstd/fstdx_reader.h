@@ -94,7 +94,8 @@ public:
 
   std::vector<std::vector<std::unique_ptr<std::string>>> prefix_distance_search(
       std::string_view sv, size_t max_distance, const size_t longest_prefix_len,
-      const std::shared_ptr<std::set<std::string>> &prior_suffixes) const;
+      const std::shared_ptr<std::map<std::string, size_t>> &prior_suffixes)
+      const;
 
   std::vector<std::unique_ptr<std::pair<double, std::string>>>
   suggest(std::string_view word) const;

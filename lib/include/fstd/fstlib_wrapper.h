@@ -121,7 +121,8 @@ public:
 
   std::vector<std::vector<std::unique_ptr<std::string>>> prefix_distance_search(
       std::string_view sv, size_t max_distance, const size_t longest_prefix_len,
-      const std::shared_ptr<std::set<std::string>> &prior_suffixes) const {
+      const std::shared_ptr<std::map<std::string, size_t>> &prior_suffixes)
+      const {
     return matcher_ptr_->prefix_distance_search(
         sv, max_distance, longest_prefix_len, prior_suffixes);
   }

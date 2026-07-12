@@ -293,7 +293,8 @@ FstdxReader::edit_distance_search(std::string_view word,
 std::vector<std::vector<std::unique_ptr<std::string>>>
 FstdxReader::prefix_distance_search(
     std::string_view sv, size_t max_distance, const size_t longest_prefix_len,
-    const std::shared_ptr<std::set<std::string>> &prior_suffixes) const {
+    const std::shared_ptr<std::map<std::string, size_t>> &prior_suffixes)
+    const {
   return fst_map_searcher_.prefix_distance_search(
       sv, max_distance, longest_prefix_len, prior_suffixes);
 }

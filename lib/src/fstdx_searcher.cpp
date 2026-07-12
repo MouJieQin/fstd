@@ -13,14 +13,14 @@ namespace fstd {
 std::shared_ptr<ThreadPool> FstdxSearcher::thread_pool_ptr = nullptr;
 
 FstdxSearcher::FstdxSearcher(size_t worker_num) : is_valid_(true) {
-  prior_suffixes_ = make_shared<std::set<string>>();
+  prior_suffixes_ = make_shared<std::map<string, size_t>>();
   prior_suf_lens_ = make_shared<std::set<size_t>>();
   thread_pool_ptr = make_shared<ThreadPool>(worker_num);
 }
 
 FstdxSearcher::FstdxSearcher(const std::string &meta_json_path,
                              size_t worker_num) {
-  prior_suffixes_ = make_shared<std::set<string>>();
+  prior_suffixes_ = make_shared<std::map<string, size_t>>();
   prior_suf_lens_ = make_shared<std::set<size_t>>();
   if (!load_file(meta_json_path)) {
     is_valid_ = false;
@@ -115,8 +115,9 @@ std::vector<std::string> FstdxSearcher::common_prefix_search(
   return uniq_sort_results(std::move(results), count);
 }
 
-size_t FstdxSearcher::longest_prefix_len(
-    std::string_view word, const std::vector<std::string> &names) const {
+size_t
+FstdxSearcher::longest_prefix_len(std::string_view word,
+                                  const std::vector<std::string> &names) const {
   size_t longest_len = 0;
   for (const string &name : names) {
     auto iter = fstdxes_.find(name);
@@ -261,26 +262,33 @@ std::vector<std::string> FstdxSearcher::uniq_sort_results(
   return result;
 }
 
-bool FstdxSearcher::has_prior_suffix(const std::string &word) const {
-  for (size_t len : *prior_suf_lens_) {
+int FstdxSearcher::has_prior_suffix(const std::string &word) const {
+  for (auto it = prior_suf_lens_->crbegin(); it != prior_suf_lens_->crend();
+       ++it) {
+    size_t len = *it;
     if (word.size() >= len) {
       string suf = word.substr(word.size() - len, len);
-      if (prior_suffixes_->contains(suf)) { return true; }
+      auto iter = prior_suffixes_->find(suf);
+      if (iter != prior_suffixes_->end()) { return iter->second; }
     }
   }
-  return false;
+  return -1;
 }
 
 bool FstdxSearcher::same_prefix_distance_cmp(const std::string &x,
                                              const std::string &y) const {
-  if (has_prior_suffix(x) != 0) {
-    if (!has_prior_suffix(y) != 0) {
-      return true;
+  int x_index = has_prior_suffix(x);
+  int y_index = has_prior_suffix(y);
+  if (x_index != -1) {
+    if (y_index != -1) {
+      return x_index != y_index
+                 ? x_index < y_index
+                 : (x.size() == y.size() ? x < y : x.size() > y.size());
     } else {
-      return x.size() == y.size() ? x < y : x.size() > y.size();
+      return true;
     }
   } else {
-    if (has_prior_suffix(y) != 0) {
+    if (y_index != -1) {
       return false;
     } else {
       return x.size() == y.size() ? x < y : x.size() > y.size();
@@ -373,9 +381,13 @@ FstdxSearcher::regex_search(std::string_view pattern,
 }
 
 void FstdxSearcher::insert_prior_suffix(const std::vector<std::string> &sufs) {
+  size_t index = prior_suffixes_->size();
   for (const string &suf : sufs) {
-    prior_suffixes_->insert(suf);
-    prior_suf_lens_->insert(suf.size());
+    auto p = prior_suffixes_->emplace(suf, index);
+    if (p.second) {
+      index += 1;
+      prior_suf_lens_->insert(suf.size());
+    }
   }
 }
 
@@ -490,11 +502,7 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
         LOG_ERROR("The prior suffexes of language: {} is not an array.", lang);
         return false;
       }
-      for (auto &s : suffixes) {
-        std::string suf(s);
-        prior_suffixes_->insert(suf);
-        prior_suf_lens_->insert(suf.size());
-      }
+      insert_prior_suffix(suffixes.get<std::vector<std::string>>());
     }
   }
   return true;

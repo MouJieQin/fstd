@@ -4,7 +4,7 @@
 //
 #pragma once
 
-#include <set>
+#include <map>
 #include <unordered_map>
 
 #include <fstd/fstdd_reader.h>
@@ -88,7 +88,7 @@ private:
           &&results,
       size_t count) const;
 
-  bool has_prior_suffix(const std::string &word) const;
+  int has_prior_suffix(const std::string &word) const;
 
   bool same_prefix_distance_cmp(const std::string &x,
                                 const std::string &y) const;
@@ -100,7 +100,7 @@ private:
 
 private:
   bool is_valid_;
-  std::shared_ptr<std::set<std::string>> prior_suffixes_;
+  std::shared_ptr<std::map<std::string, size_t>> prior_suffixes_;
   std::shared_ptr<std::set<size_t>> prior_suf_lens_;
   std::unordered_map<std::string, std::shared_ptr<FstdxReader>> fstdxes_;
   std::unordered_map<std::string, std::vector<std::shared_ptr<FstddReader>>>

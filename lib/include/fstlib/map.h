@@ -62,8 +62,7 @@ public:
     return ret;
   }
 
-  size_t longest_prefix_len(std::string_view sv,
-                                      output_t &output) const {
+  size_t longest_prefix_len(std::string_view sv, output_t &output) const {
     size_t prefix_len = 0;
     common_prefix_search(sv, [&](size_t len, const auto &_output) {
       prefix_len = len;
@@ -109,7 +108,8 @@ public:
 
   std::vector<std::vector<std::unique_ptr<std::string>>> prefix_distance_search(
       std::string_view sv, size_t max_distance, const size_t longest_prefix_len,
-      const std::shared_ptr<std::set<std::string>> &prior_suffixes) const {
+      const std::shared_ptr<std::map<std::string, size_t>> &prior_suffixes)
+      const {
     std::vector<std::vector<std::unique_ptr<std::string>>> ret(max_distance +
                                                                1);
     if (sv.empty()) { return ret; }
