@@ -443,9 +443,11 @@ FstdxSearcher::find_fstdd(const std::string &target_dir) const {
 }
 
 bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
-  ofstream ofs(std::filesystem::path(meta_json_path), ios::out);
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(meta_json_path.c_str()));
+  ofstream ofs(path_obj, ios::out);
   if (!ofs) {
-    LOG_ERROR("Cannot open the file: {}", meta_json_path);
+    LOG_ERROR("Cannot open the file: {}", path_obj.string());
     return false;
   }
   ofs << meta_json_.dump(2);
@@ -457,9 +459,11 @@ bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
 }
 
 bool FstdxSearcher::load_file(const std::string &meta_json_path) {
-  ifstream ifs{std::filesystem::path(meta_json_path)};
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(meta_json_path.c_str()));
+  ifstream ifs(path_obj);
   if (!ifs) {
-    LOG_ERROR("Failed to open file {} for reading.", meta_json_path);
+    LOG_ERROR("Failed to open file {} for reading.", path_obj.string());
     return false;
   }
   json meta_json;

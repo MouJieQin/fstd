@@ -46,7 +46,9 @@ bool ends_with(std::string const &value, std::string const &ending) {
 }
 
 bool read_file(const std::string &file_path, std::string &content) {
-  std::ifstream file_stream{std::filesystem::path(file_path)};
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(file_path.c_str()));
+  std::ifstream file_stream{path_obj};
   if (!file_stream) { return false; }
   content = std::string((std::istreambuf_iterator<char>(file_stream)),
                         std::istreambuf_iterator<char>());

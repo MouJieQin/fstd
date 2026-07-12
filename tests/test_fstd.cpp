@@ -73,10 +73,13 @@ class TestFstdd : public ::testing::Test {
 protected:
   bool are_files_equal_fast(const std::string &file1,
                             const std::string &file2) {
-    std::ifstream f1(std::filesystem::path(file1),
-                     std::ios::binary | std::ios::ate);
-    std::ifstream f2(std::filesystem::path(file2),
-                     std::ios::binary | std::ios::ate);
+    std::filesystem::path path_obj1(
+        reinterpret_cast<const char8_t *>(file1.c_str()));
+    std::ifstream f1(path_obj1, std::ios::binary | std::ios::ate);
+    std::filesystem::path path_obj2(
+        reinterpret_cast<const char8_t *>(file2.c_str()));
+
+    std::ifstream f2(path_obj2, std::ios::binary | std::ios::ate);
 
     if (!f1 || !f2) {
       LOG_ERROR("Failed to open file {} or {}", file1, file2);

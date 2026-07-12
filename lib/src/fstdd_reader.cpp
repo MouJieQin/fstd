@@ -26,10 +26,11 @@ const DdJsonHeader &FstddReader::get_header() const { return md_json_header_; }
 const json &FstddReader::get_meta() const { return md_json_header_["meta"]; }
 
 bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
-  std::ifstream ins(std::filesystem::path(fstdd_path),
-                    std::ios::binary | std::ios::ate);
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(fstdd_path.c_str()));
+  std::ifstream ins(path_obj, std::ios::binary | std::ios::ate);
   if (!ins) {
-    LOG_ERROR("Cannot open the file: {}", fstdd_path);
+    LOG_ERROR("Cannot open the file: {}", path_obj.string());
     return false;
   }
   size_t fstdd_size = ins.tellg();
@@ -129,9 +130,11 @@ bool FstddReader::extract(const std::string &key,
 
 bool FstddReader::extract_impl(const string &key,
                                const string &output_path) const {
-  std::ifstream ins(std::filesystem::path(fstdd_path_), std::ios::binary);
+  std::filesystem::path fstdd_path_obj(
+      reinterpret_cast<const char8_t *>(fstdd_path_.c_str()));
+  std::ifstream ins(fstdd_path_obj, std::ios::binary);
   if (!ins) {
-    LOG_ERROR("Cannot open the file: {}", fstdd_path_);
+    LOG_ERROR("Cannot open the file: {}", fstdd_path_obj.string());
     return false;
   }
 
@@ -160,9 +163,11 @@ bool FstddReader::extract_impl(const string &key,
       return false;
     }
   }
-  ofstream out(std::filesystem::path(output_path), std::ios::binary);
+  std::filesystem::path output_path_obj(
+      reinterpret_cast<const char8_t *>(output_path.c_str()));
+  ofstream out(output_path_obj, std::ios::binary);
   if (!out) {
-    LOG_ERROR("Cannot open the file: {}", output_path);
+    LOG_ERROR("Cannot open the file: {}", output_path_obj.string());
     return false;
   }
 

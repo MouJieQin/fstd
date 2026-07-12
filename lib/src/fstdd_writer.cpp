@@ -33,9 +33,11 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
                                const nlohmann::json &meta, size_t block_size_kb,
                                size_t compress_level, size_t worker_num,
                                bool opt_verbose, size_t file_stream_num) {
-  ofstream fout(std::filesystem::path(output_file), ios_base::binary);
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(output_file.c_str()));
+  ofstream fout(path_obj, ios_base::binary);
   if (!fout) {
-    LOG_ERROR("Failed to open file {} for writing.", output_file);
+    LOG_ERROR("Failed to open file {} for writing.", path_obj.string());
     return 1;
   }
   DdJsonHeader header;

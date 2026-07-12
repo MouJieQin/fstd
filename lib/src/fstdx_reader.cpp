@@ -30,10 +30,11 @@ const DxJsonHeader &FstdxHashReader::get_header() const {
 }
 
 bool FstdxHashReader::parse_fstdx(const std::string &fstdx_path) {
-  std::ifstream ins(std::filesystem::path(fstdx_path),
-                    std::ios::binary | std::ios::ate);
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(fstdx_path.c_str()));
+  std::ifstream ins(path_obj, std::ios::binary | std::ios::ate);
   if (!ins) {
-    LOG_ERROR("Cannot open the file: {}", fstdx_path);
+    LOG_ERROR("Cannot open the file: {}", path_obj.string());
     return false;
   }
   size_t fstdx_size = ins.tellg();
@@ -130,9 +131,11 @@ bool FstdxHashReader::exact_match_search_by_index_code(
 // }
 
 std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
-  std::ifstream comp_in(std::filesystem::path(fstdx_path_), std::ios::binary);
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(fstdx_path_.c_str()));
+  std::ifstream comp_in(path_obj, std::ios::binary);
   if (!comp_in) {
-    LOG_ERROR("Couldn't open the file: {}", fstdx_path_);
+    LOG_ERROR("Couldn't open the file: {}", path_obj.string());
     return "";
   }
   EntryIndex entry_index;
@@ -175,9 +178,11 @@ std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
 std::vector<std::string> FstdxHashReader::extract_comp_blocks(
     bool raw_data, std::function<void(size_t)> refresh_bar) const {
   std::vector<std::string> result;
-  std::ifstream comp_in(std::filesystem::path(fstdx_path_), std::ios::binary);
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(fstdx_path_.c_str()));
+  std::ifstream comp_in(path_obj, std::ios::binary);
   if (!comp_in) {
-    LOG_ERROR("Couldn't open file: {}", fstdx_path_);
+    LOG_ERROR("Couldn't open file: {}", path_obj.string());
     return result;
   }
 
@@ -334,9 +339,11 @@ FstdxReader::enumerate(std::function<void(const size_t)> refresh_bar) const {
 }
 
 bool FstdxReader::extract(const std::string &output_file) {
-  ofstream fout(std::filesystem::path(output_file), ios_base::out);
+  std::filesystem::path path_obj(
+      reinterpret_cast<const char8_t *>(output_file.c_str()));
+  ofstream fout(path_obj, ios_base::out);
   if (!fout) {
-    LOG_ERROR("Failed to open file {} for writing.", output_file);
+    LOG_ERROR("Failed to open file {} for writing.", path_obj.string());
     return false;
   }
 
