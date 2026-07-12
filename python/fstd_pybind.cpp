@@ -46,7 +46,8 @@ PYBIND11_MODULE(_native, m) {
   m.doc() = "Python binding for fstd dictionary engine";
 
   m.def(
-      "get_version", []() { return FSTD_VERSION; }, "Get fstd library version");
+      "get_version", []() { return FSTD_VERSION; },
+      "Get fstd library version.");
 
   m.def(
       "set_log_level",
@@ -54,41 +55,57 @@ PYBIND11_MODULE(_native, m) {
         Logger::instance().set_level(
             static_cast<spdlog::level::level_enum>(log_level));
       },
-      "Set the log level for fstd library. log_level: 0-6, 0 is trace, 1 is "
-      "debug, 2 is info, 3 is warn, 4 is error, 5 is critical, 6 is off");
+      R"(Set the log level for fstd library.
+
+Args:
+    log_level: Log level value, range 0-6. 0=trace, 1=debug, 2=info,
+        3=warn, 4=error, 5=critical, 6=off.
+)");
 
   py::class_<fstd::FstddReader>(m, "FstddReader")
       .def(py::init<const std::string &>(), py::arg("fstdd_file"),
-           R"(Initialize the reader with fstdd_file.
-            :param fstdd_file: the path to the fstdd file
-           )")
+           R"(Initialize the reader with an fstdd file.
+
+Args:
+    fstdd_file: Path to the fstdd file.
+)")
       .def(
           "__bool__",
           [](const fstd::FstddReader &self) -> bool {
             return static_cast<bool>(self);
           },
-          "Check if the fstdd reader is valid")
+          "Check if the fstdd reader is valid.")
       .def("is_valid", &fstd::FstddReader::operator bool,
            R"(Check if the fstdd reader is valid.
-            :return: True if the fstdd reader is valid, False otherwise
-           )")
+
+Returns:
+    bool: True if the reader is valid, False otherwise.
+)")
       .def(
           "get_meta",
           [](fstd::FstddReader &self) { return self.get_meta().dump(); },
           R"(Get the meta of the fstdd file.
-             :return: the meta json string
-            )")
+
+Returns:
+    str: Meta info as a JSON string.
+)")
       .def(
           "get_header",
           [](fstd::FstddReader &self) { return self.get_header().dump(); },
           R"(Get the header of the fstdd file.
-             :return: the header json string
-            )")
+
+Returns:
+    str: Header info as a JSON string.
+)")
       .def("contains", &fstd::FstddReader::contains, py::arg("key_path"),
-           R"(Check if the key_path is in the fstdd file.
-             :param key_path: the key_path to check
-             :return: True if the key_path is in the fstdd file, False otherwise
-            )")
+           R"(Check whether a key_path exists in the fstdd file.
+
+Args:
+    key_path: The key path to check.
+
+Returns:
+    bool: True if the key exists, False otherwise.
+)")
       .def(
           "extract_all_key",
           [](fstd::FstddReader &self) {
@@ -97,21 +114,31 @@ PYBIND11_MODULE(_native, m) {
             return all_keys;
           },
           R"(Extract all keys from the fstdd file.
-            :return: a list of keys
-           )")
+
+Returns:
+    list[str]: All keys stored in the fstdd archive.
+)")
       .def("extract", &fstd::FstddReader::extract, py::arg("key"),
            py::arg("dst_dir") = "data",
-           R"(Extract the file with key to dst_dir.
-            :param key: the key to extract
-            :param dst_dir: the path to the destination directory, default is data
-            :return: True if the extraction is successful, False otherwise
-           )")
+           R"(Extract a single file by key to the destination directory.
+
+Args:
+    key: The key of the file to extract.
+    dst_dir: Destination directory path. Defaults to ``"data"``.
+
+Returns:
+    bool: True if extraction succeeds, False otherwise.
+)")
       .def("extract_all", &fstd::FstddReader::extract_all,
            py::arg("dst_dir") = "data",
            R"(Extract all files in the fstdd file to dst_dir.
-            :param dst_dir: the path to the destination directory
-            :return: True if the extraction is successful, False otherwise
-           )");
+
+Args:
+    dst_dir: Destination directory path.
+
+Returns:
+    bool: True if extraction succeeds, False otherwise.
+)");
 
   py::class_<fstd::FstddWriter>(m, "FstddWriter")
       .def(py::init<>())
@@ -129,16 +156,20 @@ PYBIND11_MODULE(_native, m) {
           py::arg("meta_json_str"), py::arg("block_size_kb"),
           py::arg("compress_level"), py::arg("worker_num"),
           py::arg("opt_verbose"),
-          R"(Compile the fstd file from data path.
-            :param data_path: the path to the data file or directory
-            :param output_file: the path to the output fstd file
-            :param meta_json_str: the meta json string
-            :param block_size_kb: the block size in kb
-            :param compress_level: the compress level [0, 22]
-            :param worker_num: the number of threads to use for compile
-            :param opt_verbose: whether to print verbose info
-            :return: 0 if the compilation is successful, non-zero otherwise
-           )")
+          R"(Compile an fstdd file from a data file or directory.
+
+Args:
+    data_path: Path to the source data file or directory.
+    output_file: Path to the output fstdd file.
+    meta_json_str: Meta information as a JSON string.
+    block_size_kb: Block size in KB.
+    compress_level: Compression level, range [0, 22].
+    worker_num: Number of worker threads used for compilation.
+    opt_verbose: Whether to print verbose progress info.
+
+Returns:
+    int: 0 on success, non-zero error code otherwise.
+)")
       .def(
           "push_file_stream",
           [](fstd::FstddWriter &self, const std::string &file_path,
@@ -147,11 +178,15 @@ PYBIND11_MODULE(_native, m) {
             return self.push_file_stream(file_path, buf);
           },
           py::arg("file_path"), py::arg("data"),
-          R"(Push a file stream to the writer.
-            :param file_path: the path(key) to the file to push
-            :param data: the data of the file to push
-            :return: True if the push is successful, False otherwise
-           )")
+          R"(Push a file stream into the writer.
+
+Args:
+    file_path: Key path of the file to push.
+    data: Raw bytes content of the file.
+
+Returns:
+    bool: True if the push succeeds, False otherwise.
+)")
       .def(
           "compile_fstdd",
           [](fstd::FstddWriter &self, size_t file_stream_num,
@@ -170,62 +205,88 @@ PYBIND11_MODULE(_native, m) {
           py::arg("meta_json_str"), py::arg("block_size_kb"),
           py::arg("compress_level"), py::arg("worker_num"),
           py::arg("opt_verbose"),
-          R"(Compile the fstd file from pushed file streams.
-            :param file_stream_num: the number of file streams to compile
-            :param output_file: the path to the output fstd file
-            :param meta_json_str: the meta json string
-            :param block_size_kb: the block size in kb
-            :param compress_level: the compress level [0, 22]
-            :param worker_num: the number of threads to use for compile
-            :param opt_verbose: whether to print verbose info
-            :return: True if the compilation is successful, False otherwise
-           )");
+          R"(Compile an fstdd file from previously pushed file streams.
+
+Args:
+    file_stream_num: Number of pushed file streams to compile.
+    output_file: Path to the output fstdd file.
+    meta_json_str: Meta information as a JSON string.
+    block_size_kb: Block size in KB.
+    compress_level: Compression level, range [0, 22].
+    worker_num: Number of worker threads used for compilation.
+    opt_verbose: Whether to print verbose progress info.
+
+Returns:
+    bool: True if compilation succeeds, False otherwise.
+)");
 
   py::class_<fstd::FstdxReader>(m, "FstdxReader")
       .def(py::init<const std::string &>(), py::arg("fstdx_path"),
-           R"(Initialize the reader with fstdx_path.
-            :param fstdx_path: the path to the fstdx file
-           )")
+           R"(Initialize the reader with an fstdx dictionary file.
+
+Args:
+    fstdx_path: Path to the fstdx file.
+)")
       .def("__bool__", &fstd::FstdxReader::operator bool,
            R"(Check if the fstdx reader is valid.
-            :return: True if the fstdx reader is valid, False otherwise
-           )")
+
+Returns:
+    bool: True if the reader is valid, False otherwise.
+)")
       .def("is_valid", &fstd::FstdxReader::operator bool,
            R"(Check if the fstdx file is valid.
-            :return: True if the fstdx file is valid, False otherwise
-           )")
+
+Returns:
+    bool: True if the file is valid, False otherwise.
+)")
       .def(
           "get_meta",
           [](fstd::FstdxReader &self) { return self.get_meta().dump(); },
           R"(Get the meta of the fstdx file.
-             :return: the meta json string
-            )")
+
+Returns:
+    str: Meta info as a JSON string.
+)")
       .def(
           "get_header",
           [](fstd::FstdxReader &self) { return self.get_header().dump(); },
           R"(Get the header of the fstdx file.
-             :return: the header json string
-            )")
+
+Returns:
+    str: Header info as a JSON string.
+)")
       .def("get_key_size", &fstd::FstdxReader::get_key_size,
-           R"(Get the key size of the entry words.
-            :return: the key size of the entry words
-           )")
-      .def(
-          "get_fst_key_size", &fstd::FstdxReader::get_fst_key_size,
-          R"(Get the key size of the fst index. It's less or equal to the key size of the entry words because of duplicates.
-            :return: the key size of the fst index
-           )")
+           R"(Get the total key count of entry words.
+
+Returns:
+    int: Number of entry word keys.
+)")
+      .def("get_fst_key_size", &fstd::FstdxReader::get_fst_key_size,
+           R"(Get the key count of the FST index.
+
+The FST key count is less than or equal to the entry key size due to
+duplicate entries sharing the same key.
+
+Returns:
+    int: Number of unique keys in the FST index.
+)")
       .def(
           "extract_values",
           [](fstd::FstdxReader &self) { return self.extract_values(); },
           R"(Extract all values of the dictionary.
-            :return: the values of the dictionary
-           )")
+
+Returns:
+    list[str]: All entry values in the dictionary.
+)")
       .def("contains", &fstd::FstdxReader::contains, py::arg("word"),
-           R"(Check if the word is in the dictionary.
-         :param word: the word to check
-         :return: True if the word is in the dictionary, False otherwise
-        )")
+           R"(Check whether a word exists in the dictionary.
+
+Args:
+    word: The word to check.
+
+Returns:
+    bool: True if the word exists, False otherwise.
+)")
       .def(
           "exact_match_search",
           [](fstd::FstdxReader &self, const std::string &word) {
@@ -234,39 +295,54 @@ PYBIND11_MODULE(_native, m) {
             return result;
           },
           py::arg("word"),
-          R"(Search the exact match of the word in the dictionary.
-         :param word: the word to search
-         :return: the value of the word in the dictionary if the word is in
-         the dictionary, otherwise an empty vector
-        )")
+          R"(Perform an exact match search for the given word.
+
+Args:
+    word: The word to search.
+
+Returns:
+    list[str]: Matching entry values; empty if the word is not found.
+)")
       .def(
           "common_prefix_search",
           [](fstd::FstdxReader &self, const std::string &word) {
             return convert(self.common_prefix_search(word));
           },
           py::arg("word"),
-          R"(Search the common prefix of the word in the dictionary.
-          :param word: the word to search
-          :return: the common prefix of the word in the dictionary if the
-          word is in the dictionary, otherwise an empty vector
-         )")
+          R"(Perform a common prefix search for the given word.
+
+Args:
+    word: The word whose prefixes are searched.
+
+Returns:
+    list[str]: Words in the dictionary that are prefixes of the input word.
+)")
       .def("longest_prefix_len", &fstd::FstdxReader::longest_prefix_len,
            py::arg("word"),
-           R"(Get the longest prefix length of the word in the dictionary.
-            :param word: the word to search
-            :return: the longest prefix length of the word in the dictionary.
-        )")
+           R"(Get the length of the longest matching prefix in the dictionary.
+
+Args:
+    word: The word to search.
+
+Returns:
+    int: Length of the longest common prefix found.
+)")
       .def(
           "predictive_search",
           [](fstd::FstdxReader &self, const std::string &word) {
             return convert(self.predictive_search(word));
           },
           py::arg("word"),
-          R"(Search the predictive of the word as a prefix in the dictionary.
-          :param word: the word as a prefix to search
-          :return: the predictive of the word as a prefix in the dictionary if the
-          prefix is in the dictionary, otherwise an empty vector
-         )")
+          R"(Perform a predictive (prefix) search.
+
+Returns all words in the dictionary that start with the given prefix.
+
+Args:
+    word: The prefix to search.
+
+Returns:
+    list[str]: Words starting with the given prefix.
+)")
       .def(
           "edit_distance_search",
           [](fstd::FstdxReader &self, const std::string &word,
@@ -274,21 +350,32 @@ PYBIND11_MODULE(_native, m) {
             return convert(self.edit_distance_search(word, distance));
           },
           py::arg("word"), py::arg("distance") = 1,
-          R"(Search the edit distance of the word in the dictionary.
-                      :param word: the word to search
-                      :param distance: the edit distance to search
-                      :return: the words that have an edit distance less than equal to the distance from the word in the dictionary
-                     )")
+          R"(Perform an edit distance (fuzzy) search.
+
+Finds all words within the given Levenshtein distance from the input.
+
+Args:
+    word: The word to search.
+    distance: Maximum allowed edit distance. Defaults to 1.
+
+Returns:
+    list[str]: Words whose edit distance is less than or equal to ``distance``.
+)")
       .def(
           "suggest",
           [](fstd::FstdxReader &self, const std::string &word) {
             return convert(self.suggest(word));
           },
           py::arg("word"),
-          R"(Suggest the word in the dictionary.
-                      :param word: the word to suggest
-                      :return: the words and its similarity, the words are suggested according to similarity
-                     )")
+          R"(Get spelling suggestions for the given word.
+
+Args:
+    word: The word to get suggestions for.
+
+Returns:
+    list[tuple[float, str]]: Suggested words paired with their similarity
+        scores, sorted by similarity.
+)")
       .def(
           "regex_search",
           [](fstd::FstdxReader &self, const std::string &pattern,
@@ -301,39 +388,56 @@ PYBIND11_MODULE(_native, m) {
             }
           },
           py::arg("pattern"), py::arg("thread") = 1,
-          R"(Search the regex of the word in the dictionary.
-          :param pattern: the regex pattern to search
-          :param thread: the number of threads to use
-          :return: the words that match the regex pattern in the dictionary in tuple[0], the error message if any in tuple[1]
-         )")
+          R"(Perform a regular expression search on the dictionary.
+
+Args:
+    pattern: The regex pattern to match.
+    thread: Number of threads to use. Defaults to 1.
+
+Returns:
+    tuple[list[str], str]: Matched words at index 0, error message (if any)
+        at index 1.
+)")
       .def(
           "spellcheck_word",
           [](fstd::FstdxReader &self, const std::string &word, size_t limit) {
             return convert(self.spellcheck_word(word, limit));
           },
           py::arg("word"), py::arg("limit") = 10,
-          R"(Spellcheck the word in the dictionary.
-          :param word: the word to spellcheck
-          :param limit: the number of suggestions to return
-          :return: the spellchecked word and its similarity in the dictionary
-         )")
+          R"(Spell-check a word and return the best suggestions.
+
+Args:
+    word: The word to spell-check.
+    limit: Maximum number of suggestions to return. Defaults to 10.
+
+Returns:
+    list[tuple[float, str]]: Suggested words with similarity scores.
+)")
       .def("enumerate_print", &fstd::FstdxReader::enumerate_print,
-           R"(Print the dictionary to the console.
-         :return: None
-        )")
+           R"(Print the entire dictionary to the console.
+
+Returns:
+    None.
+)")
       .def("extract", &fstd::FstdxReader::extract, py::arg("output_file"),
-           R"(Extract the raw text of the dictionary to the output file.
-          :param output_file: the path to the output file
-          :return: True if the dictionary is extracted, False otherwise
-         )")
+           R"(Extract the raw text of the dictionary to a file.
+
+Args:
+    output_file: Path to the output text file.
+
+Returns:
+    bool: True if extraction succeeds, False otherwise.
+)")
       .def(
           "extract_keys",
           [](fstd::FstdxReader &self) -> std::vector<std::string> {
             return self.extract_keys();
           },
-          R"(Extract all keys of the dictionary.
-          :return: the keys of the dictionary
-         )");
+          R"(Extract all keys (headwords) of the dictionary.
+
+Returns:
+    list[str]: All keys in the dictionary.
+)");
 
   py::class_<fstd::FstdxWriter>(m, "FstdxWriter")
       .def(py::init<>())
@@ -353,18 +457,22 @@ PYBIND11_MODULE(_native, m) {
           py::arg("meta_json_str"), py::arg("block_size_kb"),
           py::arg("compress_level"), py::arg("zstd_dict_size_kb"),
           py::arg("worker_num"), py::arg("opt_sorted"), py::arg("opt_verbose"),
-          R"(Compile the fstdx file.
-            :param input_file: the path to the input fstdx file
-            :param output_file: the path to the output fstdx file
-            :param meta_json_str: the meta json string
-            :param block_size_kb: the block size in kb
-            :param compress_level: the compress level [0, 22]
-            :param zstd_dict_size_kb: the zstd dict size in kb
-            :param worker_num: the number of threads to use for compile
-            :param opt_sorted: whether to sort the values
-            :param opt_verbose: whether to print verbose info
-            :return: True if the compilation is successful, False otherwise
-           )")
+          R"(Compile an fstdx file from a plain text input file.
+
+Args:
+    input_file: Path to the source dictionary text file.
+    output_file: Path to the output fstdx file.
+    meta_json_str: Meta information as a JSON string.
+    block_size_kb: Block size in KB.
+    compress_level: Zstd compression level, range [0, 22].
+    zstd_dict_size_kb: Zstd dictionary size in KB.
+    worker_num: Number of worker threads used for compilation.
+    opt_sorted: Whether to sort values by key.
+    opt_verbose: Whether to print verbose progress info.
+
+Returns:
+    bool: True if compilation succeeds, False otherwise.
+)")
       .def(
           "compile_fstdx",
           [](fstd::FstdxWriter &self, const std::string &output_file,
@@ -386,45 +494,56 @@ PYBIND11_MODULE(_native, m) {
           py::arg("meta_json_str"), py::arg("block_size_kb"),
           py::arg("compress_level"), py::arg("zstd_dict_size_kb"),
           py::arg("worker_num"), py::arg("opt_sorted"), py::arg("opt_verbose"),
-          R"(Compile the fstdx file.
-              :param output_file: the path to the output fstdx file
-              :param keys: the keys to compile
-              :param values: the values to compile
-              :param meta_json_str: the meta json string
-              :param block_size_kb: the block size in kb
-              :param compress_level: the compress level [0, 22]
-              :param zstd_dict_size_kb: the zstd dict size in kb
-              :param worker_num: the number of threads to use for compile
-              :param opt_sorted: whether to sort the values
-              :param opt_verbose: whether to print verbose info
-              :return: True if the compilation is successful, False otherwise
-             )");
+          R"(Compile an fstdx file from in-memory key and value lists.
+
+Args:
+    output_file: Path to the output fstdx file.
+    keys: List of headword keys.
+    values: List of entry values, parallel to ``keys``.
+    meta_json_str: Meta information as a JSON string.
+    block_size_kb: Block size in KB.
+    compress_level: Zstd compression level, range [0, 22].
+    zstd_dict_size_kb: Zstd dictionary size in KB.
+    worker_num: Number of worker threads used for compilation.
+    opt_sorted: Whether to sort values by key.
+    opt_verbose: Whether to print verbose progress info.
+
+Returns:
+    bool: True if compilation succeeds, False otherwise.
+)");
 
   py::class_<fstd::FstdxSearcher>(m, "FstdxSearcher")
       .def(py::init<size_t>(), py::arg("worker_num") = 0,
-           R"(Initialize the searcher with worker_num.
-            :param worker_num: the number of threads to use for search
-            :default worker_num is 0, automatically use all the current threads
-           )")
+           R"(Initialize the searcher with a worker thread count.
+
+Args:
+    worker_num: Number of threads for parallel search. Defaults to 0,
+        which auto-detects available CPU threads.
+)")
       .def(py::init<const std::string &, size_t>(), py::arg("meta_json_path"),
            py::arg("worker_num") = 0,
-           R"(Initialize the searcher with meta_json_path and worker_num.
-              :param meta_json_path: the path to the meta json file
-              :param worker_num: the number of threads to use for search
-              :default worker_num is 0, automatically use all the current
-              threads
-             )")
+           R"(Initialize the searcher from a meta JSON file.
+
+Args:
+    meta_json_path: Path to the meta JSON file describing loaded dictionaries.
+    worker_num: Number of threads for parallel search. Defaults to 0,
+        which auto-detects available CPU threads.
+)")
       .def(
           "__bool__",
           [](fstd::FstdxSearcher &self) { return self.operator bool(); },
           R"(Check if the searcher is valid.
-            :return: True if the searcher is valid, False otherwise
-           )")
+
+Returns:
+    bool: True if the searcher is valid, False otherwise.
+)")
 
       .def("is_valid", &fstd::FstdxSearcher::operator bool,
            R"(Check if the searcher is valid.
-            :return: True if the searcher is valid, False otherwise
-           )")
+
+Returns:
+    bool: True if the searcher is valid, False otherwise.
+)")
       .def(
           "extract",
           [](fstd::FstdxSearcher &self, const std::string &name,
@@ -433,19 +552,29 @@ PYBIND11_MODULE(_native, m) {
             return self.extract(name, file_path, dst_dir);
           },
           py::arg("name"), py::arg("file_path"), py::arg("dst_dir") = "",
-          R"(Extract file_path from the fstdd files found in the same directory as the fstdx file.
-            :param name: the name of the dictionary
-            :param file_path: the path(key) to the file to extract
-            :param dst_dir: the destination directory to extract the files, if empty, will extract to the default directory
-            :return: True if the extraction is successful, False otherwise
-           )")
+          R"(Extract a file from the fstdd archive paired with an fstdx dictionary.
+
+The fstdd file is expected to reside in the same directory as the fstdx file.
+
+Args:
+    name: Name of the dictionary.
+    file_path: Key path of the file to extract inside the fstdd archive.
+    dst_dir: Destination directory. If empty, uses the default directory.
+
+Returns:
+    bool: True if extraction succeeds, False otherwise.
+)")
       .def("contains", &fstd::FstdxSearcher::contains, py::arg("word"),
            py::arg("names"),
-           R"(Check if the word is in the dictionary.
-            :param word: the word to check
-            :param names: the names of dictionaries to check
-            :return: True if the word is in the dictionaries, False otherwise
-           )")
+           R"(Check whether a word exists in the specified dictionaries.
+
+Args:
+    word: The word to check.
+    names: List of dictionary names to search.
+
+Returns:
+    bool: True if the word is found in any of the dictionaries.
+)")
       .def(
           "exact_match_search",
           [](fstd::FstdxSearcher &self, const std::string &word,
@@ -453,11 +582,15 @@ PYBIND11_MODULE(_native, m) {
             return self.exact_match_search(word, name);
           },
           py::arg("word"), py::arg("name"),
-          R"(Search the word in the dictionary.
-            :param word: the word to search
-            :param name: the name of the dictionary to search
-            :return: the results of the search
-           )")
+          R"(Perform an exact match search on a single dictionary.
+
+Args:
+    word: The word to search.
+    name: Name of the dictionary to search.
+
+Returns:
+    list[str]: Matching entry values.
+)")
       .def(
           "exact_match_search",
           [](fstd::FstdxSearcher &self, const std::string &word,
@@ -465,88 +598,135 @@ PYBIND11_MODULE(_native, m) {
             return self.exact_match_search(word, names);
           },
           py::arg("word"), py::arg("names"),
-          R"(Search the word in the dictionaries.
-            :param word: the word to search
-            :param names: the names of dictionaries to search
-            :return: the results of the search
-           )")
+          R"(Perform an exact match search across multiple dictionaries.
+
+Args:
+    word: The word to search.
+    names: List of dictionary names to search.
+
+Returns:
+    list[str]: Matching entry values from all specified dictionaries.
+)")
       .def("common_prefix_search", &fstd::FstdxSearcher::common_prefix_search,
            py::arg("word"), py::arg("names"),
-           R"(Search the common prefix of the word in the dictionaries.
-            :param word: the word to search
-            :param names: the names of dictionaries to search
-            :return: the results of the search
-           )")
-      .def("longest_prefix_len",
-           &fstd::FstdxSearcher::longest_prefix_len, py::arg("word"),
-           py::arg("names"),
-           R"(Search the longest common prefix of the word in the dictionaries.
-            :param word: the word to search
-            :param names: the names of dictionaries to search
-            :return: the length of the longest common prefix in the dictionaries.
-           )")
+           R"(Perform a common prefix search across multiple dictionaries.
+
+Args:
+    word: The word whose prefixes are searched.
+    names: List of dictionary names to search.
+
+Returns:
+    list[str]: Words that are prefixes of the input word.
+)")
+      .def("longest_prefix_len", &fstd::FstdxSearcher::longest_prefix_len,
+           py::arg("word"), py::arg("names"),
+           R"(Get the length of the longest matching prefix across dictionaries.
+
+Args:
+    word: The word to search.
+    names: List of dictionary names to search.
+
+Returns:
+    int: Length of the longest common prefix found.
+)")
       .def("edit_distance_search", &fstd::FstdxSearcher::edit_distance_search,
            py::arg("word"), py::arg("names"), py::arg("edit_distance") = 1,
-           R"(Search the word in the dictionaries with edit distance.
-            :param word: the word to search
-            :param names: the names of dictionaries to search
-            :param edit_distance: the maximum edit distance
-            :return: the results of the search
-           )")
+           R"(Perform an edit distance search across multiple dictionaries.
+
+Args:
+    word: The word to search.
+    names: List of dictionary names to search.
+    edit_distance: Maximum allowed edit distance. Defaults to 1.
+
+Returns:
+    list[str]: Matching words within the edit distance threshold.
+)")
       .def("predictive_search", &fstd::FstdxSearcher::predictive_search,
            py::arg("word"), py::arg("names"),
-           R"(Perform predictive search for the word in the dictionaries.
-            :param word: the word to search
-            :param names: the names of dictionaries to search
-            :return: the results of the search
-           )")
+           R"(Perform a predictive (prefix) search across multiple dictionaries.
+
+Args:
+    word: The prefix to search.
+    names: List of dictionary names to search.
+
+Returns:
+    list[str]: Words starting with the given prefix.
+)")
       .def("suggest", &fstd::FstdxSearcher::suggest, py::arg("word"),
            py::arg("names"),
-           R"(Provide suggestions for the word in the dictionaries.
-            :param word: the word to search
-            :param names: the names of dictionaries to search
-            :return: the suggested words
-           )")
+           R"(Get spelling suggestions across multiple dictionaries.
+
+Args:
+    word: The word to get suggestions for.
+    names: List of dictionary names to search.
+
+Returns:
+    list[tuple[float, str]]: Suggested words with similarity scores.
+)")
       .def("prefix_distance_search",
            &fstd::FstdxSearcher::prefix_distance_search, py::arg("word"),
            py::arg("names"), py::arg("max_distance") = 1,
-           R"(Search the word in the dictionaries with prefix distance.
-            :param word: the word to search
-            :param names: the names of dictionaries to search
-            :param max_distance: the maximum prefix distance
-            :return: the results of the search
-           )")
+           R"(Perform a prefix-distance search across multiple dictionaries.
+
+Args:
+    word: The word to search.
+    names: List of dictionary names to search.
+    max_distance: Maximum allowed prefix distance. Defaults to 1.
+
+Returns:
+    list[str]: Matching words within the prefix distance threshold.
+)")
       .def("regex_search", &fstd::FstdxSearcher::regex_search,
            py::arg("pattern"), py::arg("names"),
-           R"(Search the word in the dictionaries with regex.
-            :param pattern: the regex pattern to search
-            :param names: the names of dictionaries to search
-            :return: the results of the search
-           )")
+           R"(Perform a regex search across multiple dictionaries.
+
+Args:
+    pattern: The regex pattern to match.
+    names: List of dictionary names to search.
+
+Returns:
+    list[str]: Words matching the regex pattern.
+)")
       .def("insert_prior_suffix", &fstd::FstdxSearcher::insert_prior_suffix,
            py::arg("sufs"),
-           R"(Insert prior suffixes for the dictionaries.
-            :param sufs: the prior suffixes to insert
-            :return: None
-           )")
+           R"(Insert prior suffix rules into the searcher.
+
+Args:
+    sufs: List of prior suffixes to insert.
+
+Returns:
+    None.
+)")
       .def("insert_if_not_exists", &fstd::FstdxSearcher::insert_if_not_exists,
            py::arg("name"), py::arg("fstdx_path"),
-           R"(Insert the fstdx file if it does not exist.
-            :param name: the name of the dictionary
-            :param fstdx_path: the path to the fstdx file
-            :return: None
-           )")
+           R"(Insert an fstdx dictionary only if it does not already exist.
+
+Args:
+    name: Name of the dictionary.
+    fstdx_path: Path to the fstdx file.
+
+Returns:
+    None.
+)")
       .def("insert", &fstd::FstdxSearcher::insert, py::arg("name"),
            py::arg("fstdx_path"),
-           R"(Insert the fstdx file.
-            :param name: the name of the dictionary
-            :param fstdx_path: the path to the fstdx file
-            :return: True if the insertion is successful, False otherwise
-           )")
+           R"(Insert an fstdx dictionary into the searcher.
+
+Args:
+    name: Name of the dictionary.
+    fstdx_path: Path to the fstdx file.
+
+Returns:
+    bool: True if insertion succeeds, False otherwise.
+)")
       .def("save_to_disk", &fstd::FstdxSearcher::save_to_disk,
            py::arg("meta_json_path"),
-           R"(Save the meta json to disk.
-            :param meta_json_path: the path to save the meta json
-            :return: True if the save is successful, False otherwise
-           )");
+           R"(Persist the current meta information to a JSON file on disk.
+
+Args:
+    meta_json_path: Path where the meta JSON file will be saved.
+
+Returns:
+    bool: True if saving succeeds, False otherwise.
+)");
 }

@@ -427,7 +427,9 @@ std::vector<std::string>
 FstdxSearcher::find_fstdd(const std::string &target_dir) const {
   std::vector<std::string> fstdd_files;
   try {
-    for (const auto &entry : fs::directory_iterator(target_dir)) {
+    std::filesystem::path path_obj(
+        reinterpret_cast<const char8_t *>(target_dir.c_str()));
+    for (const auto &entry : fs::directory_iterator(path_obj)) {
       if (entry.is_regular_file()) {
         const fs::path &file_path = entry.path();
         if (file_path.extension() == ".fstdd") {
