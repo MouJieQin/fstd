@@ -41,7 +41,7 @@ jobs:
               uses: docker/setup-qemu-action@v3
 
             - name: Build wheels via cibuildwheel
-              uses: pypa/cibuildwheel@latest
+              uses: pypa/cibuildwheel@v4.1.0
               env:
                   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
                   CIBW_ARCHS: ${{ matrix.arch }}
