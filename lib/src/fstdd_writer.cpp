@@ -4,6 +4,7 @@
 
 namespace fstd {
 using namespace std;
+namespace fs = std::filesystem;
 
 int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
                                const std::string &output_file,
@@ -33,8 +34,7 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
                                const nlohmann::json &meta, size_t block_size_kb,
                                size_t compress_level, size_t worker_num,
                                bool opt_verbose, size_t file_stream_num) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(output_file.c_str()));
+  fs::path path_obj(u8_path(output_file));
   ofstream fout(path_obj, ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", path_obj.string());

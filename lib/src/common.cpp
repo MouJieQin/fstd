@@ -4,6 +4,7 @@ namespace fstd {
 
 using namespace std;
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 HeaderSizeRecord::HeaderSizeRecord(uint32_t original_size,
                                    uint32_t compressed_size)
@@ -46,8 +47,7 @@ bool ends_with(std::string const &value, std::string const &ending) {
 }
 
 bool read_file(const std::string &file_path, std::string &content) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(file_path.c_str()));
+  fs::path path_obj(u8_path(file_path));
   std::ifstream file_stream{path_obj};
   if (!file_stream) { return false; }
   content = std::string((std::istreambuf_iterator<char>(file_stream)),

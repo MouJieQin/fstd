@@ -26,8 +26,7 @@ const DdJsonHeader &FstddReader::get_header() const { return md_json_header_; }
 const json &FstddReader::get_meta() const { return md_json_header_["meta"]; }
 
 bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(fstdd_path.c_str()));
+  fs::path path_obj(u8_path(fstdd_path));
   std::ifstream ins(path_obj, std::ios::binary | std::ios::ate);
   if (!ins) {
     LOG_ERROR("Cannot open the file: {}", path_obj.string());
@@ -84,7 +83,7 @@ bool FstddReader::extract_all_key(std::vector<std::string> &all_keys) const {
 }
 
 bool FstddReader::check_dst_dir(const std::string &dst_dir_str) const {
-  fs::path dst_dir(dst_dir_str);
+  fs::path dst_dir(u8_path(dst_dir_str));
   if (fs::exists(dst_dir)) {
     if (!fs::is_directory(dst_dir)) {
       LOG_ERROR("Destination must be a directory: {}", dst_dir_str);
@@ -111,7 +110,8 @@ bool FstddReader::extract_all(const std::string &dst_dir_str) const {
   for (size_t i = 0; i < keys_buff.size(); ++i) {
     if (keys_buff[i] == '\0') {
       string key(keys_buff.data() + start_idx, i - start_idx);
-      fs::path output_path = fs::absolute(dst_dir_str).string() + "/" + key;
+      fs::path output_path =
+          u8_path(fs::absolute(u8_path(dst_dir_str)).string() + "/" + key);
       if (!extract_impl(key, output_path.string())) { return false; }
       refresh_bar(file_idx);
       file_idx += 1;
@@ -124,14 +124,14 @@ bool FstddReader::extract_all(const std::string &dst_dir_str) const {
 bool FstddReader::extract(const std::string &key,
                           const std::string &dst_dir_str) const {
   if (!check_dst_dir(dst_dir_str)) { return false; }
-  fs::path output_path = fs::absolute(dst_dir_str).string() + "/" + key;
+  fs::path output_path =
+      u8_path(fs::absolute(u8_path(dst_dir_str)).string() + "/" + key);
   return extract_impl(key, output_path.string());
 }
 
 bool FstddReader::extract_impl(const string &key,
                                const string &output_path) const {
-  std::filesystem::path fstdd_path_obj(
-      reinterpret_cast<const char8_t *>(fstdd_path_.c_str()));
+  fs::path fstdd_path_obj(u8_path(fstdd_path_));
   std::ifstream ins(fstdd_path_obj, std::ios::binary);
   if (!ins) {
     LOG_ERROR("Cannot open the file: {}", fstdd_path_obj.string());
@@ -156,15 +156,14 @@ bool FstddReader::extract_impl(const string &key,
 
   vector<char> comp_blocks;
   size_t step = 4;
-  fs::path parent_path = fs::path(output_path).parent_path();
+  fs::path parent_path = u8_path(output_path).parent_path();
   if (!fs::exists(parent_path)) {
     if (!fs::create_directories(parent_path)) {
       LOG_ERROR("Cannot create directories: {}", parent_path.string());
       return false;
     }
   }
-  std::filesystem::path output_path_obj(
-      reinterpret_cast<const char8_t *>(output_path.c_str()));
+  fs::path output_path_obj(u8_path(output_path));
   ofstream out(output_path_obj, std::ios::binary);
   if (!out) {
     LOG_ERROR("Cannot open the file: {}", output_path_obj.string());

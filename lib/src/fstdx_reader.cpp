@@ -5,6 +5,7 @@ namespace fstd {
 using namespace std;
 using namespace indicators;
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 FstdxHashReader::FstdxHashReader(const std::string &fstdx_path)
     : fstdx_path_(fstdx_path), key_size_(0), ddict_ptr_{nullptr, nullptr} {
@@ -30,8 +31,7 @@ const DxJsonHeader &FstdxHashReader::get_header() const {
 }
 
 bool FstdxHashReader::parse_fstdx(const std::string &fstdx_path) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(fstdx_path.c_str()));
+  fs::path path_obj(u8_path(fstdx_path));
   std::ifstream ins(path_obj, std::ios::binary | std::ios::ate);
   if (!ins) {
     LOG_ERROR("Cannot open the file: {}", path_obj.string());
@@ -131,8 +131,7 @@ bool FstdxHashReader::exact_match_search_by_index_code(
 // }
 
 std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(fstdx_path_.c_str()));
+  fs::path path_obj(u8_path(fstdx_path_));
   std::ifstream comp_in(path_obj, std::ios::binary);
   if (!comp_in) {
     LOG_ERROR("Couldn't open the file: {}", path_obj.string());
@@ -178,8 +177,7 @@ std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
 std::vector<std::string> FstdxHashReader::extract_comp_blocks(
     bool raw_data, std::function<void(size_t)> refresh_bar) const {
   std::vector<std::string> result;
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(fstdx_path_.c_str()));
+  fs::path path_obj(u8_path(fstdx_path_));
   std::ifstream comp_in(path_obj, std::ios::binary);
   if (!comp_in) {
     LOG_ERROR("Couldn't open file: {}", path_obj.string());
@@ -339,8 +337,7 @@ FstdxReader::enumerate(std::function<void(const size_t)> refresh_bar) const {
 }
 
 bool FstdxReader::extract(const std::string &output_file) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(output_file.c_str()));
+  fs::path path_obj(u8_path(output_file));
   ofstream fout(path_obj, ios_base::out);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", path_obj.string());

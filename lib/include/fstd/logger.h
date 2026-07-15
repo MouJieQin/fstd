@@ -34,20 +34,23 @@ get_app_log_dir(const std::string &app_name = "Fstd") {
   // Windows: %LOCALAPPDATA%\app_name\Logs
   const char *local_appdata = std::getenv("LOCALAPPDATA");
   if (local_appdata) {
-    log_dir = std::filesystem::path(local_appdata) / app_name / "Logs";
+    log_dir = std::filesystem::path(
+                  reinterpret_cast<const char8_t *>(local_appdata)) /
+              app_name / "Logs";
   }
 #elif __APPLE__
   // macOS: ~/Library/Logs/app_name
   const char *home = std::getenv("HOME");
   if (home) {
-    log_dir = std::filesystem::path(home) / "Library" / "Logs" / app_name;
+    log_dir = std::filesystem::path(reinterpret_cast<const char8_t *>(home)) /
+              "Library" / "Logs" / app_name;
   }
 #elif __linux__
   // Linux: ~/.local/share/app_name/logs
   const char *home = std::getenv("HOME");
   if (home) {
-    log_dir =
-        std::filesystem::path(home) / ".local" / "share" / app_name / "logs";
+    log_dir = std::filesystem::path(reinterpret_cast<const char8_t *>(home)) /
+              ".local" / "share" / app_name / "logs";
   }
 #endif
   // Fallback: logs directory in current directory

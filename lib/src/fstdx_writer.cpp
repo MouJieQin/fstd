@@ -11,6 +11,7 @@ using namespace fst;
 using namespace std;
 using namespace indicators;
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 namespace fstd {
 
@@ -21,8 +22,7 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
                                uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
                                bool opt_sorted, bool opt_verbose) const {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(output_file.c_str()));
+  fs::path path_obj(u8_path(output_file));
   ofstream fout(path_obj, ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", path_obj.string());
@@ -82,15 +82,13 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
                                uint16_t block_size_kb, uint8_t compress_level,
                                uint16_t zstd_dict_size_kb, size_t worker_num,
                                bool opt_sorted, bool opt_verbose) const {
-  std::filesystem::path out_path_obj(
-      reinterpret_cast<const char8_t *>(output_file.c_str()));
+  fs::path out_path_obj(u8_path(output_file));
   ofstream fout(out_path_obj, ios_base::binary);
   if (!fout) {
     LOG_ERROR("Failed to open file {} for writing.", out_path_obj.string());
     return 1;
   }
-  std::filesystem::path in_path_obj(
-      reinterpret_cast<const char8_t *>(input_file.c_str()));
+  fs::path in_path_obj(u8_path(input_file));
   ifstream fin(in_path_obj, ios_base::binary);
   if (!fin) {
     LOG_ERROR("Failed to open file {} for reading.", in_path_obj.string());
@@ -335,8 +333,7 @@ bool FstdxWriter::parse_raw_txt(std::vector<unique_ptr<string>> &raw_lines,
 bool FstdxWriter::load_file(const std::string &file_path,
                             std::vector<std::string> &keys,
                             std::vector<std::string> &values) const {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(file_path.c_str()));
+  fs::path path_obj(u8_path(file_path));
   ifstream fin(path_obj, ios_base::in);
   if (!fin) {
     LOG_ERROR("Failed to open file {} for reading.", path_obj.string());

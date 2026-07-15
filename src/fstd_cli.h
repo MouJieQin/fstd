@@ -394,8 +394,7 @@ private:
       return 0;
     }
     if (longest_prefix_) {
-      size_t len =
-          searcher.longest_prefix_len(search_key_, dict_files_);
+      size_t len = searcher.longest_prefix_len(search_key_, dict_files_);
       if (len == 0) {
         LOG_INFO("no match found");
         return 1;
@@ -546,7 +545,7 @@ private:
           read_file(dict_description_, content) ? content : dict_description_;
     }
 
-    if (fs::is_directory(write_input_path_)) {
+    if (fs::is_directory(u8_path(write_input_path_))) {
       if (output_path_.empty()) output_path_ = write_input_path_ + ".fstdd";
       print_write_config();
       FstddWriter writer;
@@ -557,10 +556,10 @@ private:
         LOG_ERROR("Compilation failed");
         return ret;
       }
-    } else if (fs::is_regular_file(write_input_path_)) {
+    } else if (fs::is_regular_file(u8_path(write_input_path_))) {
       if (output_path_.empty())
         output_path_ =
-            fs::path(write_input_path_).replace_extension("fstdx").string();
+            u8_path(write_input_path_).replace_extension("fstdx").string();
       print_write_config();
       FstdxWriter writer;
       int ret =
@@ -589,7 +588,7 @@ private:
       FstdxReader reader(path);
       if (!reader) { return 1; }
       string out = extract_output_path_.empty()
-                       ? fs::path(path).replace_extension("txt").string()
+                       ? u8_path(path).replace_extension("txt").string()
                        : extract_output_path_;
       return reader.extract(out) ? 0 : 1;
     }

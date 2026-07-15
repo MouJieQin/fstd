@@ -65,7 +65,9 @@ protected:
   }
 
   static void SetUpTestSuite() {
-    if (!fs::exists(cache_dir)) { fs::create_directories(cache_dir); }
+    if (!fs::exists(u8_path(cache_dir))) {
+      fs::create_directories(u8_path(cache_dir));
+    }
   }
 };
 
@@ -73,12 +75,9 @@ class TestFstdd : public ::testing::Test {
 protected:
   bool are_files_equal_fast(const std::string &file1,
                             const std::string &file2) {
-    std::filesystem::path path_obj1(
-        reinterpret_cast<const char8_t *>(file1.c_str()));
+    fs::path path_obj1(u8_path(file1));
     std::ifstream f1(path_obj1, std::ios::binary | std::ios::ate);
-    std::filesystem::path path_obj2(
-        reinterpret_cast<const char8_t *>(file2.c_str()));
-
+    fs::path path_obj2(u8_path(file2));
     std::ifstream f2(path_obj2, std::ios::binary | std::ios::ate);
 
     if (!f1 || !f2) {
@@ -174,8 +173,8 @@ TEST_F(TestFstdd, ReadTest) {
     const size_t dir_idx = files_paths[i].second;
     const string extract_dir = cache_dir + "/extract";
     ASSERT_TRUE(reader.extract(file_path, extract_dir));
-    fs::path original_path = fs::path(data_paths[dir_idx]) / file_path;
-    fs::path extract_path = fs::path(extract_dir) / file_path;
+    fs::path original_path = u8_path(data_paths[dir_idx]) / u8_path(file_path);
+    fs::path extract_path = u8_path(extract_dir) / u8_path(file_path);
     ASSERT_TRUE(
         are_files_equal_fast(original_path.string(), extract_path.string()));
   }
@@ -191,8 +190,8 @@ TEST_F(TestFstdd, ExtractAllTest) {
   for (size_t i = 0; i < files_paths.size(); ++i) {
     const string &file_path = files_paths[i].first;
     const size_t dir_idx = files_paths[i].second;
-    fs::path original_path = fs::path(data_paths[dir_idx]) / file_path;
-    fs::path extract_path = fs::path(extract_dir) / file_path;
+    fs::path original_path = u8_path(data_paths[dir_idx]) / u8_path(file_path);
+    fs::path extract_path = u8_path(extract_dir) / u8_path(file_path);
     ASSERT_TRUE(
         are_files_equal_fast(original_path.string(), extract_path.string()));
   }

@@ -1,4 +1,3 @@
-#include <filesystem>
 #include <unordered_set>
 
 #include <fstd/fstdx_searcher.h>
@@ -50,7 +49,7 @@ bool FstdxSearcher::extract(const std::string &name,
   if (iter == fstdx_obj.end()) { return false; }
 
   fs::path default_dst_dir =
-      fs::absolute(fs::path(iter->get<std::string>())).parent_path() / "data";
+      fs::absolute(u8_path(iter->get<std::string>())).parent_path() / "data";
   return extract(name, file_path, default_dst_dir.string());
 }
 
@@ -411,10 +410,10 @@ bool FstdxSearcher::insert(const std::string &name,
     return false;
   }
   fstdxes_[name] = ptr;
-  meta_json_["fstdx"][name] = fs::absolute(fstdx_path).string();
+  meta_json_["fstdx"][name] = fs::absolute(u8_path(fstdx_path)).string();
 
   const vector<string> fstdds =
-      find_fstdd(fs::absolute(fs::path(fstdx_path)).parent_path().string());
+      find_fstdd(fs::absolute(u8_path(fstdx_path)).parent_path().string());
   fstdds_[name] = std::vector<std::shared_ptr<FstddReader>>();
   for (const string &fstdd : fstdds) {
     auto ptr = std::make_shared<FstddReader>(fstdd);
@@ -427,9 +426,7 @@ std::vector<std::string>
 FstdxSearcher::find_fstdd(const std::string &target_dir) const {
   std::vector<std::string> fstdd_files;
   try {
-    std::filesystem::path path_obj(
-        reinterpret_cast<const char8_t *>(target_dir.c_str()));
-    for (const auto &entry : fs::directory_iterator(path_obj)) {
+    for (const auto &entry : fs::directory_iterator(u8_path(target_dir))) {
       if (entry.is_regular_file()) {
         const fs::path &file_path = entry.path();
         if (file_path.extension() == ".fstdd") {
@@ -445,8 +442,7 @@ FstdxSearcher::find_fstdd(const std::string &target_dir) const {
 }
 
 bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(meta_json_path.c_str()));
+  fs::path path_obj(u8_path(meta_json_path));
   ofstream ofs(path_obj, ios::out);
   if (!ofs) {
     LOG_ERROR("Cannot open the file: {}", path_obj.string());
@@ -461,8 +457,7 @@ bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
 }
 
 bool FstdxSearcher::load_file(const std::string &meta_json_path) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(meta_json_path.c_str()));
+  fs::path path_obj(u8_path(meta_json_path));
   ifstream ifs(path_obj);
   if (!ifs) {
     LOG_ERROR("Failed to open file {} for reading.", path_obj.string());

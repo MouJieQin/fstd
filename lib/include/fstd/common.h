@@ -215,6 +215,14 @@ struct FileStream {
   std::istringstream iss;
 };
 
+inline std::filesystem::path u8_path(const std::string &p) {
+  return std::filesystem::path(reinterpret_cast<const char8_t *>(p.c_str()));
+}
+
+inline std::filesystem::path u8_path(const char *p) {
+  return std::filesystem::path(reinterpret_cast<const char8_t *>(p));
+}
+
 std::string get_current_date();
 
 std::string lf_to_crlf(const char *src, size_t n);
@@ -276,8 +284,7 @@ bool decompress(std::istream &ins, const std::string &block_name,
 template <typename T>
 bool decompress(const std::string &file_path, const std::string &block_name,
                 const nlohmann::json &json_header_, std::vector<T> &con) {
-  std::filesystem::path path_obj(
-      reinterpret_cast<const char8_t *>(file_path.c_str()));
+  std::filesystem::path path_obj(u8_path(file_path));
   std::ifstream in(path_obj, std::ios::binary);
   if (!in) {
     LOG_ERROR("Cannot open the file: {}", path_obj.string());

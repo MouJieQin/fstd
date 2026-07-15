@@ -1,7 +1,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -87,11 +86,10 @@ FstddCompressor::recursive_directory(
   std::vector<std::pair<std::string, size_t>> files_paths;
   size_t count = 0;
   for (size_t i = 0; i < data_paths.size(); ++i) {
-    const string &data_path = data_paths[i];
-    for (const auto &entry : fs::recursive_directory_iterator(data_path)) {
+    fs::path path_obj = u8_path(data_paths[i]);
+    for (const auto &entry : fs::recursive_directory_iterator(path_obj)) {
       if (!entry.is_regular_file()) { continue; }
-      std::string file =
-          std::filesystem::relative(entry.path(), data_path).generic_string();
+      std::string file = fs::relative(entry.path(), path_obj).generic_string();
       if (opt_verbose) {
         std::cout << "collect file: " << file << "\n";
       } else {
@@ -214,7 +212,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
     for (size_t i = 0; i < files_paths.size(); ++i) {
       string &key = files_paths[i].first;
       fs::path file_path =
-          fs::path(data_paths[files_paths[i].second]) / fs::path(key);
+          u8_path(data_paths[files_paths[i].second]) / u8_path(key);
       ifstream ifs(file_path, ios::binary);
       if (!ifs) {
         LOG_ERROR("Failed to open file: {}", file_path.string());
