@@ -27,6 +27,9 @@ public:
   bool extract(const std::string &key,
                const std::string &dst_dir = "data") const;
 
+  bool extract_if_exists(const std::string &key,
+                         const std::string &dst_dir_str = "data") const;
+
   bool extract_all(const std::string &dst_dir = "data") const;
 
   const DdJsonHeader &get_header() const;
@@ -38,7 +41,8 @@ private:
 
   bool check_dst_dir(const std::string &dst_dir_str) const;
 
-  bool extract_impl(const std::string &key, const std::string &dst_dir) const;
+  bool extract_impl(const std::string &key, const std::string &dst_dir,
+                    bool log_err_not_found = true) const;
 
 private:
   const std::string fstdd_path_;

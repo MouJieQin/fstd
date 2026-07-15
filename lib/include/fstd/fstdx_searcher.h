@@ -27,6 +27,12 @@ public:
 
   bool extract(const std::string &name, const std::string &file_path) const;
 
+  bool extract_if_exists(const std::string &name, const std::string &file_path,
+                         const std::string &dst_dir) const;
+
+  bool contains_file(const std::string &key_path,
+                     const std::string &name) const;
+
   bool contains(std::string_view word,
                 const std::vector<std::string> &names) const;
 
@@ -71,6 +77,8 @@ public:
                             const std::string &fstdx_path);
 
   bool insert(const std::string &name, const std::string &fstdx_path);
+
+  void erase(const std::string &name);
 
   bool save_to_disk(const std::string &meta_json_path);
 

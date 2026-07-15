@@ -544,6 +544,23 @@ Returns:
 Returns:
     bool: True if the searcher is valid, False otherwise.
 )")
+
+      .def(
+          "extract_if_exists", &fstd::FstdxSearcher::extract_if_exists,
+          py::arg("name"), py::arg("file_path"), py::arg("dst_dir"),
+          R"(Extract a file if exists from the fstdd archive paired with an fstdx dictionary.
+
+The fstdd file is expected to reside in the same directory as the fstdx file.
+
+Args:
+    name: Name of the dictionary.
+    file_path: Key path of the file to extract inside the fstdd archive.
+    dst_dir: Destination directory.
+
+Returns:
+    bool: True if extraction succeeds, False otherwise.
+)")
+
       .def(
           "extract",
           [](fstd::FstdxSearcher &self, const std::string &name,
@@ -564,6 +581,20 @@ Args:
 Returns:
     bool: True if extraction succeeds, False otherwise.
 )")
+
+      .def(
+          "contains_file", &fstd::FstdxSearcher::contains, py::arg("key_path"),
+          py::arg("name"),
+          R"(Check whether a file exists in the fstdd archives paired with an fstdx dictionary.
+
+Args:
+    key_path: The path as a key to check.
+    name: Name of the dictionary.
+
+Returns:
+    bool: True if the file is found in any of the fstdd archives.
+)")
+
       .def("contains", &fstd::FstdxSearcher::contains, py::arg("word"),
            py::arg("names"),
            R"(Check whether a word exists in the specified dictionaries.
@@ -718,6 +749,17 @@ Args:
 
 Returns:
     bool: True if insertion succeeds, False otherwise.
+)")
+
+      .def(
+          "erase", &fstd::FstdxSearcher::erase, py::arg("name"),
+          R"(Erase an fstdx dictionary and the corresponding fstdd archives from the searcher.
+
+Args:
+    name: Name of the dictionary.
+    
+Returns:
+    None.
 )")
       .def("save_to_disk", &fstd::FstdxSearcher::save_to_disk,
            py::arg("meta_json_path"),

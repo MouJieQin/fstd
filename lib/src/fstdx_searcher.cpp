@@ -53,6 +53,27 @@ bool FstdxSearcher::extract(const std::string &name,
   return extract(name, file_path, default_dst_dir.string());
 }
 
+bool FstdxSearcher::extract_if_exists(const std::string &name,
+                                      const std::string &file_path,
+                                      const std::string &dst_dir) const {
+  auto iter = fstdds_.find(name);
+  if (iter == fstdds_.end()) { return false; }
+  for (auto &ptr : iter->second) {
+    if (ptr->extract_if_exists(file_path, dst_dir)) { return true; }
+  }
+  return false;
+}
+
+bool FstdxSearcher::contains_file(const std::string &key_path,
+                                  const std::string &name) const {
+  auto iter = fstdds_.find(name);
+  if (iter == fstdds_.end()) { return false; }
+  for (auto &ptr : iter->second) {
+    if (ptr->contains(key_path)) { return true; }
+  }
+  return false;
+}
+
 bool FstdxSearcher::contains(std::string_view word,
                              const std::vector<std::string> &names) const {
   for (const string &name : names) {
@@ -420,6 +441,12 @@ bool FstdxSearcher::insert(const std::string &name,
     if (*(ptr)) { fstdds_[name].push_back(ptr); }
   }
   return true;
+}
+
+void FstdxSearcher::erase(const std::string &name) {
+  fstdxes_.erase(name);
+  fstdds_.erase(name);
+  meta_json_["fstdx"].erase(name);
 }
 
 std::vector<std::string>

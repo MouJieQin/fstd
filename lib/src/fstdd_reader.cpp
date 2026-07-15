@@ -86,12 +86,13 @@ bool FstddReader::check_dst_dir(const std::string &dst_dir_str) const {
   fs::path dst_dir(u8_path(dst_dir_str));
   if (fs::exists(dst_dir)) {
     if (!fs::is_directory(dst_dir)) {
-      LOG_ERROR("Destination must be a directory: {}", dst_dir_str);
+      LOG_ERROR("Destination must be a directory: {}", dst_dir.string());
       return false;
     }
   } else {
     if (!fs::create_directories(dst_dir)) {
-      LOG_ERROR("Cannot create the destination directory: {}", dst_dir_str);
+      LOG_ERROR("Cannot create the destination directory: {}",
+                dst_dir.string());
       return false;
     }
   }
@@ -129,8 +130,16 @@ bool FstddReader::extract(const std::string &key,
   return extract_impl(key, output_path.string());
 }
 
-bool FstddReader::extract_impl(const string &key,
-                               const string &output_path) const {
+bool FstddReader::extract_if_exists(const std::string &key,
+                                    const std::string &dst_dir_str) const {
+  if (!check_dst_dir(dst_dir_str)) { return false; }
+  fs::path output_path =
+      u8_path(fs::absolute(u8_path(dst_dir_str)).string() + "/" + key);
+  return extract_impl(key, output_path.string(), false);
+}
+
+bool FstddReader::extract_impl(const string &key, const string &output_path,
+                               bool log_err_not_found) const {
   fs::path fstdd_path_obj(u8_path(fstdd_path_));
   std::ifstream ins(fstdd_path_obj, std::ios::binary);
   if (!ins) {
@@ -141,7 +150,9 @@ bool FstddReader::extract_impl(const string &key,
   ValueBlockPosIndex vbp_idx;
   if (!read_hash_index(ins, key, vbp_idx, dup_idxes_, bucket_size_,
                        hash_bucket_offset_, hash_index_offset_)) {
-    LOG_ERROR("Not found the key: [{}] in {}", key, fstdd_path_);
+    if (log_err_not_found) {
+      LOG_ERROR("Not found the key: [{}] in {}", key, fstdd_path_);
+    }
     return false;
   }
   uint32_t start_index = vbp_idx.get_start_index();
