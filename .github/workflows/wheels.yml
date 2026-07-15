@@ -40,7 +40,7 @@ jobs:
               uses: docker/setup-qemu-action@v3
 
             - name: Build wheels via cibuildwheel
-              uses: pypa/cibuildwheel@v2.22.0
+              uses: pypa/cibuildwheel@latest
               env:
                   CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
                   CIBW_ARCHS: ${{ matrix.arch }}
@@ -51,7 +51,6 @@ jobs:
                   # 2. FORCE MACOS TARGET
                   MACOSX_DEPLOYMENT_TARGET: "11.0"
 
-                  # CRITICAL FIX FOR PYTHON 3.14 WHEELS:
                   # Force cibuildwheel to allow compilation against unreleased/pre-release Python versions
                   CIBW_PRERELEASE_PYTHONS: "True"
 
