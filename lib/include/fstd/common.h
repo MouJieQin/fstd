@@ -215,6 +215,20 @@ struct FileStream {
   std::istringstream iss;
 };
 
+/// Convert path to UTF-8 string (safe on all platforms)
+inline std::string to_utf8(const std::filesystem::path &path_) {
+  auto u8str = path_.u8string();
+  return std::string(reinterpret_cast<const char *>(u8str.data()),
+                     u8str.size());
+}
+
+inline std::string to_generic_utf8(const std::filesystem::path &path_) {
+  auto u8str = path_.generic_u8string();
+  return std::string(reinterpret_cast<const char *>(u8str.data()),
+                     u8str.size());
+}
+
+/// Construct path from UTF-8 string
 inline std::filesystem::path u8_path(const std::string &p) {
   return std::filesystem::path(reinterpret_cast<const char8_t *>(p.c_str()));
 }
@@ -287,7 +301,7 @@ bool decompress(const std::string &file_path, const std::string &block_name,
   std::filesystem::path path_obj(u8_path(file_path));
   std::ifstream in(path_obj, std::ios::binary);
   if (!in) {
-    LOG_ERROR("Cannot open the file: {}", path_obj.string());
+    LOG_ERROR("Cannot open the file: {}", to_utf8(path_obj));
     return false;
   }
   return decompress(in, block_name, json_header_, con);

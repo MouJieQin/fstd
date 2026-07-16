@@ -559,7 +559,7 @@ private:
     } else if (fs::is_regular_file(u8_path(write_input_path_))) {
       if (output_path_.empty())
         output_path_ =
-            u8_path(write_input_path_).replace_extension("fstdx").string();
+            to_utf8(u8_path(write_input_path_).replace_extension("fstdx"));
       print_write_config();
       FstdxWriter writer;
       int ret =
@@ -588,7 +588,7 @@ private:
       FstdxReader reader(path);
       if (!reader) { return 1; }
       string out = extract_output_path_.empty()
-                       ? u8_path(path).replace_extension("txt").string()
+                       ? to_utf8(u8_path(path).replace_extension("txt"))
                        : extract_output_path_;
       return reader.extract(out) ? 0 : 1;
     }

@@ -176,7 +176,7 @@ TEST_F(TestFstdd, ReadTest) {
     fs::path original_path = u8_path(data_paths[dir_idx]) / u8_path(file_path);
     fs::path extract_path = u8_path(extract_dir) / u8_path(file_path);
     ASSERT_TRUE(
-        are_files_equal_fast(original_path.string(), extract_path.string()));
+        are_files_equal_fast(to_utf8(original_path), to_utf8(extract_path)));
   }
 }
 
@@ -193,6 +193,6 @@ TEST_F(TestFstdd, ExtractAllTest) {
     fs::path original_path = u8_path(data_paths[dir_idx]) / u8_path(file_path);
     fs::path extract_path = u8_path(extract_dir) / u8_path(file_path);
     ASSERT_TRUE(
-        are_files_equal_fast(original_path.string(), extract_path.string()));
+        are_files_equal_fast(to_utf8(original_path), to_utf8(extract_path)));
   }
 }

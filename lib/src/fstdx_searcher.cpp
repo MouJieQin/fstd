@@ -50,7 +50,7 @@ bool FstdxSearcher::extract(const std::string &name,
 
   fs::path default_dst_dir =
       fs::absolute(u8_path(iter->get<std::string>())).parent_path() / "data";
-  return extract(name, file_path, default_dst_dir.string());
+  return extract(name, file_path, to_utf8(default_dst_dir));
 }
 
 bool FstdxSearcher::extract_if_exists(const std::string &name,
@@ -431,10 +431,10 @@ bool FstdxSearcher::insert(const std::string &name,
     return false;
   }
   fstdxes_[name] = ptr;
-  meta_json_["fstdx"][name] = fs::absolute(u8_path(fstdx_path)).string();
+  meta_json_["fstdx"][name] = to_utf8(fs::absolute(u8_path(fstdx_path)));
 
   const vector<string> fstdds =
-      find_fstdd(fs::absolute(u8_path(fstdx_path)).parent_path().string());
+      find_fstdd(to_utf8(fs::absolute(u8_path(fstdx_path)).parent_path()));
   fstdds_[name] = std::vector<std::shared_ptr<FstddReader>>();
   for (const string &fstdd : fstdds) {
     auto ptr = std::make_shared<FstddReader>(fstdd);
@@ -457,7 +457,7 @@ FstdxSearcher::find_fstdd(const std::string &target_dir) const {
       if (entry.is_regular_file()) {
         const fs::path &file_path = entry.path();
         if (file_path.extension() == ".fstdd") {
-          fstdd_files.push_back(file_path.string());
+          fstdd_files.push_back(to_utf8(file_path));
         }
       }
     }
@@ -472,7 +472,7 @@ bool FstdxSearcher::save_to_disk(const std::string &meta_json_path) {
   fs::path path_obj(u8_path(meta_json_path));
   ofstream ofs(path_obj, ios::out);
   if (!ofs) {
-    LOG_ERROR("Cannot open the file: {}", path_obj.string());
+    LOG_ERROR("Cannot open the file: {}", to_utf8(path_obj));
     return false;
   }
   ofs << meta_json_.dump(2);
@@ -487,7 +487,7 @@ bool FstdxSearcher::load_file(const std::string &meta_json_path) {
   fs::path path_obj(u8_path(meta_json_path));
   ifstream ifs(path_obj);
   if (!ifs) {
-    LOG_ERROR("Failed to open file {} for reading.", path_obj.string());
+    LOG_ERROR("Failed to open file {} for reading.", to_utf8(path_obj));
     return false;
   }
   json meta_json;

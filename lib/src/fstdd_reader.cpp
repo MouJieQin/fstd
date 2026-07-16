@@ -29,7 +29,7 @@ bool FstddReader::parse_fstdd(const std::string &fstdd_path) {
   fs::path path_obj(u8_path(fstdd_path));
   std::ifstream ins(path_obj, std::ios::binary | std::ios::ate);
   if (!ins) {
-    LOG_ERROR("Cannot open the file: {}", path_obj.string());
+    LOG_ERROR("Cannot open the file: {}", to_utf8(path_obj));
     return false;
   }
   size_t fstdd_size = ins.tellg();
@@ -86,13 +86,13 @@ bool FstddReader::check_dst_dir(const std::string &dst_dir_str) const {
   fs::path dst_dir(u8_path(dst_dir_str));
   if (fs::exists(dst_dir)) {
     if (!fs::is_directory(dst_dir)) {
-      LOG_ERROR("Destination must be a directory: {}", dst_dir.string());
+      LOG_ERROR("Destination must be a directory: {}", to_utf8(dst_dir));
       return false;
     }
   } else {
     if (!fs::create_directories(dst_dir)) {
       LOG_ERROR("Cannot create the destination directory: {}",
-                dst_dir.string());
+                to_utf8(dst_dir));
       return false;
     }
   }
@@ -112,8 +112,8 @@ bool FstddReader::extract_all(const std::string &dst_dir_str) const {
     if (keys_buff[i] == '\0') {
       string key(keys_buff.data() + start_idx, i - start_idx);
       fs::path output_path =
-          u8_path(fs::absolute(u8_path(dst_dir_str)).string() + "/" + key);
-      if (!extract_impl(key, output_path.string())) { return false; }
+          u8_path(to_utf8(fs::absolute(u8_path(dst_dir_str))) + "/" + key);
+      if (!extract_impl(key, to_utf8(output_path))) { return false; }
       refresh_bar(file_idx);
       file_idx += 1;
       start_idx = i + 1;
@@ -126,16 +126,16 @@ bool FstddReader::extract(const std::string &key,
                           const std::string &dst_dir_str) const {
   if (!check_dst_dir(dst_dir_str)) { return false; }
   fs::path output_path =
-      u8_path(fs::absolute(u8_path(dst_dir_str)).string() + "/" + key);
-  return extract_impl(key, output_path.string());
+      u8_path(to_utf8(fs::absolute(u8_path(dst_dir_str))) + "/" + key);
+  return extract_impl(key, to_utf8(output_path));
 }
 
 bool FstddReader::extract_if_exists(const std::string &key,
                                     const std::string &dst_dir_str) const {
   if (!check_dst_dir(dst_dir_str)) { return false; }
   fs::path output_path =
-      u8_path(fs::absolute(u8_path(dst_dir_str)).string() + "/" + key);
-  return extract_impl(key, output_path.string(), false);
+      u8_path(to_utf8(fs::absolute(u8_path(dst_dir_str))) + "/" + key);
+  return extract_impl(key, to_utf8(output_path), false);
 }
 
 bool FstddReader::extract_impl(const string &key, const string &output_path,
@@ -143,7 +143,7 @@ bool FstddReader::extract_impl(const string &key, const string &output_path,
   fs::path fstdd_path_obj(u8_path(fstdd_path_));
   std::ifstream ins(fstdd_path_obj, std::ios::binary);
   if (!ins) {
-    LOG_ERROR("Cannot open the file: {}", fstdd_path_obj.string());
+    LOG_ERROR("Cannot open the file: {}", to_utf8(fstdd_path_obj));
     return false;
   }
 
@@ -170,14 +170,14 @@ bool FstddReader::extract_impl(const string &key, const string &output_path,
   fs::path parent_path = u8_path(output_path).parent_path();
   if (!fs::exists(parent_path)) {
     if (!fs::create_directories(parent_path)) {
-      LOG_ERROR("Cannot create directories: {}", parent_path.string());
+      LOG_ERROR("Cannot create directories: {}", to_utf8(parent_path));
       return false;
     }
   }
   fs::path output_path_obj(u8_path(output_path));
   ofstream out(output_path_obj, std::ios::binary);
   if (!out) {
-    LOG_ERROR("Cannot open the file: {}", output_path_obj.string());
+    LOG_ERROR("Cannot open the file: {}", to_utf8(output_path_obj));
     return false;
   }
 

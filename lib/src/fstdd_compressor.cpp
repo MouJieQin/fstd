@@ -89,7 +89,7 @@ FstddCompressor::recursive_directory(
     fs::path path_obj = u8_path(data_paths[i]);
     for (const auto &entry : fs::recursive_directory_iterator(path_obj)) {
       if (!entry.is_regular_file()) { continue; }
-      std::string file = fs::relative(entry.path(), path_obj).generic_string();
+      std::string file = to_generic_utf8(fs::relative(entry.path(), path_obj));
       if (opt_verbose) {
         std::cout << "collect file: " << file << "\n";
       } else {
@@ -215,7 +215,7 @@ void FstddCompressor::read_files(const std::vector<std::string> &data_paths,
           u8_path(data_paths[files_paths[i].second]) / u8_path(key);
       ifstream ifs(file_path, ios::binary);
       if (!ifs) {
-        LOG_ERROR("Failed to open file: {}", file_path.string());
+        LOG_ERROR("Failed to open file: {}", to_utf8(file_path));
         continue;
       }
       if (!success) { return; }

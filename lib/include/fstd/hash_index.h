@@ -255,7 +255,7 @@ read_hash_index(const std::string &file_path, const std::string &key, VT &value,
       reinterpret_cast<const char8_t *>(file_path.c_str()));
   std::ifstream in(path_obj, std::ios::binary);
   if (!in) {
-    LOG_ERROR("Cannot open the file: {}", path_obj.string());
+    LOG_ERROR("Cannot open the file: {}", to_utf8(path_obj));
     return false;
   }
   return read_hash_index(in, key, value, dup_idxes, bucket_size, bucket_offset,

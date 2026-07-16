@@ -25,7 +25,7 @@ int FstdxWriter::compile_fstdx(const std::string &output_file,
   fs::path path_obj(u8_path(output_file));
   ofstream fout(path_obj, ios_base::binary);
   if (!fout) {
-    LOG_ERROR("Failed to open file {} for writing.", path_obj.string());
+    LOG_ERROR("Failed to open file {} for writing.", to_utf8(path_obj));
     return 1;
   }
   return compile_fstdx(fout, std::move(keys), std::move(values), meta,
@@ -85,13 +85,13 @@ int FstdxWriter::compile_fstdx(const std::string &input_file,
   fs::path out_path_obj(u8_path(output_file));
   ofstream fout(out_path_obj, ios_base::binary);
   if (!fout) {
-    LOG_ERROR("Failed to open file {} for writing.", out_path_obj.string());
+    LOG_ERROR("Failed to open file {} for writing.", to_utf8(out_path_obj));
     return 1;
   }
   fs::path in_path_obj(u8_path(input_file));
   ifstream fin(in_path_obj, ios_base::binary);
   if (!fin) {
-    LOG_ERROR("Failed to open file {} for reading.", in_path_obj.string());
+    LOG_ERROR("Failed to open file {} for reading.", to_utf8(in_path_obj));
     return 1;
   }
 
@@ -336,7 +336,7 @@ bool FstdxWriter::load_file(const std::string &file_path,
   fs::path path_obj(u8_path(file_path));
   ifstream fin(path_obj, ios_base::in);
   if (!fin) {
-    LOG_ERROR("Failed to open file {} for reading.", path_obj.string());
+    LOG_ERROR("Failed to open file {} for reading.", to_utf8(path_obj));
     return false;
   }
   return load_file(fin, keys, values);

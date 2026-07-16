@@ -37,7 +37,7 @@ int FstddWriter::compile_fstdd(const std::vector<std::string> &data_paths,
   fs::path path_obj(u8_path(output_file));
   ofstream fout(path_obj, ios_base::binary);
   if (!fout) {
-    LOG_ERROR("Failed to open file {} for writing.", path_obj.string());
+    LOG_ERROR("Failed to open file {} for writing.", to_utf8(path_obj));
     return 1;
   }
   DdJsonHeader header;

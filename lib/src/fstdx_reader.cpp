@@ -34,7 +34,7 @@ bool FstdxHashReader::parse_fstdx(const std::string &fstdx_path) {
   fs::path path_obj(u8_path(fstdx_path));
   std::ifstream ins(path_obj, std::ios::binary | std::ios::ate);
   if (!ins) {
-    LOG_ERROR("Cannot open the file: {}", path_obj.string());
+    LOG_ERROR("Cannot open the file: {}", to_utf8(path_obj));
     return false;
   }
   size_t fstdx_size = ins.tellg();
@@ -134,7 +134,7 @@ std::string FstdxHashReader::read_text_by_index(const size_t idx) const {
   fs::path path_obj(u8_path(fstdx_path_));
   std::ifstream comp_in(path_obj, std::ios::binary);
   if (!comp_in) {
-    LOG_ERROR("Couldn't open the file: {}", path_obj.string());
+    LOG_ERROR("Couldn't open the file: {}", to_utf8(path_obj));
     return "";
   }
   EntryIndex entry_index;
@@ -180,7 +180,7 @@ std::vector<std::string> FstdxHashReader::extract_comp_blocks(
   fs::path path_obj(u8_path(fstdx_path_));
   std::ifstream comp_in(path_obj, std::ios::binary);
   if (!comp_in) {
-    LOG_ERROR("Couldn't open file: {}", path_obj.string());
+    LOG_ERROR("Couldn't open file: {}", to_utf8(path_obj));
     return result;
   }
 
@@ -340,7 +340,7 @@ bool FstdxReader::extract(const std::string &output_file) {
   fs::path path_obj(u8_path(output_file));
   ofstream fout(path_obj, ios_base::out);
   if (!fout) {
-    LOG_ERROR("Failed to open file {} for writing.", path_obj.string());
+    LOG_ERROR("Failed to open file {} for writing.", to_utf8(path_obj));
     return false;
   }
 
