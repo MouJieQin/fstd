@@ -411,6 +411,15 @@ void FstdxSearcher::insert_prior_suffix(const std::vector<std::string> &sufs) {
   }
 }
 
+void FstdxSearcher::remove_all_prior_suffix() {
+  prior_suffixes_ = make_shared<std::map<string, size_t>>();
+  prior_suf_lens_ = make_shared<std::set<size_t>>();
+}
+
+void FstdxSearcher::resize_thread_pool(size_t worker_num) {
+  thread_pool_ptr = make_shared<ThreadPool>(worker_num);
+}
+
 void FstdxSearcher::insert_if_not_exists(const std::string &name,
                                          const std::string &fstdx_path) {
   if (fstdxes_.find(name) != fstdxes_.end()) { return; }

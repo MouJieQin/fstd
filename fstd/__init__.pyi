@@ -687,6 +687,25 @@ class FstdxSearcher:
         """
         ...
 
+    def remove_all_prior_suffix(self) -> None:
+        """Remove all prior suffix rules from the searcher.
+
+        Returns:
+            None.
+        """
+        ...
+
+    def resize_thread_pool(self, worker_num: int) -> None:
+        """Resize the number of threads for parallel search.
+
+        Args:
+            worker_num: Number of threads for parallel search. Defaults to 0, which auto-detects available CPU threads.
+
+        Returns:
+            None.
+        """
+        ...
+
     def insert_if_not_exists(self, name: str, fstdx_path: str) -> None:
         """Insert an fstdx dictionary only if it does not already exist.
 

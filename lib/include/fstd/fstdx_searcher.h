@@ -73,6 +73,10 @@ public:
 
   void insert_prior_suffix(const std::vector<std::string> &sufs);
 
+  void remove_all_prior_suffix();
+
+  void resize_thread_pool(size_t worker_num);
+
   void insert_if_not_exists(const std::string &name,
                             const std::string &fstdx_path);
 

@@ -728,6 +728,24 @@ Args:
 Returns:
     None.
 )")
+      .def("remove_all_prior_suffix",
+           &fstd::FstdxSearcher::remove_all_prior_suffix,
+           R"(Remove all prior suffix rules from the searcher.
+
+Returns:
+    None.
+)")
+      .def("resize_thread_pool", &fstd::FstdxSearcher::resize_thread_pool,
+           py::arg("worker_num"),
+           R"(Resize the number of threads for parallel search.
+           
+Args:
+    worker_num: Number of threads for parallel search. Defaults to 0,
+        which auto-detects available CPU threads.
+    
+Returns:
+    None.
+)")
       .def("insert_if_not_exists", &fstd::FstdxSearcher::insert_if_not_exists,
            py::arg("name"), py::arg("fstdx_path"),
            R"(Insert an fstdx dictionary only if it does not already exist.
@@ -750,7 +768,6 @@ Args:
 Returns:
     bool: True if insertion succeeds, False otherwise.
 )")
-
       .def(
           "erase", &fstd::FstdxSearcher::erase, py::arg("name"),
           R"(Erase an fstdx dictionary and the corresponding fstdd archives from the searcher.
